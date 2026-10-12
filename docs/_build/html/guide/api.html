@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>REST API &mdash; Aveloxis 0.29.89 documentation</title>
+  <title>REST API &mdash; Aveloxis 0.29.91 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=db089ca7"></script>
+      <script src="../_static/documentation_options.js?v=9c547fec"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -704,6 +704,51 @@
 <li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#next-steps">Next steps</a></li>
 <li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#issues-or-prs-missing-after-a-second-collection-round">Issues or PRs missing after a second collection round</a></li>
 <li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#gitlab-only-deployment-github-key-pool-has-no-usable-key-github-only-background-tasks-stay-idle">GitLab-only deployment: “GitHub key pool has no usable key — GitHub-only background tasks stay idle”</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">REST API</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api/index.html#a-first-call">A first call</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/conventions.html">API design conventions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#fundamentals">Fundamentals</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#naming">Naming</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#documentation">Documentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#access">Access</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#errors">Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#rate-limits-and-quotas">Rate limits and quotas</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#caching-and-validators">Caching and validators</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#times-and-windows">Times and windows</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#compatibility">Compatibility</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#what-the-tests-check">What the tests check</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/reference.html">API reference</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#service">Service</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#repositories">Repositories</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#vulnerabilities">Vulnerabilities</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#contributors">Contributors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#comparison">Comparison</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#supply-chain">Supply chain</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#account">Account</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#home">Home</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#groups">Groups</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#collections">Collections</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-users-and-groups">Admin users and groups</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-add-requests">Admin add requests</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-monitor">Admin monitor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-collections">Admin collections</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-api-tokens">Admin API tokens</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-capacity">Admin capacity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-forge-id-changes">Admin forge-ID changes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#augur-catalog">Augur catalog</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#augur-metrics">Augur metrics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#shared-responses">Shared responses</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -2662,11 +2707,18 @@ and logs under <code class="docutils literal notranslate"><span class="pre">~/.a
 OAuth, the first admin, upgrades — is
 <a class="reference internal" href="../getting-started/deployment.html"><span class="std std-doc">Production Deployment</span></a>.</p>
 <p>Each <code class="docutils literal notranslate"><span class="pre">api</span></code> process keeps its own state: the per-repository response cache
-(up to <code class="docutils literal notranslate"><span class="pre">api.response_cache_mb</span></code>, or 1,000 weekly-series and top-contributor answers when it is unset), its rate-limit buckets (per IP,
-per API token and the per-user cap on repositories added by viewing them;
-all start over when the process restarts) and a short authorization cache. Several instances behind a load balancer each compute
-and hold their own answers, and the per-IP limits are per instance; run one
-per host unless that is what you want.</p>
+(up to <code class="docutils literal notranslate"><span class="pre">api.response_cache_mb</span></code>, or 1,000 weekly-series and top-contributor
+answers when it is unset), a short authorization cache, and these rate-limit
+counts: the per-IP buckets, the hour windows of session and API-token quotas
+(<code class="docutils literal notranslate"><span class="pre">requests_per_hour</span></code>, <code class="docutils literal notranslate"><span class="pre">token_requests_per_hour</span></code>) and the per-user cap on
+repositories added to Shared with Me by viewing them. All of those start over
+when the process restarts. The day counts of sessions and API tokens
+(<code class="docutils literal notranslate"><span class="pre">requests_per_day</span></code>, <code class="docutils literal notranslate"><span class="pre">token_requests_per_day</span></code>) are shared through the
+<code class="docutils literal notranslate"><span class="pre">aveloxis_ops.request_counts</span></code> table: every <code class="docutils literal notranslate"><span class="pre">api</span></code> process adds its counts there
+about once a minute and when it stops, so they survive a restart and are
+shared by all instances. Several instances behind a load balancer each compute
+and hold their own answers, and the per-IP limits and hour windows are per
+instance; run one per host unless that is what you want.</p>
 <p>The web GUI’s charts fetch the API through the web process, which proxies
 <code class="docutils literal notranslate"><span class="pre">/api/*</span></code> to <code class="docutils literal notranslate"><span class="pre">web.api_internal_url</span></code> (<code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8383</span></code> by default);
 when the API moves, that URL must follow. Behind a reverse proxy, send
@@ -2813,8 +2865,15 @@ another group always links.</p>
 (<code class="docutils literal notranslate"><span class="pre">quota</span></code> <code class="docutils literal notranslate"><span class="pre">repo_links_per_day</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;kind&quot;:</span> <span class="pre">&quot;rate&quot;</span></code>: <code class="docutils literal notranslate"><span class="pre">429</span></code> with <code class="docutils literal notranslate"><span class="pre">Retry-After</span></code>
 until 00:00 UTC). Removing one does not give the addition back, so the daily
 count bounds adding, reading and removing in a loop. Repositories an
-organization scan links (an administrator approved the organization) are not
-counted. A bulk add or a collection copy that does not fit adds nothing (unless another addition takes the last places while the paste is being linked: then the repositories linked before it stay and the rest are refused).</p>
+organization scan links count too, unless an administrator approved that
+organization for that group (v0.29.91): an organization you add that is
+already tracked elsewhere is approved automatically, and its repositories
+count. Repositories a paste brings under <code class="docutils literal notranslate"><span class="pre">web.auto_approve_add_limit</span></code> count
+as well, decided with the paste, all or nothing. A bulk add or a collection copy that does not fit adds nothing, even when
+the same account adds from somewhere else at the same moment: the
+repositories already tracked are linked, and the new ones recorded (for
+approval, or as approved when <code class="docutils literal notranslate"><span class="pre">web.auto_approve_add_limit</span></code> applies, which
+then processes them), in one step (v0.29.90).</p>
 <p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/me</span></code> carries the caller’s numbers in <code class="docutils literal notranslate"><span class="pre">capacity</span></code>: <code class="docutils literal notranslate"><span class="pre">repos</span></code>
 (<code class="docutils literal notranslate"><span class="pre">used</span></code>, <code class="docutils literal notranslate"><span class="pre">allowed</span></code>, <code class="docutils literal notranslate"><span class="pre">mode</span></code>, <code class="docutils literal notranslate"><span class="pre">exempt</span></code>, <code class="docutils literal notranslate"><span class="pre">contact</span></code>) and <code class="docutils literal notranslate"><span class="pre">requests</span></code> (each
 window’s <code class="docutils literal notranslate"><span class="pre">quota</span></code>, <code class="docutils literal notranslate"><span class="pre">window</span></code>, <code class="docutils literal notranslate"><span class="pre">used</span></code>, <code class="docutils literal notranslate"><span class="pre">allowed</span></code>, <code class="docutils literal notranslate"><span class="pre">mode</span></code> and <code class="docutils literal notranslate"><span class="pre">reset_at</span></code>, as
@@ -2866,7 +2925,9 @@ missing token <code class="docutils literal notranslate"><span class="pre">401</
 those; an already-invalid token gets <code class="docutils literal notranslate"><span class="pre">401</span></code> when <code class="docutils literal notranslate"><span class="pre">api.require_auth</span></code> is on,
 <code class="docutils literal notranslate"><span class="pre">204</span></code> otherwise). The GUI’s Sign out calls
 it. Before 0.29.82 a token copied before sign-out stayed valid for its
-30 days.</p></li>
+30 days. Signing out a session is never refused by a spent request quota
+and is not counted (v0.29.91); an API token on this route is counted like
+any request (it is answered <code class="docutils literal notranslate"><span class="pre">400</span></code>).</p></li>
 <li><p>Session tokens are stored only as their SHA-256 hash (v0.29.82), tagged
 with the algorithm (<code class="docutils literal notranslate"><span class="pre">sha256$…</span></code>, v0.29.88; API tokens likewise): a read of
 the database, or a backup, yields nothing a caller can present.
@@ -2909,7 +2970,8 @@ process keeps its own count, which starts over when it restarts; past
 that the request is <code class="docutils literal notranslate"><span class="pre">429</span></code> with <code class="docutils literal notranslate"><span class="pre">Retry-After</span></code> and the <code class="docutils literal notranslate"><span class="pre">capacity_limit</span></code>
 body, <code class="docutils literal notranslate"><span class="pre">quota</span></code> <code class="docutils literal notranslate"><span class="pre">shared_with_me_adds_per_hour</span></code> (v0.29.89), and that
 addition is not made, though entities of the same request resolved
-before it were; with the account’s repository allocation full, the
+before it were; an organization entity’s repositories are linked all or
+none (v0.29.91); with the account’s repository allocation full, the
 request is refused with the <code class="docutils literal notranslate"><span class="pre">capacity_limit</span></code> body, see “Rate limits”) — repo links are shareable between signed-in
 users (the Starred/Comparisons auto-add pattern, triggered by
 viewing). The response that performed the add carries a one-time
@@ -3368,7 +3430,8 @@ An add that would take the account past its repository allocation
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/groups/{groupID}/repos/{repoID}/remove</span></code> — removes a
 repository from one of the caller’s groups (v0.29.89). The repository
 stops counting toward the account’s allocation once no other group of
-theirs holds it. <code class="docutils literal notranslate"><span class="pre">404</span></code> for a group that is not the caller’s.</p></li>
+theirs holds it. <code class="docutils literal notranslate"><span class="pre">404</span></code> for a group that is not the caller’s; <code class="docutils literal notranslate"><span class="pre">404</span></code> <code class="docutils literal notranslate"><span class="pre">that</span> <span class="pre">repository</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">in</span> <span class="pre">that</span> <span class="pre">group</span></code> when the repository was not in the group
+(v0.29.91; before, the answer said removed either way).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/groups/{groupID}/orgs</span></code> — the organizations tracked in
 the group (2026-07-21; read-only — registration goes through the
 POST above with <code class="docutils literal notranslate"><span class="pre">kind:</span> <span class="pre">&quot;org&quot;</span></code>). Envelope:

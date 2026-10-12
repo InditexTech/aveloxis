@@ -5,7 +5,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -16,6 +18,7 @@ import (
 	"filippo.io/age"
 
 	"github.com/aveloxis/aveloxis/internal/db"
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // The runbook's offline half, end to end (docs/guide/signup-escrow.md):
@@ -90,5 +93,29 @@ func TestSignupEscrowKeygenAndOpen(t *testing.T) {
 	op2.SetArgs([]string{"--identity", wrong, export})
 	if err := op2.Execute(); err == nil {
 		t.Fatal("the wrong key opened the envelope")
+	}
+}
+
+// v0.29.91 (whole-PR review): the export's audit line went through the
+// process logger, so log_level "error" suppressed it although the runbook
+// tells the operator to keep it. It is written to standard error on a
+// logger of its own, and the export writes it there (not via the process
+// logger).
+func TestEscrowExportAuditLineIgnoresLogLevel(t *testing.T) {
+	cfg := loadConfigJSON(t, `{"log_level": "error"}`)
+	if newLogger(cfg).Enabled(context.Background(), slog.LevelWarn) {
+		t.Fatal("premise: log_level error must suppress a WARN on the process logger")
+	}
+	var buf bytes.Buffer
+	writeEscrowAuditLine(&buf, 42, 3, "/tmp/out.json")
+	line := buf.String()
+	for _, want := range []string{"level=WARN", "sign-up escrow: sealed records exported for opening offline", "user_id=42", "records=3", "file=/tmp/out.json"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("audit line lacks %q: %s", want, line)
+		}
+	}
+	body := srctest.StripGoComments(srctest.FuncBody(t, srctest.Read(t, "cmd/aveloxis/signup_escrow.go"), "func signupEscrowExportCmd("))
+	if !strings.Contains(body, "writeEscrowAuditLine(cmd.ErrOrStderr(), ") || strings.Contains(body, "sealed records exported") {
+		t.Error("the export must write its audit line through writeEscrowAuditLine to standard error, never the process logger")
 	}
 }

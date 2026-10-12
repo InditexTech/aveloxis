@@ -137,8 +137,11 @@ func signupEscrowExportCmd(cfgPath *string) *cobra.Command {
 				return fmt.Errorf("write %s: %w", out, err)
 			}
 			// The audit line: who was exported, when (the OS user is in the
-			// shell's own history; the open step happens offline).
-			logger.Warn("sign-up escrow: sealed records exported for opening offline", "user_id", userID, "records", len(recs), "file", out)
+			// shell's own history; the open step happens offline). Written
+			// whatever log_level says (v0.29.91: through the process logger
+			// it vanished at log_level "error", and the runbook tells the
+			// operator to keep it).
+			writeEscrowAuditLine(cmd.ErrOrStderr(), userID, len(recs), out)
 			fmt.Fprintf(cmd.OutOrStdout(), "%d sealed record(s) for account %d written to %s. Carry it to the offline machine and run:\n  aveloxis signup-escrow open --identity <private key file> %s\n", len(recs), userID, out, out)
 			return nil
 		},
@@ -147,6 +150,13 @@ func signupEscrowExportCmd(cfgPath *string) *cobra.Command {
 	cmd.Flags().StringVar(&login, "login", "", "account login")
 	cmd.Flags().StringVar(&out, "out", "", "file to write")
 	return cmd
+}
+
+// writeEscrowAuditLine writes the export's audit record to w (standard
+// error) at WARN, on a logger of its own so log_level cannot suppress it.
+func writeEscrowAuditLine(w io.Writer, userID, records int, file string) {
+	slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: slog.LevelWarn})).
+		Warn("sign-up escrow: sealed records exported for opening offline", "user_id", userID, "records", records, "file", file)
 }
 
 func signupEscrowOpenCmd() *cobra.Command {

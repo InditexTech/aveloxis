@@ -93,6 +93,24 @@ func (w Window) end(start time.Time) time.Time {
 // Meter, such as the per-IP limiter's UTC day).
 func (w Window) End(now time.Time) time.Time { return w.end(w.start(now)) }
 
+// Start is the start of the window that covers now: for UTCDay, 00:00 UTC
+// of now's UTC day; for Hour, now (an hour window starts at the first
+// request). The one spelling of the UTC-day boundary for the store and the
+// api (v0.29.91, lens L18).
+func (w Window) Start(now time.Time) time.Time { return w.start(now) }
+
+// Seconds is the window's length in seconds (RateLimit-Policy's w).
+func (w Window) Seconds() int {
+	if w == UTCDay {
+		return int((24 * time.Hour).Seconds())
+	}
+	return int(time.Hour.Seconds())
+}
+
+// UTCDate is now's UTC calendar date as stored (YYYY-MM-DD): the day a
+// UTC-day count or secret is filed under.
+func UTCDate(now time.Time) string { return UTCDay.Start(now).Format(time.DateOnly) }
+
 // current reports whether a window that started at start still covers now.
 func (w Window) current(start, now time.Time) bool {
 	if w == UTCDay {

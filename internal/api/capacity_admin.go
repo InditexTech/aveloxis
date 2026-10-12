@@ -311,13 +311,19 @@ func (s *Server) handleGroupRemoveRepo(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, http.StatusBadRequest, "group and repository ids must be positive integers")
 		return
 	}
-	err := s.store.RemoveRepoFromGroup(r.Context(), info.UserID, groupID, repoID)
+	removed, err := s.store.RemoveRepoFromGroup(r.Context(), info.UserID, groupID, repoID)
 	if errors.Is(err, db.ErrGroupNotOwned) {
 		writeAuthError(w, http.StatusNotFound, "no group of yours with that id")
 		return
 	}
 	if err != nil {
 		s.serverError(w, r, "handleGroupRemoveRepo", err)
+		return
+	}
+	if !removed {
+		// v0.29.91: nothing was removed (another tab, a stale page); the
+		// GUI matches "not in that group" and refreshes its list.
+		writeAuthError(w, http.StatusNotFound, "that repository is not in that group")
 		return
 	}
 	// The caller's scope may have narrowed: drop only their cached scope.

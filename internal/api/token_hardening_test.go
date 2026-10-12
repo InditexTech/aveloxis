@@ -294,7 +294,7 @@ func TestForgetBeatsALookupInFlight(t *testing.T) {
 // collection copy) are user actions with the approval flow and stay
 // uncapped (bulk paste) — decided in the 0.29.82 ledger.
 func TestEveryImplicitGroupLinkIsCapped(t *testing.T) {
-	implicit := []string{"EnsureRepoSharedWithUser(", "AddRepoToGroupByID(", "RecordComparisonRepos("}
+	implicit := []string{"EnsureRepoSharedWithUser(", "AddRepoToGroupByID(", "AddRepoIDsToGroup(", "RecordComparisonRepos("}
 	ents, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
@@ -504,13 +504,16 @@ func TestSettleAutoAddAfterAPartialLink(t *testing.T) {
 // Both multi-step implicit link sites settle through settleAutoAdd BEFORE
 // their error return (wiring for the behavior above).
 func TestMultiStepLinkSitesSettleBeforeTheErrorReturn(t *testing.T) {
-	for file, fn := range map[string]string{
-		"internal/api/analytics.go": "func (s *Server) resolveEntityRepos(",
-		"internal/api/portal.go":    "func (s *Server) handleStarRepo(",
+	// v0.29.91: the Comparisons auto-add links an entity with one store call
+	// (AddRepoIDsToGroup, one decision); a star links one repository.
+	for file, site := range map[string][2]string{
+		"internal/api/analytics.go": {"func (s *Server) resolveEntityRepos(", "AddRepoIDsToGroup("},
+		"internal/api/portal.go":    {"func (s *Server) handleStarRepo(", "AddRepoToGroupByID("},
 	} {
+		fn := site[0]
 		body := srctest.StripGoComments(srctest.FuncBody(t, srctest.Read(t, file), fn))
 		settle := strings.Index(body, "s.settleAutoAdd(info.UserID, slot, ")
-		link := strings.Index(body, "AddRepoToGroupByID(")
+		link := strings.Index(body, site[1])
 		if settle < 0 || link < 0 || settle < link {
 			t.Fatalf("%s: settleAutoAdd must follow the link (settle at %d, link at %d)", fn, settle, link)
 		}

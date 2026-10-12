@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Production Deployment &mdash; Aveloxis 0.29.89 documentation</title>
+  <title>Production Deployment &mdash; Aveloxis 0.29.91 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=db089ca7"></script>
+      <script src="../_static/documentation_options.js?v=9c547fec"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -704,6 +704,51 @@
 <li class="toctree-l2"><a class="reference internal" href="../guide/troubleshooting.html#next-steps">Next steps</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/troubleshooting.html#issues-or-prs-missing-after-a-second-collection-round">Issues or PRs missing after a second collection round</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/troubleshooting.html#gitlab-only-deployment-github-key-pool-has-no-usable-key-github-only-background-tasks-stay-idle">GitLab-only deployment: “GitHub key pool has no usable key — GitHub-only background tasks stay idle”</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">REST API</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api/index.html#a-first-call">A first call</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/conventions.html">API design conventions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#fundamentals">Fundamentals</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#naming">Naming</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#documentation">Documentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#access">Access</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#errors">Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#rate-limits-and-quotas">Rate limits and quotas</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#caching-and-validators">Caching and validators</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#times-and-windows">Times and windows</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#compatibility">Compatibility</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#what-the-tests-check">What the tests check</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/reference.html">API reference</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#service">Service</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#repositories">Repositories</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#vulnerabilities">Vulnerabilities</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#contributors">Contributors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#comparison">Comparison</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#supply-chain">Supply chain</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#account">Account</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#home">Home</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#groups">Groups</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#collections">Collections</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-users-and-groups">Admin users and groups</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-add-requests">Admin add requests</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-monitor">Admin monitor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-collections">Admin collections</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-api-tokens">Admin API tokens</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-capacity">Admin capacity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-forge-id-changes">Admin forge-ID changes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#augur-catalog">Augur catalog</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#augur-metrics">Augur metrics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#shared-responses">Shared responses</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -1824,7 +1869,8 @@ the ones a public host must get right:</p>
 <span class="w">    </span><span class="nt">&quot;dev_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w">                   </span><span class="c1">// production: Secure cookies, no loopback confirmation links</span>
 <span class="w">    </span><span class="nt">&quot;github_client_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;…&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;github_client_secret&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;…&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;gitlab_client_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;…&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;gitlab_client_secret&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;…&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;api_internal_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://127.0.0.1:8383&quot;</span><span class="w">   </span><span class="c1">// where web proxies /api/* — must follow api.addr</span>
+<span class="w">    </span><span class="nt">&quot;api_internal_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://127.0.0.1:8383&quot;</span><span class="p">,</span><span class="w">  </span><span class="c1">// where web proxies /api/* — must follow api.addr</span>
+<span class="w">    </span><span class="nt">&quot;trusted_proxy&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="w">         </span><span class="c1">// nginx&#39;s peer IP: sign-ups and /api traffic through the web carry the browser&#39;s address</span>
 <span class="w">  </span><span class="p">},</span>
 
 <span class="w">  </span><span class="nt">&quot;mail&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;site_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://aveloxis.example.org&quot;</span><span class="w"> </span><span class="p">},</span><span class="w">   </span><span class="c1">// the origin in emailed links (confirmation, digests)</span>
@@ -1833,7 +1879,7 @@ the ones a public host must get right:</p>
 <span class="w">    </span><span class="nt">&quot;addr&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1:8383&quot;</span><span class="p">,</span><span class="w">            </span><span class="c1">// loopback only; the proxy forwards to it</span>
 <span class="w">    </span><span class="nt">&quot;trusted_proxy&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span><span class="w">        </span><span class="c1">// the proxy&#39;s peer IP, in canonical form; X-Forwarded-For is believed only from it</span>
 <span class="w">    </span><span class="nt">&quot;require_auth&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w">               </span><span class="c1">// keep false for this GUI: its charts fetch the API without a Bearer token</span>
-<span class="w">    </span><span class="nt">&quot;exempt_cidrs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;127.0.0.0/8&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;::1/128&quot;</span><span class="p">],</span><span class="w">   </span><span class="c1">// bypass the per-IP limits (not an API token&#39;s own) AND require_auth — narrow the RFC1918 defaults on a shared network</span>
+<span class="w">    </span><span class="nt">&quot;exempt_cidrs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;127.0.0.0/8&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;::1/128&quot;</span><span class="p">],</span><span class="w">   </span><span class="c1">// bypass the per-IP limits (not a valid token&#39;s own quotas) AND require_auth — narrow the RFC1918 defaults on a shared network</span>
 <span class="w">    </span><span class="nt">&quot;cors_origins&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span><span class="w">                  </span><span class="c1">// empty = Access-Control-Allow-Origin: * ; list your origin to make it strict</span>
 <span class="w">    </span><span class="nt">&quot;response_cache_mb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">              </span><span class="c1">// advanced, off by default: megabytes of repository answers the API keeps in memory</span>
 <span class="w">    </span><span class="nt">&quot;cache_rewarm_seconds&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">60</span><span class="p">,</span><span class="w">          </span><span class="c1">// with the cache on: recompute a viewed repository&#39;s answers after its collection</span>
@@ -1853,9 +1899,15 @@ from (<code class="docutils literal notranslate"><span class="pre">127.0.0.1</sp
 in canonical form — not a host name, a CIDR or <code class="docutils literal notranslate"><span class="pre">::ffff:127.0.0.1</span></code>; the
 loader refuses anything else and names the spelling it wants. Without
 it every request appears to come from the proxy, and the exemptions and
-limits apply to all visitors as one.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">api.exempt_cidrs</span></code></strong> waives the per-IP rate limits (an API token is
-still counted against its own allowance, v0.29.88) <em>and</em> <code class="docutils literal notranslate"><span class="pre">require_auth</span></code>. The
+limits apply to all visitors as one. When the browser reaches the API
+through the web GUI’s own <code class="docutils literal notranslate"><span class="pre">/api</span></code> proxy (nginx → web → api), the web
+forwards only the client address it resolved under <code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code>,
+never the client’s own <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code> chain; with nginx, web and api
+on one host, set both <code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code> and <code class="docutils literal notranslate"><span class="pre">api.trusted_proxy</span></code> to
+<code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> and the api sees each browser’s address on either path
+(v0.29.91).</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">api.exempt_cidrs</span></code></strong> waives the per-IP rate limits (a valid session or
+API token is still counted against its own quotas, v0.29.89) <em>and</em> <code class="docutils literal notranslate"><span class="pre">require_auth</span></code>. The
 defaults include the RFC1918 ranges; on a host whose private network is
 shared with others, narrow them to loopback as shown.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">api.require_auth</span></code></strong> stays <code class="docutils literal notranslate"><span class="pre">false</span></code> with this GUI: its pages call the
@@ -1938,9 +1990,12 @@ aveloxis<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot
 <h2>9. Reverse proxy<a class="headerlink" href="#reverse-proxy" title="Link to this heading"></a></h2>
 <p>Terminate TLS in nginx on the same host and forward two paths: <code class="docutils literal notranslate"><span class="pre">/api/</span></code> to
 the API directly, everything else (the pages and <code class="docutils literal notranslate"><span class="pre">/auth/</span></code>) to the web
-process. Sending <code class="docutils literal notranslate"><span class="pre">/api/</span></code> straight to the API is what makes the per-visitor
-rate limits work: if it went through the web process’s own <code class="docutils literal notranslate"><span class="pre">/api/</span></code> proxy,
-every visitor would reach the API from loopback and count as exempt.</p>
+process. Sending <code class="docutils literal notranslate"><span class="pre">/api/</span></code> straight to the API spares a hop. Traffic that goes
+through the web process’s own <code class="docutils literal notranslate"><span class="pre">/api/</span></code> proxy instead keeps the per-visitor
+limits only when <code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code> is set: the web then forwards each
+browser’s address, and the API (with <code class="docutils literal notranslate"><span class="pre">api.trusted_proxy</span></code> set to the web’s
+address, <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> on one host) counts it. With <code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code> empty,
+every visitor on that path reaches the API as loopback and counts as exempt.</p>
 <p>Remove Ubuntu’s stock site first: it is <code class="docutils literal notranslate"><span class="pre">default_server</span></code> on port 80 with
 <code class="docutils literal notranslate"><span class="pre">root</span> <span class="pre">/var/www/html</span></code>, so any request whose Host is not yours (the bare
 IP, a scanner) is served that directory — with none of the rules of the

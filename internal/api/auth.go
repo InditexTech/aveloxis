@@ -458,6 +458,14 @@ func (s *Server) authorizeRepo(w http.ResponseWriter, r *http.Request, repoID in
 	if info.Scope[repoID] {
 		return true
 	}
+	// Already decided for this repository on this request by a wrapper
+	// (servePageCached): the request's scope still lacks it, so deciding
+	// again would reserve a second auto-add slot — at the last slot, a 429
+	// for a request that did add the repository (v0.29.91 whole-PR
+	// follow-up). The mark names one repository id.
+	if id, ok := r.Context().Value(repoAuthorizedKey{}).(int64); ok && id == repoID {
+		return true
+	}
 	// An API token reads only its owner's groups: refused, never
 	// auto-added, with the way to add it (operator decision 2026-10-09).
 	if info.APITokenID != 0 {
@@ -517,4 +525,16 @@ func (s *Server) authorizeRepo(w http.ResponseWriter, r *http.Request, repoID in
 		"hint":    "add this repository to one of your groups to request access",
 	})
 	return false
+}
+
+// repoAuthorizedKey marks a request whose repository authorization a
+// wrapper already decided (servePageCached): the repository id it was
+// decided for.
+type repoAuthorizedKey struct{}
+
+// withRepoAuthorized returns r marked as authorized for repoID. The mark
+// lives in this request's context only (it never outlives the request) and
+// names one repository: authorizeRepo honours it for that id alone.
+func withRepoAuthorized(r *http.Request, repoID int64) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), repoAuthorizedKey{}, repoID))
 }

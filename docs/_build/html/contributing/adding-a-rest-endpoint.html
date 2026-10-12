@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Adding a REST endpoint &mdash; Aveloxis 0.29.89 documentation</title>
+  <title>Adding a REST endpoint &mdash; Aveloxis 0.29.91 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=db089ca7"></script>
+      <script src="../_static/documentation_options.js?v=9c547fec"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -704,6 +704,51 @@
 <li class="toctree-l2"><a class="reference internal" href="../guide/troubleshooting.html#next-steps">Next steps</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/troubleshooting.html#issues-or-prs-missing-after-a-second-collection-round">Issues or PRs missing after a second collection round</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/troubleshooting.html#gitlab-only-deployment-github-key-pool-has-no-usable-key-github-only-background-tasks-stay-idle">GitLab-only deployment: “GitHub key pool has no usable key — GitHub-only background tasks stay idle”</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">REST API</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api/index.html#a-first-call">A first call</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/conventions.html">API design conventions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#fundamentals">Fundamentals</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#naming">Naming</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#documentation">Documentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#access">Access</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#errors">Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#rate-limits-and-quotas">Rate limits and quotas</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#caching-and-validators">Caching and validators</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#times-and-windows">Times and windows</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#compatibility">Compatibility</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#what-the-tests-check">What the tests check</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/reference.html">API reference</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#service">Service</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#repositories">Repositories</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#vulnerabilities">Vulnerabilities</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#contributors">Contributors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#comparison">Comparison</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#supply-chain">Supply chain</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#account">Account</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#home">Home</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#groups">Groups</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#collections">Collections</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-users-and-groups">Admin users and groups</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-add-requests">Admin add requests</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-monitor">Admin monitor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-collections">Admin collections</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-api-tokens">Admin API tokens</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-capacity">Admin capacity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-forge-id-changes">Admin forge-ID changes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#augur-catalog">Augur catalog</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#augur-metrics">Augur metrics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#shared-responses">Shared responses</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -1740,7 +1785,7 @@ SPDX-License-Identifier: MIT
 </section>
 <section id="existing-endpoints">
 <h2>Existing endpoints<a class="headerlink" href="#existing-endpoints" title="Link to this heading"></a></h2>
-<p>The API has grown to ~95 registered routes — the authoritative, tripwire-enforced reference is <a class="reference internal" href="../guide/api.html"><span class="std std-doc"><code class="docutils literal notranslate"><span class="pre">docs/guide/api.md</span></code></span></a> (every registered route must appear there AND carry a smoke recipe in <code class="docutils literal notranslate"><span class="pre">internal/api/endpoint_smoke_test.go</span></code>, or the build fails). Skim <code class="docutils literal notranslate"><span class="pre">internal/api/server.go</span></code>’s route registrations for the code-side list.</p>
+<p>The authoritative reference is the OpenAPI document <a class="reference download internal" download="" href="../_downloads/1818c5c8a1ccac7ab5e6b70b7caa595b/openapi.yaml"><span class="xref download myst"><code class="docutils literal notranslate"><span class="pre">docs/api/openapi.yaml</span></code></span></a>, rendered as the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">API reference</span></a> and written to the <a class="reference internal" href="../api/conventions.html"><span class="std std-doc">API design conventions</span></a>. <code class="docutils literal notranslate"><span class="pre">scripts/openapi_routes_test.go</span></code> fails the build when a registered route is missing from it (or the spec names a route nobody serves), and when an operation’s parameters, access or implied refusals disagree with its handler. Every route must also appear in the narrative guide <a class="reference internal" href="../guide/api.html"><span class="std std-doc"><code class="docutils literal notranslate"><span class="pre">docs/guide/api.md</span></code></span></a> and carry a smoke recipe in <code class="docutils literal notranslate"><span class="pre">internal/api/endpoint_smoke_test.go</span></code>. Skim <code class="docutils literal notranslate"><span class="pre">internal/api/server.go</span></code>’s route registrations for the code-side list.</p>
 </section>
 <section id="walkthrough-add-get-api-v1-repos-repoid-contributors">
 <h2>Walkthrough: add <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/repos/{repoID}/contributors</span></code><a class="headerlink" href="#walkthrough-add-get-api-v1-repos-repoid-contributors" title="Link to this heading"></a></h2>
@@ -1924,7 +1969,7 @@ SPDX-License-Identifier: MIT
 </section>
 <section id="step-6-bump-version-document">
 <h3>Step 6 — bump version, document<a class="headerlink" href="#step-6-bump-version-document" title="Link to this heading"></a></h3>
-<p>Bump <code class="docutils literal notranslate"><span class="pre">internal/db/version.go</span></code>. Put the release-note entry in your PR description. Update <code class="docutils literal notranslate"><span class="pre">docs/guide/api.md</span></code> with the new endpoint signature and response shape.</p>
+<p>Bump <code class="docutils literal notranslate"><span class="pre">internal/db/version.go</span></code>. Put the release-note entry in your PR description. Add the operation to <code class="docutils literal notranslate"><span class="pre">docs/api/openapi.yaml</span></code> (parameters, body, responses and access, derived from the handler, following <code class="docutils literal notranslate"><span class="pre">docs/api/conventions.md</span></code>), and describe what it means in <code class="docutils literal notranslate"><span class="pre">docs/guide/api.md</span></code>.</p>
 </section>
 </section>
 <section id="patterns-to-follow">

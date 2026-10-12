@@ -29,7 +29,18 @@ version = release
 extensions = [
     'myst_parser',
     'sphinx_rtd_theme',
+    # The API reference (docs/api/reference.rst) renders docs/api/openapi.yaml
+    # at build time with sphinxcontrib-openapi (pinned in requirements.txt):
+    # no network, no JavaScript. aveloxis_openapi (docs/_ext) loads it and
+    # draws the reference by tag, with each operation's access.
+    'aveloxis_openapi',
 ]
+
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '_ext'))
+# No __pycache__ next to the extension in the checkout.
+sys.dont_write_bytecode = True
 
 # Support both .rst and .md files
 source_suffix = {

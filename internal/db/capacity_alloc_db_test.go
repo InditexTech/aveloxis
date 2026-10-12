@@ -198,9 +198,10 @@ func TestRepoAllocationApprovedItemsKeepTheirPlace(t *testing.T) {
 	})
 }
 
-// TestRepoAllocationRequestWriterHoldsUnderTheLock: the bulk add's
-// precheck takes no lock, so the request writer decides again under it —
-// at the cap a new request is refused even when the precheck is skipped.
+// TestRepoAllocationRequestWriterHoldsUnderTheLock: the stand-alone request
+// writer (createAddRequest; for repositories, the legacy-group migration)
+// decides under the lock on its own — at the cap a new
+// request is refused.
 func TestRepoAllocationRequestWriterHoldsUnderTheLock(t *testing.T) {
 	f := newAllocFixture(t, false, 2, 1, capacity.Enforce)
 	if _, err := f.store.AddRepoToGroupByID(f.ctx, f.group, f.repos[0]); err != nil {
@@ -402,5 +403,127 @@ func TestRepoAllocationSharedWithMeRefusal(t *testing.T) {
 	wantExceeded(t, err, 1, 1, 1)
 	if errors.Is(err, ErrSharedRepoNotFound) {
 		t.Error("a cap refusal must not read as not-found")
+	}
+}
+
+// Copilot review 5479554271 (High): two concurrent pastes each passed the
+// unlocked check and then linked one repository at a time, so the second
+// landed partly. The paste is decided and written in one transaction under
+// the owner's lock: one paste links whole, the other is refused whole.
+func TestConcurrentPastesAreAllOrNothing(t *testing.T) {
+	f := newAllocFixture(t, false, 3, 4, capacity.Enforce)
+	// The rendezvous of TestRepoAllocationConcurrentAddsAtTheEdgeAdmitOne:
+	// each paste waits at its decision for the other (up to a bound), so
+	// without one decision under the owner's lock both decide on the same
+	// reach every run, not by timing.
+	var arrived sync.WaitGroup
+	arrived.Add(2)
+	both := make(chan struct{})
+	go func() { arrived.Wait(); close(both) }()
+	f.store.allocationDecided = func() {
+		arrived.Done()
+		select {
+		case <-both:
+		case <-time.After(150 * time.Millisecond):
+		}
+	}
+	t.Cleanup(func() { f.store.allocationDecided = nil })
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	outs := make([]AddOutcome, 2)
+	for i, urls := range [][]string{f.urls[0:2], f.urls[2:4]} {
+		wg.Add(1)
+		go func(i int, urls []string) {
+			defer wg.Done()
+			outs[i], errs[i] = f.store.AddReposToGroup(f.ctx, f.user, f.group, urls, 0)
+		}(i, urls)
+	}
+	wg.Wait()
+	refused := 0
+	for i := range errs {
+		if _, ok := capacity.AsExceeded(errs[i]); ok {
+			refused++
+			if outs[i].Linked != 0 {
+				t.Errorf("a refused paste linked %d repositories", outs[i].Linked)
+			}
+		} else if errs[i] != nil {
+			t.Fatalf("paste %d = %v", i, errs[i])
+		}
+	}
+	if got := f.linked(t); refused != 1 || got != 2 {
+		t.Fatalf("two concurrent pastes of 2 into room for 3: refused %d, reach %d; want 1 refused whole and reach 2 (no partial paste)", refused, got)
+	}
+}
+
+// TestConcurrentPastesWithNewURLsAreAllOrNothing (v0.29.90, L10 review F3):
+// the held places are in the same decision. Two pastes, each one tracked
+// repository and one new URL (an add request item holds its place), race
+// for room for 3: one is refused whole — no link and no add request.
+func TestConcurrentPastesWithNewURLsAreAllOrNothing(t *testing.T) {
+	f := newAllocFixture(t, false, 3, 2, capacity.Enforce)
+	var arrived sync.WaitGroup
+	arrived.Add(2)
+	both := make(chan struct{})
+	go func() { arrived.Wait(); close(both) }()
+	f.store.allocationDecided = func() {
+		arrived.Done()
+		select {
+		case <-both:
+		case <-time.After(150 * time.Millisecond):
+		}
+	}
+	t.Cleanup(func() { f.store.allocationDecided = nil })
+	pastes := [][]string{{f.urls[0], f.url("paste-new-a")}, {f.urls[1], f.url("paste-new-b")}}
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	outs := make([]AddOutcome, 2)
+	for i, urls := range pastes {
+		wg.Add(1)
+		go func(i int, urls []string) {
+			defer wg.Done()
+			outs[i], errs[i] = f.store.AddReposToGroup(f.ctx, f.user, f.group, urls, 0)
+		}(i, urls)
+	}
+	wg.Wait()
+	refused := 0
+	for i := range errs {
+		if _, ok := capacity.AsExceeded(errs[i]); ok {
+			refused++
+			if outs[i].Linked != 0 || outs[i].RequestID != 0 {
+				t.Errorf("a refused paste linked %d and recorded request %d", outs[i].Linked, outs[i].RequestID)
+			}
+		} else if errs[i] != nil {
+			t.Fatalf("paste %d = %v", i, errs[i])
+		}
+	}
+	var requests int
+	if err := f.store.pool.QueryRow(f.ctx, `SELECT COUNT(*) FROM aveloxis_ops.collection_add_requests WHERE user_id = $1`, f.user).Scan(&requests); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.linked(t); refused != 1 || got != 2 || requests != 1 {
+		t.Fatalf("two concurrent pastes of 1 tracked + 1 new into room for 3: refused %d, reach %d, add requests %d; want 1, 2 (one link + one held place), 1", refused, got, requests)
+	}
+}
+
+// TestPasteWriterRefusesAGroupItsOwnerDoesNotOwn (v0.29.90, L10 round 2
+// R2; SR-18): addPasteWithinCap decides against owner's quota and lock, so
+// it checks itself that owner owns the group — a caller that skipped
+// verifyGroupOwned cannot link into another account's group.
+func TestPasteWriterRefusesAGroupItsOwnerDoesNotOwn(t *testing.T) {
+	f := newAllocFixture(t, false, 10, 1, capacity.Enforce)
+	other := newAllocFixture(t, false, 10, 0, capacity.Enforce)
+	_, _, err := f.store.addPasteWithinCap(f.ctx, f.user, other.group, f.repos, []string{f.url("not-owned")}, "pending")
+	if !errors.Is(err, ErrGroupNotOwned) {
+		t.Fatalf("paste into another account's group = %v; want ErrGroupNotOwned", err)
+	}
+	var links, requests int
+	if err := f.store.pool.QueryRow(f.ctx, `SELECT COUNT(*) FROM aveloxis_ops.user_repos WHERE group_id = $1`, other.group).Scan(&links); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.pool.QueryRow(f.ctx, `SELECT COUNT(*) FROM aveloxis_ops.collection_add_requests WHERE group_id = $1`, other.group).Scan(&requests); err != nil {
+		t.Fatal(err)
+	}
+	if links != 0 || requests != 0 {
+		t.Errorf("a refused paste wrote %d links and %d add requests into the other group", links, requests)
 	}
 }

@@ -678,7 +678,7 @@ Navigate to the monitor from any page via the "Monitor" link in the top nav bar.
 
 Separate process (default `127.0.0.1:8383`). Start alongside `serve` and `web`.
 
-The API has grown far past this README — the full reference lives at [`docs/guide/api.md`](docs/guide/api.md) (every route is covered there, tripwire-enforced). Families:
+The API has grown far past this README. Every operation is in the OpenAPI 3.1 document [`docs/api/openapi.yaml`](docs/api/openapi.yaml), rendered as the reference in [`docs/api/`](docs/api/index.md) with the design conventions (`scripts/openapi_routes_test.go` keeps it equal to the registered routes); [`docs/guide/api.md`](docs/guide/api.md) is the narrative guide. Families:
 
 | Family | Highlights |
 |---|---|

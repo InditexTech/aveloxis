@@ -145,7 +145,7 @@ func (rl *rateLimiter) deferLookup(r *http.Request) bool {
 		return false
 	}
 	tokens := b.tokens + now.Sub(b.last).Seconds()*rl.opts.RateLimitRPS
-	overQuota := b.day == now.UTC().Format("2006-01-02") && b.dayCount >= rl.opts.RateLimitDaily
+	overQuota := b.day == capacity.UTCDate(now) && b.dayCount >= rl.opts.RateLimitDaily
 	return tokens < 1 || overQuota
 }
 
@@ -194,9 +194,10 @@ func (b *bucket) allow(now time.Time, rps float64, burst int) bool {
 const maxTrackedIPs = 10000
 
 type rateLimiter struct {
-	opts    Options
-	exempt  []*net.IPNet
-	origins map[string]bool
+	opts       Options
+	proxyCheck httpserver.MissingTrustedProxyDetector // api.trusted_proxy missing behind a proxy (v0.29.91)
+	exempt     []*net.IPNet
+	origins    map[string]bool
 
 	mu       sync.Mutex
 	visitors map[string]*bucket
@@ -332,6 +333,10 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 		// 0.29.85; API tokens were charged twice per cache miss since
 		// 0.29.82).
 		paid := rl.uncounted != nil && rl.uncounted(r)
+		// Observation only (v0.29.91): nginx in front without
+		// api.trusted_proxy makes every client the proxy's exempt address.
+		rl.proxyCheck.Observe(rl.logger, r, "api.trusted_proxy", rl.opts.TrustedProxy, rl.isExempt,
+			"every client shares the proxy's address: when it is exempt (the default exempt_cidrs), the per-IP limits and require_auth apply to no one")
 		// A valid token is counted against its own quotas whatever its
 		// address, exempt networks included (Copilot review 5477687920 on PR
 		// #228; a proxy misconfiguration that made every client local must
@@ -343,6 +348,12 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 		ip := rl.clientIP(r)
 		if res, ok := resolutionOf(r); ok && res.presented && res.err == nil && (res.info.APITokenID != 0 || res.info.UserID > 0) {
 			switch {
+			case res.info.APITokenID == 0 && neverRefused(r):
+				// A session's sign-out is not counted and never refused
+				// (v0.29.91): it reads nothing, and refusing it left a spent
+				// session's token valid for up to 30 days. An API token on
+				// this route is counted like any request: logout answers it
+				// 400 and ends nothing (review round 2 R2-2).
 			case paid && res.info.APITokenID != 0:
 				setCapacityHeaders(w.Header(), rl.peekTokenQuotas(res.info), rl.clock())
 			case !paid:
@@ -378,7 +389,7 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 			rl.visitors[key] = b
 		}
 		b.lastSeen = now
-		day := now.UTC().Format("2006-01-02")
+		day := capacity.UTCDate(now)
 		if b.day != day {
 			b.day = day
 			b.dayCount = 0
@@ -414,6 +425,16 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// neverRefusedRoutes are the routes a SESSION's quotas never refuse, and
+// that are not counted (v0.29.91, GUI review): sign-out, which reads no data
+// and ends the session token. Not for an API token (round 2 R2-2: logout
+// answers it 400). Exact method and path, like publicPaths.
+var neverRefusedRoutes = map[string]bool{
+	http.MethodPost + " /api/v1/auth/logout": true,
+}
+
+func neverRefused(r *http.Request) bool { return neverRefusedRoutes[r.Method+" "+r.URL.Path] }
 
 // evictOldestLocked drops the least-recently-seen ~1% of visitors.
 // Called with rl.mu held.

@@ -42,12 +42,20 @@ func TestCapacityWordsReachEveryStore(t *testing.T) {
 	}
 }
 
-// The three long-running processes log each quota as applied at startup.
+// The three long-running processes log each quota as applied at startup,
+// each in its own command's body (v0.29.91: the pin matched the whole
+// file, so a call moved to another function, or a component's name on the
+// wrong process, still passed).
 func TestLongRunningProcessesLogTheCapacityInForce(t *testing.T) {
-	src := srctest.StripGoComments(srctest.Read(t, "cmd/aveloxis/main.go"))
-	for _, component := range []string{`"serve"`, `"web"`, `"api"`} {
-		if !strings.Contains(src, "store.LogCapacityInForce(ctx, "+component+")") {
-			t.Errorf("%s does not log the capacity quotas in force at startup", component)
+	src := srctest.Read(t, "cmd/aveloxis/main.go")
+	for fn, component := range map[string]string{
+		"func runServe(": `"serve"`,
+		"func runAPI(":   `"api"`,
+		"func webCmd(":   `"web"`,
+	} {
+		body := srctest.StripGoComments(srctest.FuncBody(t, src, fn))
+		if strings.Count(body, "store.LogCapacityInForce(ctx, ") != 1 || !strings.Contains(body, "store.LogCapacityInForce(ctx, "+component+")") {
+			t.Errorf("%s must log the capacity quotas in force at startup once, as %s", fn, component)
 		}
 	}
 }

@@ -96,7 +96,7 @@ to log in as a different user.
 <a href="/logout">Logout</a>
 </div>
 </div>
-<div class="breadcrumb"><span class="current">Home</span><span class="sep">|</span><a href="/monitor">Monitor</a></div>
+<div class="breadcrumb"><span class="current">Home</span>{{if .Session.IsAdmin}}<span class="sep">|</span><a href="/monitor">Monitor</a>{{end}}</div>
 <div class="container">
 {{if .PendingEmail}}
 <div class="card" style="background:#dbeafe;border:1px solid #3b82f6">
@@ -176,7 +176,7 @@ to log in as a different user.
 </div>
 </div>
 <div class="breadcrumb">
-<a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">/</span><span class="current">{{.Group.Name}}</span>
+<a href="/dashboard">Home</a>{{if .Session.IsAdmin}}<span class="sep">|</span><a href="/monitor">Monitor</a>{{end}}<span class="sep">/</span><span class="current">{{.Group.Name}}</span>
 </div>
 <div class="container">
 <div class="card">
@@ -304,7 +304,7 @@ https://gitlab.com/group/project" style="width:100%;padding:8px 12px;border:1px 
 </div>
 </div>
 <div class="breadcrumb">
-<a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">/</span>
+<a href="/dashboard">Home</a>{{if .Session.IsAdmin}}<span class="sep">|</span><a href="/monitor">Monitor</a>{{end}}<span class="sep">/</span>
 <a href="/groups/{{.GroupID}}">{{.Group.Name}}</a><span class="sep">/</span>
 <span class="current">{{.Repo.Owner}}/{{.Repo.Name}}</span>
 </div>
@@ -593,7 +593,7 @@ fetch(API_BASE + '/api/v1/repos/' + REPO_ID + '/scancode-files')
 </div>
 </div>
 <div class="breadcrumb">
-<a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">/</span><span class="current">Compare Repos</span>
+<a href="/dashboard">Home</a>{{if .Session.IsAdmin}}<span class="sep">|</span><a href="/monitor">Monitor</a>{{end}}<span class="sep">/</span><span class="current">Compare Repos</span>
 </div>
 <div class="container">
 <div class="card">

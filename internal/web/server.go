@@ -43,12 +43,13 @@ import (
 type Server struct {
 	store *db.PostgresStore
 	cfg   config.WebConfig
-	// trustedProxyWarn logs a missing web.trusted_proxy once (v0.29.89).
-	trustedProxyWarn sync.Once
-	logger           *slog.Logger
-	ghOAuth          *oauth2.Config
-	glOAuth          *oauth2.Config
-	ghKeys           *platform.KeyPool // for immediate org scanning
+	// proxyCheck logs a missing web.trusted_proxy once (v0.29.89; the
+	// shared detector since v0.29.91).
+	proxyCheck httpserver.MissingTrustedProxyDetector
+	logger     *slog.Logger
+	ghOAuth    *oauth2.Config
+	glOAuth    *oauth2.Config
+	ghKeys     *platform.KeyPool // for immediate org scanning
 	// ghAPIBase is the GitHub REST host those keys belong to, normalised by
 	// New through platform.GitHubAPIBaseOrPublic so it is never empty. A
 	// REQUIRED parameter of New, next to the pool, so a
@@ -156,7 +157,28 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghKeys *platform.KeyPool
 		apiURL = "http://127.0.0.1:8383"
 	}
 	if target, err := url.Parse(apiURL); err == nil && target.Host != "" {
-		rp := httputil.NewSingleHostReverseProxy(target)
+		// Rewrite, not Director (v0.29.91 review round 2 R2-1): a Director
+		// proxy appends its own peer (nginx) to X-Forwarded-For, so an api
+		// trusting 127.0.0.1 took nginx's exempt address as the client. The
+		// api is sent exactly the client this process resolved under its
+		// own web.trusted_proxy (a client's own claims never pass through),
+		// so one api.trusted_proxy (the web's address) is right whether
+		// nginx proxies /api itself or through here. SetURL joins the path
+		// and query as NewSingleHostReverseProxy did; the inbound Host and
+		// X-Forwarded-Host/-Proto are kept as before (Rewrite drops them).
+		rp := &httputil.ReverseProxy{Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			pr.Out.Host = pr.In.Host
+			for _, h := range []string{"X-Forwarded-Host", "X-Forwarded-Proto"} {
+				if v := pr.In.Header.Values(h); len(v) > 0 {
+					pr.Out.Header[h] = v
+				}
+			}
+			s.warnMissingTrustedProxy(pr.In)
+			if ip := httpserver.ClientIP(pr.In, s.cfg.TrustedProxy); ip != nil {
+				pr.Out.Header.Set("X-Forwarded-For", ip.String())
+			}
+		}}
 		// No response-header wait of its own (NET-6 review r2 F1): the
 		// proxied request carries the web request's context, so the web's
 		// http_timeout_seconds bound (httpserver.Bound) governs a slow api;
@@ -268,8 +290,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/compare", s.requireAuth(s.handleCompare))
 
 	// Monitor dashboard — integrated from the standalone monitor server.
-	mux.HandleFunc("/monitor", s.requireAuth(s.handleMonitor))
-	mux.HandleFunc("POST /monitor/prioritize/{repoID}", s.requireAuth(s.handleMonitorPrioritize))
+	// Administrators only (v0.29.91 whole-PR follow-up): the whole
+	// collection queue, and a boost that reorders everyone's collection —
+	// the API's /admin/monitor routes are administrator-only too.
+	mux.HandleFunc("/monitor", s.requireAdmin(s.handleMonitor))
+	mux.HandleFunc("POST /monitor/prioritize/{repoID}", s.requireAdmin(s.handleMonitorPrioritize))
 
 	// v0.19.0 admin pages. requireAdmin gates on Session.IsAdmin so
 	// non-admin users get a 403 instead of seeing other people's
@@ -679,7 +704,7 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		GHLogin:   ghUser.Login,
 		Provider:  "github",
 		// v0.29.89: the browser's address, for the sign-up quota.
-		SignupAddr: s.signupAddr(r),
+		SignupAddr: s.SignupAddress(r),
 	}, "GitHub")
 }
 
@@ -942,7 +967,7 @@ func (s *Server) handleGitLabCallback(w http.ResponseWriter, r *http.Request) {
 		GLHost:     glBase, // the instance that answered; the store normalizes it (GitLabOAuthHost)
 		GLUsername: glUser.Username,
 		Provider:   "gitlab",
-		SignupAddr: s.signupAddr(r), // v0.29.89: for the sign-up quota
+		SignupAddr: s.SignupAddress(r), // v0.29.89: for the sign-up quota
 	}, "GitLab")
 }
 
@@ -1890,7 +1915,10 @@ func (s *Server) handleRemoveRepo(w http.ResponseWriter, r *http.Request) {
 	if groupID > 0 && repoID > 0 {
 		// The error was discarded and the page redirected as if the
 		// repository had been removed (old problem O2).
-		err := s.store.RemoveRepoFromGroup(r.Context(), sess.UserID, groupID, repoID)
+		// A repository already gone from the group (another tab) redirects
+		// to the group page like a removal: the page shows the outcome the
+		// user wanted (v0.29.91 reviewed the count; nothing to say here).
+		_, err := s.store.RemoveRepoFromGroup(r.Context(), sess.UserID, groupID, repoID)
 		if errors.Is(err, db.ErrGroupNotOwned) {
 			http.NotFound(w, r)
 			return
@@ -2295,11 +2323,11 @@ func (s *Server) capacityNotice(r *http.Request, userID int) string {
 	return st.Refusal().Message()
 }
 
-// signupAddr is the browser's address on an OAuth callback, for
+// SignupAddress is the browser's address on an OAuth callback, for
 // capacity.signups_per_address_per_day (v0.29.89): web.trusted_proxy
 // decides whether X-Forwarded-For is believed (httpserver.ClientIP, the
 // rule the api uses). Zero when it cannot be read: not counted.
-func (s *Server) signupAddr(r *http.Request) netip.Addr {
+func (s *Server) SignupAddress(r *http.Request) netip.Addr {
 	s.warnMissingTrustedProxy(r)
 	if ip := httpserver.ClientIP(r, s.cfg.TrustedProxy); ip != nil {
 		if addr, ok := netip.AddrFromSlice(ip); ok {
@@ -2309,26 +2337,15 @@ func (s *Server) signupAddr(r *http.Request) netip.Addr {
 	return netip.Addr{}
 }
 
-// warnMissingTrustedProxy logs once per process when a sign-in comes from a
-// loopback peer that sent X-Forwarded-For while web.trusted_proxy is empty:
+// warnMissingTrustedProxy logs once per process when a sign-in or an /api
+// request (v0.29.91) comes from a loopback peer that sent X-Forwarded-For while web.trusted_proxy is empty:
 // nginx in front, unconfigured, so every sign-up looks like nginx's own
 // address and an enforced sign-up quota would refuse every new user after
-// the third of the day (ASVS review I1/I3).
+// the third of the day (ASVS review I1/I3). The web has no exempt networks,
+// so only a loopback peer is the proxy here.
 func (s *Server) warnMissingTrustedProxy(r *http.Request) {
-	if s.cfg.TrustedProxy != "" || len(r.Header.Values("X-Forwarded-For")) == 0 {
-		return
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
-		return
-	}
-	s.trustedProxyWarn.Do(func() {
-		s.logger.Warn("sign-in arrived through a proxy on this host but web.trusted_proxy is empty: every new account counts as the proxy's own address for the sign-up quota — set web.trusted_proxy to the proxy's address (127.0.0.1 for nginx on the same host)",
-			"peer", host)
-	})
+	s.proxyCheck.Observe(s.logger, r, "web.trusted_proxy", s.cfg.TrustedProxy, nil,
+		"every new account counts as the proxy's own address for the sign-up quota, and the api, through this process's /api proxy, sees every client as the proxy")
 }
 
 // writeSignupRefusal answers a sign-up the quota refused: 429, Retry-After

@@ -193,7 +193,9 @@ func TestAddRepoToGroupGatesOnApproval(t *testing.T) {
 	if !strings.Contains(body, "GetGroupStatus") && !strings.Contains(body, "status") {
 		t.Error("AddReposToGroup must check group status — 'rejected' groups refuse all adds.")
 	}
-	if !strings.Contains(body, "createAddRequest") {
+	// v0.29.90: the paste writer records the add request in the same
+	// transaction as the links (Copilot review 5479554271).
+	if !strings.Contains(body, "addPasteWithinCap") || !strings.Contains(extractBatchFunc(mustReadStoreSource(t, "capacity_store.go"), "addPasteWithinCap"), "insertAddRequest(") {
 		t.Error("AddReposToGroup must park a non-admin's not-yet-tracked URLs on an " +
 			"add-request — approval is what triggers collection (v0.27.20).")
 	}

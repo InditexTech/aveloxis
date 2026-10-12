@@ -879,7 +879,7 @@ func TestVacuumGateWaitsForALineServeWrites(t *testing.T) {
 func TestEveryLadderStartsServeOnce(t *testing.T) {
 	// The ladders built by the positional recipe (0.29.73 on) carry the
 	// start step; older ladders predate it and have none.
-	recipe := map[string]bool{"0.29.73": true, "0.29.74": true, "0.29.75": true, "0.29.76": true, "0.29.77": true, "0.29.78": true, "0.29.79": true, "0.29.80": true, "0.29.81": true, "0.29.82": true, "0.29.83": true, "0.29.84": true, "0.29.85": true, "0.29.86": true, "0.29.87": true, "0.29.88": true, "0.29.89": true}
+	recipe := map[string]bool{"0.29.73": true, "0.29.74": true, "0.29.75": true, "0.29.76": true, "0.29.77": true, "0.29.78": true, "0.29.79": true, "0.29.80": true, "0.29.81": true, "0.29.82": true, "0.29.83": true, "0.29.84": true, "0.29.85": true, "0.29.86": true, "0.29.87": true, "0.29.88": true, "0.29.89": true, "0.29.90": true, "0.29.91": true}
 	for version, steps := range deployChecklists {
 		n := 0
 		for _, s := range steps {
@@ -996,6 +996,9 @@ func TestTakeoverRemediationRevokesAPITokens(t *testing.T) {
 	}
 }
 
+// sessionDeleteRE is a delete of session tokens in any spelling.
+var sessionDeleteRE = regexp.MustCompile(`(?i)delete\s+from\s+(aveloxis_ops\.)?user_session_tokens\b`)
+
 // Copilot review 5476192626 on PR #228: a session delete must take the
 // refresh_tokens rows that reference it (an Augur carry-over), or it fails
 // on the foreign key. Every checklist text that deletes sessions, in every
@@ -1006,12 +1009,17 @@ func TestChecklistSessionDeletesTakeRefreshRows(t *testing.T) {
 		steps, _ := deployChecklistFor(version)
 		for _, s := range steps {
 			for _, text := range []string{s.cmd, s.desc} {
-				if !strings.Contains(text, "DELETE FROM aveloxis_ops.user_session_tokens") {
+				// v0.29.91: any spelling (case, spacing, without the schema
+				// prefix), and EACH session delete carries its own refresh
+				// delete — one refresh delete no longer excuses a second
+				// session delete in the same step.
+				sessions := len(sessionDeleteRE.FindAllString(text, -1))
+				if sessions == 0 {
 					continue
 				}
-				examined++
-				if !strings.Contains(text, "DELETE FROM aveloxis_ops.refresh_tokens WHERE user_session_token IN (SELECT token FROM gone)") {
-					t.Fatalf("%s: a session delete without its refresh rows: %.200s", version, text)
+				examined += sessions
+				if refresh := strings.Count(text, "DELETE FROM aveloxis_ops.refresh_tokens WHERE user_session_token IN (SELECT token FROM gone)"); refresh < sessions {
+					t.Fatalf("%s: %d session delete(s), %d with their refresh rows: %.200s", version, sessions, refresh, text)
 				}
 			}
 		}

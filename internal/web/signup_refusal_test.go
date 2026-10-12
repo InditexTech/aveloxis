@@ -46,17 +46,17 @@ func TestSignupRefusalPage(t *testing.T) {
 }
 
 // Both OAuth callbacks hand the browser's address to the sign-in through
-// signupAddr (web.trusted_proxy, the one rule httpserver.ClientIP), and the
+// SignupAddress (web.trusted_proxy, the one rule httpserver.ClientIP), and the
 // shared tail answers the quota's refusal with the page, not the 500.
 func TestOAuthCallbackCountsTheBrowsersAddress(t *testing.T) {
 	src := srctest.Read(t, "internal/web/server.go")
 	for _, cb := range []string{"func (s *Server) handleGitHubCallback(", "func (s *Server) handleGitLabCallback("} {
-		if body := srctest.StripGoComments(srctest.FuncBody(t, src, cb)); !strings.Contains(body, "SignupAddr: s.signupAddr(r)") {
+		if body := srctest.StripGoComments(srctest.FuncBody(t, src, cb)); !strings.Contains(body, "SignupAddr: s.SignupAddress(r)") {
 			t.Errorf("%s does not pass the browser's address", cb)
 		}
 	}
-	if body := srctest.StripGoComments(srctest.FuncBody(t, src, "func (s *Server) signupAddr(")); !strings.Contains(body, "httpserver.ClientIP(r, s.cfg.TrustedProxy)") {
-		t.Error("signupAddr must read the address through web.trusted_proxy")
+	if body := srctest.StripGoComments(srctest.FuncBody(t, src, "func (s *Server) SignupAddress(")); !strings.Contains(body, "httpserver.ClientIP(r, s.cfg.TrustedProxy)") {
+		t.Error("SignupAddress must read the address through web.trusted_proxy")
 	}
 	tail := srctest.StripGoComments(srctest.FuncBody(t, src, "func (s *Server) completeOAuthLogin("))
 	if !strings.Contains(tail, "writeSignupRefusal(w, ex)") ||
@@ -79,20 +79,20 @@ func TestMissingTrustedProxyIsLoggedOnce(t *testing.T) {
 		}
 		return r
 	}
-	s.signupAddr(req("203.0.113.5:1", "198.51.100.1")) // direct client: no proxy
-	s.signupAddr(req("127.0.0.1:1", ""))               // local, no header
+	s.SignupAddress(req("203.0.113.5:1", "198.51.100.1")) // direct client: no proxy
+	s.SignupAddress(req("127.0.0.1:1", ""))               // local, no header
 	if logs.Len() != 0 {
 		t.Fatalf("logged without the misconfiguration:\n%s", logs.String())
 	}
-	s.signupAddr(req("127.0.0.1:1", "198.51.100.1"))
-	s.signupAddr(req("[::1]:1", "198.51.100.2"))
+	s.SignupAddress(req("127.0.0.1:1", "198.51.100.1"))
+	s.SignupAddress(req("[::1]:1", "198.51.100.2"))
 	if n := strings.Count(logs.String(), "web.trusted_proxy is empty"); n != 1 {
 		t.Fatalf("logged %d times, want once:\n%s", n, logs.String())
 	}
 	configured := &Server{logger: slog.New(slog.NewTextHandler(logs, nil))}
 	configured.cfg.TrustedProxy = "127.0.0.1"
 	logs.Reset()
-	configured.signupAddr(req("127.0.0.1:1", "198.51.100.1"))
+	configured.SignupAddress(req("127.0.0.1:1", "198.51.100.1"))
 	if logs.Len() != 0 {
 		t.Fatalf("logged with the proxy configured:\n%s", logs.String())
 	}

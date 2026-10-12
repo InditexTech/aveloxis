@@ -154,8 +154,7 @@ func (s *PostgresStore) fillCapacityAccount(ctx context.Context, a CapacityAccou
 	if a.Repos, err = s.AccountRepoAllocation(ctx, a.UserID); err != nil {
 		return a, err
 	}
-	err = s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(requests), 0) FROM aveloxis_ops.request_counts WHERE subject = $1 AND day = $2::date`,
-		requestsTodayKey(a.UserID), time.Now().UTC().Format(time.DateOnly)).Scan(&a.RequestsToday)
+	err = s.pool.QueryRow(ctx, requestCountOnDaySQL, requestsTodayKey(a.UserID), capacity.UTCDate(s.capacityNow())).Scan(&a.RequestsToday)
 	if err != nil {
 		return a, fmt.Errorf("capacity account: requests today: %w", err)
 	}
@@ -185,7 +184,7 @@ func (s *PostgresStore) BusiestAccountsToday(ctx context.Context) ([]CapacityAcc
 		SELECT `+accountColumns+` FROM aveloxis_ops.request_counts rc
 		JOIN aveloxis_ops.users u ON rc.subject = $1 || u.user_id::text || $2
 		WHERE rc.day = $3::date ORDER BY rc.requests DESC, u.user_id LIMIT $4`,
-		prefix, suffix, time.Now().UTC().Format(time.DateOnly), MaxCapacityAccountsListed)
+		prefix, suffix, capacity.UTCDate(s.capacityNow()), MaxCapacityAccountsListed)
 }
 
 // LargestAccounts ranks accounts by the repositories in their groups. It

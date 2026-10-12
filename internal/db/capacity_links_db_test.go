@@ -61,16 +61,22 @@ func TestRepoLinksPerDayBoundsChurn(t *testing.T) {
 	}
 	// Churn: removing gives nothing back.
 	for _, g := range []int64{f.group, other} {
-		if err := f.store.RemoveRepoFromGroup(f.ctx, f.user, g, f.repos[0]); err != nil {
+		if _, err := f.store.RemoveRepoFromGroup(f.ctx, f.user, g, f.repos[0]); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if _, err := f.store.AddRepoToGroupByID(f.ctx, f.group, f.repos[0]); err == nil {
 		t.Error("re-adding a removed repository must count as an addition (the churn this quota bounds)")
 	}
-	// Organization links are not the account's additions.
+	// Organization links an administrator approved are not the account's
+	// additions (v0.29.91: only those; TestOrgLinksCountUnlessAnAdministratorDecided).
+	var admin int
+	if err := f.store.pool.QueryRow(f.ctx, `SELECT user_id FROM aveloxis_ops.users WHERE admin ORDER BY user_id LIMIT 1`).Scan(&admin); err != nil {
+		t.Fatal(err)
+	}
+	registerOrgForTest(t, f, f.group, admin)
 	if ok, err := f.store.AddOrgRepoToGroupByID(f.ctx, f.group, f.repos[4]); err != nil || !ok {
-		t.Errorf("an organization link past the daily value = %v, %v; want linked (not counted)", ok, err)
+		t.Errorf("an administrator-approved organization link past the daily value = %v, %v; want linked (not counted)", ok, err)
 	}
 	// An override raises one account.
 	five := 5

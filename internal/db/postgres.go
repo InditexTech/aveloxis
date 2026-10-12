@@ -46,6 +46,13 @@ type PostgresStore struct {
 	// allocationDecided is a test seam: nil in production; a test sets it to
 	// hold concurrent adds at the decision point (linkWithinCap).
 	allocationDecided func()
+	// capacityClock is a test seam for the additions decision's day: nil in
+	// production (time.Now).
+	capacityClock func() time.Time
+	// linkPolicyRead is a test seam: nil in production; a test sets it to
+	// fail the policy read linkWithinCap makes (v0.29.91: linkHeld reads
+	// none).
+	linkPolicyRead func() error
 
 	// backendPIDs are the server-side PIDs of THIS process's pool
 	// connections (v0.28.18), maintained by the pool's AfterConnect /
@@ -829,18 +836,14 @@ func (s *PostgresStore) FindRepoByURL(ctx context.Context, gitURL string) (int64
 	// zero-valued model.Repo.
 	gitURL = model.NormalizeRepoGitURL(gitURL)
 	var id int64
-	err := s.pool.QueryRow(ctx, `
-		SELECT repo_id FROM aveloxis_data.repos
-		WHERE repo_git = $1
-		   OR (LOWER(repo_git) = LOWER($1) AND platform_id IN (1, 2))
-		ORDER BY (repo_git = $1) DESC, repo_id
-		LIMIT 1`, gitURL,
-	).Scan(&id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, nil
-		}
+	// The one match (resolvedRepoIDSQL), shared with the capacity SQL that
+	// decides what an add item will link (v0.29.91 review round 2, SR-17).
+	var found *int64
+	if err := s.pool.QueryRow(ctx, `SELECT `+resolvedRepoIDSQL("$1::text"), gitURL).Scan(&found); err != nil {
 		return 0, err
+	}
+	if found != nil {
+		id = *found
 	}
 	return id, nil
 }

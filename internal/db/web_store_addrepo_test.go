@@ -54,11 +54,18 @@ func TestAddRepoToGroupDelegatesToBatch(t *testing.T) {
 func TestAddReposToGroupKeepsApprovalGate(t *testing.T) {
 	body := extractFunctionBody(t, "add_requests.go", "AddReposToGroup")
 
-	for _, needle := range []string{`"rejected"`, "createAddRequest", "repoTracked", "AddRepoToGroupByID"} {
+	// v0.29.90 (Copilot review 5479554271): a non-admin paste is written
+	// by addPasteWithinCap in one transaction, add request included, so the
+	// gate's request writer is pinned there.
+	for _, needle := range []string{`"rejected"`, "addPasteWithinCap", "repoTracked", "AddRepoToGroupByID"} {
 		if !strings.Contains(body, needle) {
 			t.Errorf("AddReposToGroup must keep the v0.27.20 per-add approval gate; "+
 				"expected %q in the function body.", needle)
 		}
+	}
+	if paste := extractFunctionBody(t, "capacity_store.go", "addPasteWithinCap"); !strings.Contains(paste, "insertAddRequest(") {
+		t.Error("addPasteWithinCap must record a non-admin's new URLs as an add request (insertAddRequest) — " +
+			"that request is the approval gate.")
 	}
 	// The non-admin new-URL branch must NOT enqueue directly — enqueue
 	// happens via the admin path (ensureRepoCollectedInGroup) or after

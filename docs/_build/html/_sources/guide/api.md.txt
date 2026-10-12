@@ -818,11 +818,18 @@ OAuth, the first admin, upgrades — is
 [Production Deployment](../getting-started/deployment.md).
 
 Each `api` process keeps its own state: the per-repository response cache
-(up to `api.response_cache_mb`, or 1,000 weekly-series and top-contributor answers when it is unset), its rate-limit buckets (per IP,
-per API token and the per-user cap on repositories added by viewing them;
-all start over when the process restarts) and a short authorization cache. Several instances behind a load balancer each compute
-and hold their own answers, and the per-IP limits are per instance; run one
-per host unless that is what you want.
+(up to `api.response_cache_mb`, or 1,000 weekly-series and top-contributor
+answers when it is unset), a short authorization cache, and these rate-limit
+counts: the per-IP buckets, the hour windows of session and API-token quotas
+(`requests_per_hour`, `token_requests_per_hour`) and the per-user cap on
+repositories added to Shared with Me by viewing them. All of those start over
+when the process restarts. The day counts of sessions and API tokens
+(`requests_per_day`, `token_requests_per_day`) are shared through the
+`aveloxis_ops.request_counts` table: every `api` process adds its counts there
+about once a minute and when it stops, so they survive a restart and are
+shared by all instances. Several instances behind a load balancer each compute
+and hold their own answers, and the per-IP limits and hour windows are per
+instance; run one per host unless that is what you want.
 
 The web GUI's charts fetch the API through the web process, which proxies
 `/api/*` to `web.api_internal_url` (`http://127.0.0.1:8383` by default);
@@ -974,8 +981,15 @@ Repositories newly added to an account's groups are also counted per UTC day
 (`quota` `repo_links_per_day`, `"kind": "rate"`: `429` with `Retry-After`
 until 00:00 UTC). Removing one does not give the addition back, so the daily
 count bounds adding, reading and removing in a loop. Repositories an
-organization scan links (an administrator approved the organization) are not
-counted. A bulk add or a collection copy that does not fit adds nothing (unless another addition takes the last places while the paste is being linked: then the repositories linked before it stay and the rest are refused).
+organization scan links count too, unless an administrator approved that
+organization for that group (v0.29.91): an organization you add that is
+already tracked elsewhere is approved automatically, and its repositories
+count. Repositories a paste brings under `web.auto_approve_add_limit` count
+as well, decided with the paste, all or nothing. A bulk add or a collection copy that does not fit adds nothing, even when
+the same account adds from somewhere else at the same moment: the
+repositories already tracked are linked, and the new ones recorded (for
+approval, or as approved when `web.auto_approve_add_limit` applies, which
+then processes them), in one step (v0.29.90).
 
 `GET /api/v1/me` carries the caller's numbers in `capacity`: `repos`
 (`used`, `allowed`, `mode`, `exempt`, `contact`) and `requests` (each
@@ -1031,7 +1045,9 @@ Token semantics:
   those; an already-invalid token gets `401` when `api.require_auth` is on,
   `204` otherwise). The GUI's Sign out calls
   it. Before 0.29.82 a token copied before sign-out stayed valid for its
-  30 days.
+  30 days. Signing out a session is never refused by a spent request quota
+  and is not counted (v0.29.91); an API token on this route is counted like
+  any request (it is answered `400`).
 - Session tokens are stored only as their SHA-256 hash (v0.29.82), tagged
   with the algorithm (`sha256$…`, v0.29.88; API tokens likewise): a read of
   the database, or a backup, yields nothing a caller can present.
@@ -1075,7 +1091,8 @@ Token semantics:
   that the request is `429` with `Retry-After` and the `capacity_limit`
   body, `quota` `shared_with_me_adds_per_hour` (v0.29.89), and that
   addition is not made, though entities of the same request resolved
-  before it were; with the account's repository allocation full, the
+  before it were; an organization entity's repositories are linked all or
+  none (v0.29.91); with the account's repository allocation full, the
   request is refused with the `capacity_limit` body, see "Rate limits") — repo links are shareable between signed-in
   users (the Starred/Comparisons auto-add pattern, triggered by
   viewing). The response that performed the add carries a one-time
@@ -1536,7 +1553,9 @@ Per-user:
 - `POST /api/v1/groups/{groupID}/repos/{repoID}/remove` — removes a
   repository from one of the caller's groups (v0.29.89). The repository
   stops counting toward the account's allocation once no other group of
-  theirs holds it. `404` for a group that is not the caller's.
+  theirs holds it. `404` for a group that is not the caller's; `404` `that
+  repository is not in that group` when the repository was not in the group
+  (v0.29.91; before, the answer said removed either way).
 - `GET /api/v1/groups/{groupID}/orgs` — the organizations tracked in
   the group (2026-07-21; read-only — registration goes through the
   POST above with `kind: "org"`). Envelope:

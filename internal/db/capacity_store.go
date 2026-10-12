@@ -6,8 +6,9 @@ package db
 // v0.29.89 (summary/53): the store's side of account capacity. The model
 // and every decision live in internal/capacity; here are the stored quotas
 // (one row each), the contact address, per-account overrides, the shared
-// per-day request counts, and the repository allocation at the one writer
-// of a new group link (linkWithinCap).
+// per-day request counts, and the repository allocation at the writers of
+// a new group link (linkWithinCap, addPasteWithinCap), which both decide
+// new repositories through decideWithinCap.
 
 import (
 	"context"
@@ -198,6 +199,10 @@ func (s *PostgresStore) SetCapacityQuota(ctx context.Context, name string, allow
 	return nil
 }
 
+// ErrCapacitySettingsMissing is the capacity_settings row absent: the
+// database has not been migrated to this version.
+var ErrCapacitySettingsMissing = errors.New("the capacity settings row is missing (run aveloxis migrate)")
+
 // MaxContactEmailBytes bounds the contact address an administrator saves.
 const MaxContactEmailBytes = 254
 
@@ -205,6 +210,12 @@ const MaxContactEmailBytes = 254
 func (s *PostgresStore) GetCapacityContact(ctx context.Context) (string, error) {
 	var c string
 	if err := s.pool.QueryRow(ctx, `SELECT contact_email FROM aveloxis_ops.capacity_settings WHERE id = 1`).Scan(&c); err != nil {
+		// A missing settings row is a deployment that has not migrated, not
+		// an empty contact (SR-5): said the way SetCapacityContact says it
+		// (v0.29.91: the bare "no rows in result set" failed every link).
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrCapacitySettingsMissing
+		}
 		return "", fmt.Errorf("read capacity contact: %w", err)
 	}
 	return c, nil
@@ -225,7 +236,7 @@ func (s *PostgresStore) SetCapacityContact(ctx context.Context, email string, by
 		return fmt.Errorf("save capacity contact: %w", err)
 	}
 	if tag.RowsAffected() != 1 {
-		return errors.New("save capacity contact: the settings row is missing (run aveloxis migrate)")
+		return fmt.Errorf("save capacity contact: %w", ErrCapacitySettingsMissing)
 	}
 	return nil
 }
@@ -341,7 +352,7 @@ func (s *PostgresStore) AddRequestCounts(ctx context.Context, day time.Time, del
 		INSERT INTO aveloxis_ops.request_counts (subject, day, requests)
 		SELECT k, $1::date, v FROM unnest($2::text[], $3::bigint[]) AS t(k, v)
 		ON CONFLICT (subject, day) DO UPDATE SET requests = aveloxis_ops.request_counts.requests + EXCLUDED.requests
-		RETURNING subject, requests`, day.UTC().Format(time.DateOnly), keys, vals)
+		RETURNING subject, requests`, capacity.UTCDate(day), keys, vals)
 	if err != nil {
 		return nil, fmt.Errorf("add request counts: %w", err)
 	}
@@ -361,28 +372,108 @@ func (s *PostgresStore) AddRequestCounts(ctx context.Context, day time.Time, del
 // PruneRequestCounts deletes per-day counts older than yesterday (UTC).
 func (s *PostgresStore) PruneRequestCounts(ctx context.Context, now time.Time) (int64, error) {
 	tag, err := s.pool.Exec(ctx, `DELETE FROM aveloxis_ops.request_counts WHERE day < $1::date`,
-		now.UTC().AddDate(0, 0, -1).Format(time.DateOnly))
+		capacity.UTCDate(capacity.UTCDay.Start(now).AddDate(0, 0, -1)))
 	if err != nil {
 		return 0, fmt.Errorf("prune request counts: %w", err)
 	}
 	return tag.RowsAffected(), nil
 }
 
-// reachSQL counts what an account reaches through its groups: distinct
-// linked repositories plus every repository addition still holding a
-// place — an item not yet processed (repo_id IS NULL) of a pending or
-// approved request in a group that is not rejected (operator decision
+// heldItemsSQL is the FROM/WHERE of account $1's add-request items still
+// holding a place: an item not yet processed (repo_id IS NULL) of a pending
+// or approved request in a group that is not rejected (operator decision
 // 2026-10-10: pending counts). An approved item keeps its place until the
 // approval pass links it (linkHeld), so the place a pending item held does
 // not come free at the approval's flip.
-const reachSQL = `
-	SELECT (SELECT COUNT(DISTINCT ur.repo_id) FROM aveloxis_ops.user_repos ur
-	        JOIN aveloxis_ops.user_groups g USING (group_id) WHERE g.user_id = $1)
-	     + (SELECT COUNT(*) FROM aveloxis_ops.collection_add_request_items i
+const heldItemsSQL = `aveloxis_ops.collection_add_request_items i
 	        JOIN aveloxis_ops.collection_add_requests r USING (request_id)
 	        JOIN aveloxis_ops.user_groups g ON g.group_id = r.group_id
 	        WHERE r.user_id = $1 AND r.kind = 'repos' AND r.status IN ('pending', 'approved')
-	          AND i.repo_id IS NULL AND g.status IS DISTINCT FROM 'rejected')`
+	          AND i.repo_id IS NULL AND g.status IS DISTINCT FROM 'rejected'`
+
+// normalizedRepoURLSQL is model.NormalizeRepoGitURL in SQL for a stored
+// (already trimmed) URL: the trailing run of "/" and ".git" removed
+// (TestItemURLNormalizationIsTheModelRule pins the two on a corpus).
+func normalizedRepoURLSQL(urlExpr string) string {
+	return `regexp_replace(` + urlExpr + `, '(/|\.git)+$', '')`
+}
+
+// resolvedRepoIDSQL is the repository a URL resolves to — FindRepoByURL's
+// one match (it runs this fragment): the exact spelling, or the same apart
+// from letter case on GitHub and GitLab (platforms 1 and 2), the exact one
+// first, then the lowest id; NULL when none. urlExpr must already be
+// normalized (model.NormalizeRepoGitURL in Go, normalizedRepoURLSQL in SQL).
+// v0.29.91 review round 2 (R2-3, SR-17): the capacity SQL matched raw item
+// text against raw repo_git, so an item approval resolves to a NEW
+// repository could match a linked legacy row and ask no place.
+func resolvedRepoIDSQL(urlExpr string) string {
+	return `(SELECT rr.repo_id FROM aveloxis_data.repos rr
+	        WHERE rr.repo_git = ` + urlExpr + ` OR (LOWER(rr.repo_git) = LOWER(` + urlExpr + `) AND rr.platform_id IN (1, 2))
+	        ORDER BY (rr.repo_git = ` + urlExpr + `) DESC, rr.repo_id LIMIT 1)`
+}
+
+// itemRepoIDSQL is the repository an add item's stored URL will link at
+// approval (NULL: approval creates it).
+func itemRepoIDSQL(urlExpr string) string {
+	return resolvedRepoIDSQL(normalizedRepoURLSQL(urlExpr))
+}
+
+// itemKeySQL identifies what an item holds a place for: the repository it
+// resolves to, else its normalized URL (approval creates that repository).
+// Two items with one key hold one place.
+func itemKeySQL(urlExpr string) string {
+	return `COALESCE('repo:' || ` + itemRepoIDSQL(urlExpr) + `::text, 'url:' || ` + normalizedRepoURLSQL(urlExpr) + `)`
+}
+
+// ownerLinksURL is true when account $1 already links the repository an
+// item URL resolves to.
+func ownerLinksURL(urlExpr string) string {
+	return `EXISTS (SELECT 1 FROM aveloxis_ops.user_repos lr
+	        JOIN aveloxis_ops.user_groups lg ON lg.group_id = lr.group_id
+	        WHERE lg.user_id = $1 AND lr.repo_id = ` + itemRepoIDSQL(urlExpr) + `)`
+}
+
+// reachSQL counts what an account reaches through its groups: distinct
+// linked repositories plus the distinct places its items still hold
+// (heldItemsSQL; one per itemKeySQL) for repositories it does not already
+// link (v0.29.91, whole-PR review: a legacy pending group's items are
+// repositories its owner already links, and a pending URL another
+// approval made tracked is linked by a later paste — each was counted
+// twice, so an allowance that fits refused the legacy conversion on every
+// migrate).
+var reachSQL = `
+	SELECT (SELECT COUNT(DISTINCT ur.repo_id) FROM aveloxis_ops.user_repos ur
+	        JOIN aveloxis_ops.user_groups g USING (group_id) WHERE g.user_id = $1)
+	     + (SELECT COUNT(DISTINCT ` + itemKeySQL("i.repo_url") + `) FROM ` + heldItemsSQL + `
+	          AND NOT ` + ownerLinksURL("i.repo_url") + `)`
+
+// heldNewSQL counts the URLs of $2 that would hold a NEW place for
+// account $1: distinct places, for repositories it does not link, not
+// already held by one of its items.
+var heldNewSQL = `
+	SELECT COUNT(DISTINCT ` + itemKeySQL("t.u") + `) FROM unnest($2::text[]) AS t(u)
+	WHERE NOT ` + ownerLinksURL("t.u") + `
+	  AND NOT EXISTS (SELECT 1 FROM ` + heldItemsSQL + ` AND ` + itemKeySQL("i.repo_url") + ` = ` + itemKeySQL("t.u") + `)`
+
+// heldAddsSQL counts the URLs of $2 that are new additions for account $1
+// when linked: distinct repositories (itemKeySQL) it does not link yet,
+// whether or not one of its items already holds the place. Daily
+// additions are counted apart from places (v0.29.91 review round 3
+// R3-1): a URL a PENDING item holds takes no new place, but an
+// auto-approved re-paste of it links it now. A URL an earlier
+// auto-approved, not yet processed item holds counts again: the
+// conservative direction.
+var heldAddsSQL = `
+	SELECT COUNT(DISTINCT ` + itemKeySQL("t.u") + `) FROM unnest($2::text[]) AS t(u)
+	WHERE NOT ` + ownerLinksURL("t.u") + ``
+
+// heldFreeSQL is the repositories of $2 (new to account $1) whose place
+// one of its items already holds: linking one takes no new place (the
+// item then resolves to a linked repository and stops counting).
+var heldFreeSQL = `
+	SELECT rp.repo_id FROM aveloxis_data.repos rp
+	WHERE rp.repo_id = ANY($2::bigint[])
+	  AND EXISTS (SELECT 1 FROM ` + heldItemsSQL + ` AND ` + itemRepoIDSQL("i.repo_url") + ` = rp.repo_id)`
 
 // AccountReach is the number of repositories an account reaches through
 // its groups, pending additions included.
@@ -460,8 +551,7 @@ func (s *PostgresStore) AccountDailyAdditions(ctx context.Context, userID int) (
 		return DailyAdditionsStatus{}, err
 	}
 	var used int64
-	if err := s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(requests), 0) FROM aveloxis_ops.request_counts WHERE subject = $1 AND day = $2::date`,
-		linksTodayKey(userID), time.Now().UTC().Format(time.DateOnly)).Scan(&used); err != nil {
+	if err := s.pool.QueryRow(ctx, requestCountOnDaySQL, linksTodayKey(userID), capacity.UTCDate(s.capacityNow())).Scan(&used); err != nil {
 		return DailyAdditionsStatus{}, fmt.Errorf("daily additions: %w", err)
 	}
 	return DailyAdditionsStatus{Used: int(used), Allowed: q.Allowed, Mode: q.Mode, Contact: contact}, nil
@@ -487,125 +577,330 @@ func (st RepoAllocationStatus) Refusal() *capacity.Exceeded {
 	return &capacity.Exceeded{Kind: capacity.KindAllocation, Quota: capacity.QuotaReposPerAccount, Used: st.Used, Allowed: st.Allowed, Contact: st.Contact}
 }
 
-// precheckReposAllocation decides a whole bulk addition up front: the
-// tracked repositories the account does not reach yet plus the new
-// pending items must fit, or nothing is written (an enforced quota
-// returns the *capacity.Exceeded; a shadow quota logs). It takes no lock:
-// the writers decide again under it (linkWithinCap for a link,
-// holdRepoPlaces for a request's items), so a concurrent add is refused
-// there.
-func (s *PostgresStore) precheckReposAllocation(ctx context.Context, userID int, trackedIDs []int64, pending int) error {
-	quota, alloc, err := s.reposAllocation(ctx, userID)
-	if err != nil {
-		return err
-	}
-	links, err := s.linksQuota(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if (quota.Mode == capacity.Off && links.Mode == capacity.Off) || alloc.Exempt || (len(trackedIDs) == 0 && pending == 0) {
+// holdRepoPlaces admits new add-request items (their URLs) for owner inside
+// the request writer's transaction, under the per-owner lock: the place
+// each item holds is decided where it is taken (SR-18). quota and alloc
+// come from reposAllocation, read BEFORE the transaction began: a pool read
+// while the transaction holds a connection deadlocks the pool under load
+// (review round 1 R2-2; linkWithinCap's order). The items written here
+// (pending items an administrator will approve, and the legacy-group
+// conversion's) are not daily additions, so only the allocation decides;
+// an auto-approved paste's items ARE counted, by addPasteWithinCap (v0.29.91
+// round 2 R2-4). A URL resolving to a repository the owner already links,
+// or one it already holds, asks for no new place (v0.29.91).
+func (s *PostgresStore) holdRepoPlaces(ctx context.Context, tx pgx.Tx, owner int, urls []string, quota capacity.EffectiveQuota, alloc capacity.Allocation) error {
+	if len(urls) == 0 {
 		return nil
 	}
-	var fresh int
-	if err := s.pool.QueryRow(ctx, `
-		SELECT COUNT(DISTINCT t.id) FROM unnest($2::bigint[]) AS t(id)
-		WHERE NOT EXISTS (SELECT 1 FROM aveloxis_ops.user_repos ur
-		                  JOIN aveloxis_ops.user_groups g USING (group_id)
-		                  WHERE g.user_id = $1 AND ur.repo_id = t.id)`, userID, trackedIDs).Scan(&fresh); err != nil {
-		return fmt.Errorf("allocation: new repositories: %w", err)
+	d, err := s.decideWithinCap(ctx, tx, owner, ownerPolicy{quota: quota, alloc: alloc, links: offQuota}, nil, urls, false, false)
+	if err != nil {
+		return err
 	}
-	subject := capacity.Subject{Kind: capacity.KindAccount, ID: strconv.Itoa(userID)}
-	if quota.Mode != capacity.Off {
-		if alloc.Used, err = s.AccountReach(ctx, userID); err != nil {
-			return err
-		}
-		if _, ex := alloc.Admit(capacity.QuotaReposPerAccount, fresh+pending, false); ex != nil {
-			ex.Subject = subject
-			if quota.Mode != capacity.Shadow {
-				return ex
-			}
-			s.noteShadowAllocation(userID, ex)
-		}
-	}
-	// The paste's tracked repositories new to the account count as today's
-	// additions (pending items are counted when an administrator approves
-	// them: not at all — approval decides those).
-	if links.Mode != capacity.Off && fresh > 0 {
-		day := time.Now().UTC().Truncate(24 * time.Hour)
-		var used int64
-		if err := s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(requests), 0) FROM aveloxis_ops.request_counts WHERE subject = $1 AND day = $2::date`,
-			linksTodayKey(userID), day.Format(time.DateOnly)).Scan(&used); err != nil {
-			return fmt.Errorf("daily additions: %w", err)
-		}
-		daily := capacity.Allocation{Used: int(used), Allowed: links.Allowed, Contact: alloc.Contact}
-		if _, ex := daily.Admit(capacity.QuotaRepoLinksPerDay, fresh, false); ex != nil {
-			ex.Kind, ex.Window, ex.ResetAt, ex.Subject = capacity.KindRate, capacity.UTCDay, day.AddDate(0, 0, 1), subject
-			if links.Mode != capacity.Shadow {
-				return ex
-			}
-			s.noteShadowLinks(userID, ex)
-		}
-	}
-	return nil
+	return refusalOrNil(d.refused)
 }
 
-// holdRepoPlaces admits wanted new add-request items for owner inside the
-// request writer's transaction, under the per-owner lock: the place each
-// item holds is decided where it is taken (SR-18). quota and alloc come from
-// reposAllocation, read BEFORE the transaction began: a pool read while the
-// transaction holds a connection deadlocks the pool under load (review
-// round 1 R2-2; linkWithinCap's order).
-func (s *PostgresStore) holdRepoPlaces(ctx context.Context, tx pgx.Tx, owner, wanted int, quota capacity.EffectiveQuota, alloc capacity.Allocation) error {
-	if wanted == 0 {
+// ownerPolicy is an account's quotas as applied, read before the deciding
+// transaction begins (no pool read inside it: review round 1 R2-2).
+type ownerPolicy struct {
+	quota capacity.EffectiveQuota // repos_per_account
+	alloc capacity.Allocation     // its value, exemption and contact
+	links capacity.EffectiveQuota // repo_links_per_day (offQuota when not counted)
+}
+
+// offQuota is a quota not applied (a decision that does not count it).
+var offQuota = capacity.EffectiveQuota{Mode: capacity.Off}
+
+// readOwnerPolicy reads owner's policy; countsAdds reads repo_links_per_day.
+func (s *PostgresStore) readOwnerPolicy(ctx context.Context, owner int, countsAdds bool) (ownerPolicy, error) {
+	if s.linkPolicyRead != nil {
+		if err := s.linkPolicyRead(); err != nil {
+			return ownerPolicy{}, err
+		}
+	}
+	quota, alloc, err := s.reposAllocation(ctx, owner)
+	if err != nil {
+		return ownerPolicy{}, err
+	}
+	p := ownerPolicy{quota: quota, alloc: alloc, links: offQuota}
+	if countsAdds {
+		if p.links, err = s.linksQuota(ctx, owner); err != nil {
+			return ownerPolicy{}, err
+		}
+	}
+	return p, nil
+}
+
+// capDecision is one decision of what fits.
+type capDecision struct {
+	fresh   []int64            // the repositories new to the account: those whose place an item holds first, then input order
+	admit   int                // how many of fresh are admitted
+	counted int                // how many count toward today's additions
+	day     time.Time          // the UTC day the additions are counted on
+	refused *capacity.Exceeded // the enforced refusal, if any
+}
+
+// refusalOrNil returns the refusal as an error (nil when there is none:
+// a nil *Exceeded is not a nil error).
+func refusalOrNil(ex *capacity.Exceeded) error {
+	if ex == nil {
 		return nil
 	}
-	if quota.Mode == capacity.Off || alloc.Exempt {
-		return nil
+	return ex
+}
+
+// requestCountOnDaySQL is one subject's shared count for one UTC day (the
+// daily additions, the Capacity page's requests today): one spelling.
+const requestCountOnDaySQL = `SELECT COALESCE(SUM(requests), 0) FROM aveloxis_ops.request_counts WHERE subject = $1 AND day = $2::date`
+
+// capacityNow is the decisions' clock (the capacityClock seam in tests).
+func (s *PostgresStore) capacityNow() time.Time {
+	if s.capacityClock != nil {
+		return s.capacityClock()
+	}
+	return time.Now()
+}
+
+// decideWithinCap is the ONE decision of what an account may add (lens L18:
+// linkWithinCap, the paste writer and holdRepoPlaces all decide here),
+// inside the writing transaction under the per-owner lock: repoIDs new to
+// the account plus the held URLs that would take a new place
+// (heldNewSQL) against repos_per_account, and the new repositories —
+// with those held URLs when heldAreAdditions (an auto-approved paste) —
+// against repo_links_per_day (when p.links is applied). A new repository
+// whose place one of the account's items already holds takes no new
+// place (heldFreeSQL; v0.29.91). All or none, or as many as fit (fill).
+// Shadow logs and admits; Off does not count. Exempt accounts and quotas
+// that are all Off take no lock; callers skip it when there is nothing to
+// decide. The UTC day is read once (d.day): the count is written on the
+// day it was decided against.
+func (s *PostgresStore) decideWithinCap(ctx context.Context, tx pgx.Tx, owner int, p ownerPolicy, repoIDs []int64, held []string, heldAreAdditions, fill bool) (capDecision, error) {
+	d := capDecision{day: capacity.UTCDay.Start(s.capacityNow())}
+	checkRepos := p.quota.Mode != capacity.Off
+	checkLinks := p.links.Mode != capacity.Off
+	if p.alloc.Exempt || !(checkRepos || checkLinks) {
+		return d, nil
 	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, int32(repoCapLockClass), int32(owner)); err != nil {
-		return fmt.Errorf("allocation lock: %w", err)
+		return d, fmt.Errorf("allocation lock: %w", err)
 	}
-	if err := tx.QueryRow(ctx, reachSQL, owner).Scan(&alloc.Used); err != nil {
-		return fmt.Errorf("allocation: reach: %w", err)
-	}
-	if _, ex := alloc.Admit(capacity.QuotaReposPerAccount, wanted, false); ex != nil {
-		ex.Subject = capacity.Subject{Kind: capacity.KindAccount, ID: strconv.Itoa(owner)}
-		if quota.Mode == capacity.Shadow {
-			s.noteShadowAllocation(owner, ex)
-			return nil
+	if len(repoIDs) > 0 {
+		rows, err := tx.Query(ctx, freshSQL, owner, repoIDs)
+		if err != nil {
+			return d, fmt.Errorf("allocation: new repositories: %w", err)
 		}
-		s.noteAllocationRefused(owner, ex)
-		return ex
+		fresh, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+		if err != nil {
+			return d, fmt.Errorf("allocation: new repositories: %w", err)
+		}
+		d.fresh = distinctIDs(fresh)
+	}
+	free, heldNew := 0, 0
+	if checkRepos && len(d.fresh) > 0 {
+		rows, err := tx.Query(ctx, heldFreeSQL, owner, d.fresh)
+		if err != nil {
+			return d, fmt.Errorf("allocation: held places: %w", err)
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+		if err != nil {
+			return d, fmt.Errorf("allocation: held places: %w", err)
+		}
+		d.fresh, free = heldFirst(d.fresh, ids)
+	}
+	// The held URLs' new places are also today's additions when they are
+	// the account's own decision (an auto-approved paste; round 2 R2-4).
+	if checkRepos && len(held) > 0 {
+		if err := tx.QueryRow(ctx, heldNewSQL, owner, held).Scan(&heldNew); err != nil {
+			return d, fmt.Errorf("allocation: new held places: %w", err)
+		}
+	}
+	// The held URLs' additions, counted apart from their places when they
+	// are the account's own decision (an auto-approved paste; round 2
+	// R2-4, round 3 R3-1: heldAddsSQL, not heldNewSQL).
+	added := 0
+	if checkLinks && heldAreAdditions && len(held) > 0 {
+		if err := tx.QueryRow(ctx, heldAddsSQL, owner, held).Scan(&added); err != nil {
+			return d, fmt.Errorf("daily additions: held URLs: %w", err)
+		}
+	}
+	d.admit = len(d.fresh)
+	subject := capacity.Subject{Kind: capacity.KindAccount, ID: strconv.Itoa(owner)}
+	if wanted := d.admit - free + heldNew; checkRepos && wanted > 0 {
+		alloc := p.alloc
+		if err := tx.QueryRow(ctx, reachSQL, owner).Scan(&alloc.Used); err != nil {
+			return d, fmt.Errorf("allocation: reach: %w", err)
+		}
+		n, ex := alloc.Admit(capacity.QuotaReposPerAccount, wanted, fill)
+		if ex != nil {
+			ex.Subject = subject
+			if p.quota.Mode == capacity.Shadow {
+				s.noteShadowAllocation(owner, ex)
+			} else {
+				s.noteAllocationRefused(owner, ex)
+				d.refused = ex
+				// All or none admits nothing; fill (never with held items)
+				// admits the free repositories and what fits after them.
+				d.admit = 0
+				if fill {
+					d.admit = free + n
+				}
+			}
+		}
+	}
+	// An all-or-none addition the allocation refused stands: no daily
+	// decision is made for it (round 3 R3-2: it replaced the refusal, and a
+	// shadow daily quota logged a would-refuse). A fill decision (never
+	// with held URLs) still applies the daily quota to what it admitted.
+	if checkLinks && (d.refused == nil || fill) && d.admit+added > 0 {
+		var used int64
+		if err := tx.QueryRow(ctx, requestCountOnDaySQL, linksTodayKey(owner), capacity.UTCDate(d.day)).Scan(&used); err != nil {
+			return d, fmt.Errorf("daily additions: %w", err)
+		}
+		daily := capacity.Allocation{Used: int(used), Allowed: p.links.Allowed, Contact: p.alloc.Contact}
+		n, ex := daily.Admit(capacity.QuotaRepoLinksPerDay, d.admit+added, fill)
+		if ex != nil {
+			ex.Kind, ex.Window, ex.ResetAt, ex.Subject = capacity.KindRate, capacity.UTCDay, capacity.UTCDay.End(d.day), subject
+			if p.links.Mode == capacity.Shadow {
+				s.noteShadowLinks(owner, ex)
+			} else {
+				s.noteLinksRefused(owner, ex)
+				// Held URLs are all or none with the rest (no caller fills
+				// with held URLs).
+				d.refused, d.admit = ex, max(n-added, 0)
+				// What was admitted counts, nothing refused (round 4 R4-2):
+				// 0 for all or none; fill (no held URLs) its admitted n.
+				added = 0
+			}
+		}
+		d.counted = d.admit + added
+	}
+	if s.allocationDecided != nil {
+		s.allocationDecided()
+	}
+	return d, nil
+}
+
+// heldFirst orders fresh with the repositories in free first (each group
+// in input order) and reports how many those are.
+func heldFirst(fresh, free []int64) ([]int64, int) {
+	if len(free) == 0 {
+		return fresh, 0
+	}
+	in := make(map[int64]bool, len(free))
+	for _, id := range free {
+		in[id] = true
+	}
+	out := make([]int64, 0, len(fresh))
+	for _, id := range fresh {
+		if in[id] {
+			out = append(out, id)
+		}
+	}
+	n := len(out)
+	for _, id := range fresh {
+		if !in[id] {
+			out = append(out, id)
+		}
+	}
+	return out, n
+}
+
+// countAdditions adds n to owner's additions on day (the decision's UTC
+// day, so a decision at 23:59:59.999 is not counted on the next one), in
+// the writing transaction.
+func countAdditions(ctx context.Context, tx pgx.Tx, owner, n int, day time.Time) error {
+	if n <= 0 {
+		return nil
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO aveloxis_ops.request_counts (subject, day, requests) VALUES ($1, $2::date, $3)
+		ON CONFLICT (subject, day) DO UPDATE SET requests = aveloxis_ops.request_counts.requests + EXCLUDED.requests`,
+		linksTodayKey(owner), capacity.UTCDate(day), n); err != nil {
+		return fmt.Errorf("daily additions: count: %w", err)
 	}
 	return nil
 }
 
-// linkMode is how linkWithinCap admits new repositories.
-type linkMode int
+// linkMode is how linkWithinCap admits new repositories. It is a pointer
+// identity, not a number (v0.29.91 review round 4 R4-1): no arithmetic,
+// conversion or literal yields one of the modes below — a mode is only
+// ever named — and a value minted any other way (linkMode{}, a new
+// &linkModeDef) equals none of them, so it is decided and counted like
+// linkAll, the strictest mode (fill, org and held are opt-in by identity;
+// countsAdds is opt-out).
+type linkMode struct{ def *linkModeDef }
 
-const (
+// linkModeDef is a mode's identity (its name is for debugging only).
+type linkModeDef struct{ name string }
+
+var (
 	// linkAll admits all the new repositories or none (a bulk add, a copy).
-	linkAll linkMode = iota
+	linkAll = linkMode{&linkModeDef{"all"}}
 	// linkFill links as many as fit (a comparison record).
-	linkFill
+	linkFill = linkMode{&linkModeDef{"fill"}}
 	// linkHeld links repositories whose places an approved add-request
 	// item already holds (counted by reachSQL until the item is stamped):
 	// no new place is asked for. Only the approval pass's link
 	// (ensureRepoCollectedInGroup) uses it.
-	linkHeld
+	linkHeld = linkMode{&linkModeDef{"held"}}
 	// linkOrg and linkOrgFill are linkAll and linkFill for repositories an
-	// organization registration brings (the scans, the reconcile, the CLI
-	// loaders): within the allocation, but not counted as the account's
-	// daily additions — an administrator approved the organization
-	// (operator 2026-10-10).
-	linkOrg
-	linkOrgFill
+	// organization registration brings (the scans, the reconcile, add-repo's
+	// org expansion): within the allocation, and not counted as the
+	// account's daily additions only when an administrator decided the
+	// registration that brings them (orgLinksCounted; v0.29.91, whole-PR
+	// review: an auto-approved registration of an organization already
+	// tracked elsewhere is the account's own decision, and linked up to
+	// 1,000 repositories uncounted, repeatably).
+	linkOrg     = linkMode{&linkModeDef{"org"}}
+	linkOrgFill = linkMode{&linkModeDef{"org-fill"}}
+	// linkOperator is linkAll for a link the operator's own command makes
+	// (the foundation loader's dashboard groups): within the allocation,
+	// not counted.
+	linkOperator = linkMode{&linkModeDef{"operator"}}
 )
 
 func (m linkMode) fill() bool { return m == linkFill || m == linkOrgFill }
 
-// countsAdds reports whether new links count toward repo_links_per_day.
-func (m linkMode) countsAdds() bool { return m == linkAll || m == linkFill }
+func (m linkMode) org() bool { return m == linkOrg || m == linkOrgFill }
+
+// countsAdds reports whether new links count toward repo_links_per_day:
+// every mode but the ones that say otherwise (an organization link is
+// decided per registration, orgLinksCounted; an operator's link and a held
+// place are not additions the account decided now).
+func (m linkMode) countsAdds() bool { return !(m.org() || m == linkOperator || m == linkHeld) }
+
+// orgLinksCountedSQL is true unless every repository of $2 is brought into
+// group $1 by an organization registration an administrator decided: an
+// approved kind 'org' add request for that group and organization with a
+// real decider (decided_by > 0; 0 marks an auto-approval). A repository
+// the registrations do not cover (or that does not exist) counts. A batch
+// mixing both kinds (the reconcile, a group registering two organizations
+// decided differently) counts whole: the conservative direction.
+var orgLinksCountedSQL = `
+	SELECT EXISTS (
+		SELECT 1 FROM unnest($2::bigint[]) AS t(id)
+		LEFT JOIN aveloxis_data.repos r ON r.repo_id = t.id
+		WHERE NOT EXISTS (
+			SELECT 1 FROM aveloxis_ops.user_org_requests o
+			WHERE o.group_id = $1 AND ` + orgCoversRepoSQL + `
+			  AND EXISTS (SELECT 1 FROM aveloxis_ops.collection_add_requests q
+			              WHERE q.group_id = o.group_id AND q.kind = 'org' AND q.status = 'approved'
+			                AND q.decided_by > 0 AND LOWER(q.org_url) = LOWER(o.org_url))))`
+
+// orgCoversRepoSQL is the registration o covers repository r:
+// ReconcileOrgRepoLinks's prefix rule (its SQL carries this text exactly;
+// TestOrgCoverageIsTheReconcileRule).
+const orgCoversRepoSQL = `starts_with(LOWER(r.repo_git), LOWER(rtrim(o.org_url, '/')) || '/')`
+
+// orgLinksCounted reports whether linking fresh into groupID counts toward
+// repo_links_per_day (orgLinksCountedSQL). A failed read is an error, not
+// "not counted" (SR-5).
+func (s *PostgresStore) orgLinksCounted(ctx context.Context, groupID int64, fresh []int64) (bool, error) {
+	var counted bool
+	if err := s.pool.QueryRow(ctx, orgLinksCountedSQL, groupID, fresh).Scan(&counted); err != nil {
+		return false, fmt.Errorf("organization links: who decided the registration: %w", err)
+	}
+	return counted, nil
+}
 
 // repoCapLockClass is the first key of the per-owner advisory lock that
 // serializes allocation decisions (two concurrent adds at 999 must not
@@ -621,7 +916,11 @@ const freshSQL = `
 	                  WHERE g.user_id = $1 AND ur.repo_id = t.id)
 	ORDER BY ord`
 
-// insertLinksSQL is the one INSERT of a new group link.
+// insertLinksSQL is the one INSERT of a new group link. Its only users
+// (TestOneWriterOfNewGroupLinks): linkWithinCap — its fast path when no
+// repository is new to the account, linkHeld when an approved item already
+// holds the place, otherwise behind decideWithinCap — and addPasteWithinCap,
+// behind decideWithinCap.
 const insertLinksSQL = `
 	INSERT INTO aveloxis_ops.user_repos (group_id, repo_id)
 	SELECT $1, id FROM unnest($2::bigint[]) AS t(id)
@@ -650,20 +949,34 @@ func linksTodayKey(owner int) string {
 }
 
 // linkWithinCap links repoIDs into groupID within the group owner's
-// repository allocation and daily additions. It is the one writer of a NEW
-// group link (summary/53 A8, SR-18): repositories the owner already reaches
+// repository allocation and daily additions. With addPasteWithinCap (a
+// non-administrator's paste, links and add request in one transaction) it
+// writes every NEW group link, both deciding through decideWithinCap
+// (summary/53 A8, SR-18): repositories the owner already reaches
 // link freely (and cheaply: no policy read, lock or count — closing review
 // W1, an organization refresh re-links every repository each pass); new
 // ones are admitted by both repos_per_account (what the account holds) and,
 // for the account's own additions, repo_links_per_day (how many it adds per
-// UTC day) — all or none (linkAll, linkOrg) or as many as fit (linkFill,
-// linkOrgFill) — or take the place an approved item holds (linkHeld). Under
-// Shadow a quota's decision is logged and does not limit; under Off it is
-// not counted. It returns the links inserted and, when an enforced quota
-// refused anything, the *capacity.Exceeded.
+// UTC day) — all or none (linkAll, linkOrg, linkOperator) or as many as fit
+// (linkFill, linkOrgFill) — or take the place an approved item holds
+// (linkHeld: one plain insert, no policy read or transaction; v0.29.91 —
+// the policy it read was never used, and a failed read stamped an
+// auto-approved item -1 for good). Under Shadow a quota's decision is
+// logged and does not limit; under Off it is not counted. It returns the
+// links inserted and, when an enforced quota refused anything, the
+// *capacity.Exceeded.
 func (s *PostgresStore) linkWithinCap(ctx context.Context, groupID int64, repoIDs []int64, mode linkMode) (int, error) {
 	if len(repoIDs) == 0 {
 		return 0, nil
+	}
+	if mode == linkHeld {
+		// The place is already held (reachSQL counts the item until the
+		// pass stamps it), so nothing is decided.
+		tag, err := s.pool.Exec(ctx, insertLinksSQL, groupID, repoIDs)
+		if err != nil {
+			return 0, fmt.Errorf("link repositories: %w", err)
+		}
+		return int(tag.RowsAffected()), nil
 	}
 	var owner int
 	if err := s.pool.QueryRow(ctx, `SELECT user_id FROM aveloxis_ops.user_groups WHERE group_id = $1`, groupID).Scan(&owner); err != nil {
@@ -672,126 +985,132 @@ func (s *PostgresStore) linkWithinCap(ctx context.Context, groupID int64, repoID
 		}
 		return 0, fmt.Errorf("group owner: %w", err)
 	}
-	if mode != linkHeld {
-		rows, err := s.pool.Query(ctx, freshSQL, owner, repoIDs)
-		if err != nil {
-			return 0, fmt.Errorf("allocation: new repositories: %w", err)
-		}
-		fresh, err := pgx.CollectRows(rows, pgx.RowTo[int64])
-		if err != nil {
-			return 0, fmt.Errorf("allocation: new repositories: %w", err)
-		}
-		if len(fresh) == 0 {
-			// Nothing new to the account: no quota is asked. (A link removed
-			// concurrently makes one repository "new" again; it is re-linked
-			// into the reach it just left.)
-			tag, err := s.pool.Exec(ctx, insertLinksSQL, groupID, repoIDs)
-			if err != nil {
-				return 0, fmt.Errorf("link repositories: %w", err)
-			}
-			return int(tag.RowsAffected()), nil
-		}
-	}
-	quota, alloc, err := s.reposAllocation(ctx, owner)
+	rows, err := s.pool.Query(ctx, freshSQL, owner, repoIDs)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("allocation: new repositories: %w", err)
 	}
-	links := capacity.EffectiveQuota{Mode: capacity.Off}
-	if mode.countsAdds() {
-		if links, err = s.linksQuota(ctx, owner); err != nil {
+	fresh, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return 0, fmt.Errorf("allocation: new repositories: %w", err)
+	}
+	if len(fresh) == 0 {
+		// Nothing new to the account: no quota is asked. (A link removed
+		// concurrently makes one repository "new" again; it is re-linked
+		// into the reach it just left.)
+		tag, err := s.pool.Exec(ctx, insertLinksSQL, groupID, repoIDs)
+		if err != nil {
+			return 0, fmt.Errorf("link repositories: %w", err)
+		}
+		return int(tag.RowsAffected()), nil
+	}
+	counts := mode.countsAdds()
+	if mode.org() {
+		if counts, err = s.orgLinksCounted(ctx, groupID, fresh); err != nil {
 			return 0, err
 		}
+	}
+	pol, err := s.readOwnerPolicy(ctx, owner, counts)
+	if err != nil {
+		return 0, err
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	d, err := s.decideWithinCap(ctx, tx, owner, pol, repoIDs, nil, false, mode.fill())
+	if err != nil {
+		return 0, err
+	}
 	link := repoIDs
-	var refused *capacity.Exceeded
-	fill := mode.fill()
-	checkRepos := quota.Mode != capacity.Off
-	checkLinks := links.Mode != capacity.Off
-	counted := 0 // new repositories that count toward today's additions
-	if mode != linkHeld && !alloc.Exempt && (checkRepos || checkLinks) {
-		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, int32(repoCapLockClass), int32(owner)); err != nil {
-			return 0, fmt.Errorf("allocation lock: %w", err)
+	if d.refused != nil {
+		if d.admit == 0 && !mode.fill() {
+			return 0, d.refused
 		}
-		rows, err := tx.Query(ctx, freshSQL, owner, repoIDs)
-		if err != nil {
-			return 0, fmt.Errorf("allocation: new repositories: %w", err)
-		}
-		fresh, err := pgx.CollectRows(rows, pgx.RowTo[int64])
-		if err != nil {
-			return 0, fmt.Errorf("allocation: new repositories: %w", err)
-		}
-		fresh = distinctIDs(fresh)
-		admit := len(fresh)
-		subject := capacity.Subject{Kind: capacity.KindAccount, ID: strconv.Itoa(owner)}
-		if checkRepos {
-			if err := tx.QueryRow(ctx, reachSQL, owner).Scan(&alloc.Used); err != nil {
-				return 0, fmt.Errorf("allocation: reach: %w", err)
-			}
-			n, ex := alloc.Admit(capacity.QuotaReposPerAccount, admit, fill)
-			if ex != nil {
-				ex.Subject = subject
-				if quota.Mode == capacity.Shadow {
-					s.noteShadowAllocation(owner, ex)
-				} else {
-					refused, admit = ex, n
-					s.noteAllocationRefused(owner, ex)
-				}
-			}
-		}
-		if checkLinks && admit > 0 {
-			day := time.Now().UTC().Truncate(24 * time.Hour)
-			var used int64
-			if err := tx.QueryRow(ctx, `SELECT COALESCE(SUM(requests), 0) FROM aveloxis_ops.request_counts WHERE subject = $1 AND day = $2::date`,
-				linksTodayKey(owner), day.Format(time.DateOnly)).Scan(&used); err != nil {
-				return 0, fmt.Errorf("daily additions: %w", err)
-			}
-			daily := capacity.Allocation{Used: int(used), Allowed: links.Allowed, Contact: alloc.Contact}
-			n, ex := daily.Admit(capacity.QuotaRepoLinksPerDay, admit, fill)
-			if ex != nil {
-				ex.Kind, ex.Window, ex.ResetAt, ex.Subject = capacity.KindRate, capacity.UTCDay, day.AddDate(0, 0, 1), subject
-				if links.Mode == capacity.Shadow {
-					s.noteShadowLinks(owner, ex)
-				} else {
-					refused, admit = ex, n
-					s.noteLinksRefused(owner, ex)
-				}
-			}
-			counted = admit
-		}
-		if s.allocationDecided != nil {
-			s.allocationDecided()
-		}
-		if refused != nil {
-			if admit == 0 && !fill {
-				return 0, refused
-			}
-			link = keepAdmitted(repoIDs, fresh, admit)
-		}
+		link = keepAdmitted(repoIDs, d.fresh, d.admit)
 	}
 	tag, err := tx.Exec(ctx, insertLinksSQL, groupID, link)
 	if err != nil {
 		return 0, fmt.Errorf("link repositories: %w", err)
 	}
-	if counted > 0 {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO aveloxis_ops.request_counts (subject, day, requests) VALUES ($1, $2::date, $3)
-			ON CONFLICT (subject, day) DO UPDATE SET requests = aveloxis_ops.request_counts.requests + EXCLUDED.requests`,
-			linksTodayKey(owner), time.Now().UTC().Format(time.DateOnly), counted); err != nil {
-			return 0, fmt.Errorf("daily additions: count: %w", err)
-		}
+	if err := countAdditions(ctx, tx, owner, d.counted, d.day); err != nil {
+		return 0, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
-	if refused != nil {
-		return int(tag.RowsAffected()), refused
+	if d.refused != nil {
+		return int(tag.RowsAffected()), d.refused
 	}
 	return int(tag.RowsAffected()), nil
+}
+
+// addPasteWithinCap writes a non-administrator's paste in ONE transaction
+// under the owner's lock (Copilot review 5479554271: an unlocked precheck
+// followed by one transaction per link let a concurrent add turn a refused
+// paste into a partial one): the tracked repositories' links and, when
+// urls is not empty, the add request holding their places (status
+// "pending", or "approved" for an auto-approved add whose items the caller
+// then processes). The decision covers both, all or nothing; on a refusal
+// nothing is written. It returns the links inserted and the request id.
+func (s *PostgresStore) addPasteWithinCap(ctx context.Context, owner int, groupID int64, trackedIDs []int64, urls []string, status string) (int, int64, error) {
+	if len(trackedIDs) == 0 && len(urls) == 0 {
+		return 0, 0, nil // nothing to decide or write (a paste of blanks and duplicates)
+	}
+	pol, err := s.readOwnerPolicy(ctx, owner, true)
+	if err != nil {
+		return 0, 0, err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	// The decision is owner's (quota and lock), so the writer itself checks
+	// that owner owns the group (SR-18; L10 round 2 R2): a caller that
+	// skipped verifyGroupOwned cannot link into another account's group.
+	var owned bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM aveloxis_ops.user_groups WHERE group_id = $1 AND user_id = $2)`, groupID, owner).Scan(&owned); err != nil {
+		return 0, 0, fmt.Errorf("group owner: %w", err)
+	}
+	if !owned {
+		// Only a caller that skipped verifyGroupOwned reaches this: said
+		// loudly here, since the api answers it as a plain 400.
+		s.logger.Error("paste refused: the group is not the account's (a caller skipped the ownership check)",
+			"user_id", owner, "group_id", groupID)
+		return 0, 0, fmt.Errorf("paste into group %d: %w", groupID, ErrGroupNotOwned)
+	}
+	// An auto-approved paste's new repositories are the account's own
+	// additions (round 2 R2-4): decided against repo_links_per_day with the
+	// tracked ones, all or nothing, and counted on the decision's day.
+	d, err := s.decideWithinCap(ctx, tx, owner, pol, trackedIDs, urls, status == "approved", false)
+	if err != nil {
+		return 0, 0, err
+	}
+	if d.refused != nil {
+		return 0, 0, d.refused
+	}
+	linked := int64(0)
+	if len(trackedIDs) > 0 {
+		tag, err := tx.Exec(ctx, insertLinksSQL, groupID, trackedIDs)
+		if err != nil {
+			return 0, 0, fmt.Errorf("link repositories: %w", err)
+		}
+		linked = tag.RowsAffected()
+	}
+	if err := countAdditions(ctx, tx, owner, d.counted, d.day); err != nil {
+		return 0, 0, err
+	}
+	var requestID int64
+	if len(urls) > 0 {
+		if requestID, err = insertAddRequest(ctx, tx, owner, groupID, "repos", "", urls, status); err != nil {
+			return 0, 0, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, 0, err
+	}
+	return int(linked), requestID, nil
 }
 
 // keepAdmitted is repoIDs without the new repositories past the first admit.
@@ -907,7 +1226,7 @@ func signupSecretForDay(ctx context.Context, tx pgx.Tx, day time.Time) ([]byte, 
 	if _, err := rand.Read(fresh); err != nil {
 		return nil, fmt.Errorf("sign-up quota: secret: %w", err)
 	}
-	d := day.Format(time.DateOnly)
+	d := capacity.UTCDate(day)
 	if _, err := tx.Exec(ctx, `INSERT INTO aveloxis_ops.signup_key_secrets (day, secret) VALUES ($1::date, $2) ON CONFLICT (day) DO NOTHING`, d, fresh); err != nil {
 		return nil, fmt.Errorf("sign-up quota: secret (run aveloxis migrate): %w", err)
 	}
@@ -931,7 +1250,7 @@ func (s *PostgresStore) admitSignup(ctx context.Context, tx pgx.Tx, addr netip.A
 	if !addr.IsValid() || first || q.Mode == capacity.Off {
 		return "", nil
 	}
-	day := time.Now().UTC().Truncate(24 * time.Hour)
+	day := capacity.UTCDay.Start(s.capacityNow())
 	secret, err := signupSecretForDay(ctx, tx, day)
 	if err != nil {
 		return "", err
@@ -957,7 +1276,7 @@ func (s *PostgresStore) admitSignup(ctx context.Context, tx pgx.Tx, addr netip.A
 		return key, nil
 	}
 	ex := &capacity.Exceeded{Kind: capacity.KindRate, Subject: capacity.Subject{Kind: capacity.KindSignupAddress, ID: key[:12]},
-		Quota: q.Name, Window: capacity.UTCDay, Used: used, Allowed: q.Allowed, ResetAt: day.AddDate(0, 0, 1), Contact: pol.contact}
+		Quota: q.Name, Window: capacity.UTCDay, Used: used, Allowed: q.Allowed, ResetAt: capacity.UTCDay.End(day), Contact: pol.contact}
 	if q.Mode == capacity.Shadow {
 		if s.capacityNotifier().Due("signups|" + key) {
 			s.logger.Warn("sign-up quota (shadow): an enforced quota would have refused this new account",
@@ -988,7 +1307,7 @@ func recordSignup(ctx context.Context, tx pgx.Tx, key string, sealed []byte, use
 func (s *PostgresStore) logAccountCreated(ctx context.Context, userID int) {
 	var today int
 	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM aveloxis_ops.account_signups WHERE created_at >= $1`,
-		time.Now().UTC().Truncate(24*time.Hour)).Scan(&today); err != nil {
+		capacity.UTCDay.Start(s.capacityNow())).Scan(&today); err != nil {
 		if errors.Is(err, context.Canceled) {
 			return // the browser left after the account was made: not a failure
 		}
@@ -1010,7 +1329,7 @@ func (s *PostgresStore) SignupsPerDay(ctx context.Context, days int) ([]SignupDa
 	if days < 1 {
 		days = 1
 	}
-	since := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -(days - 1))
+	since := capacity.UTCDay.Start(s.capacityNow()).AddDate(0, 0, -(days - 1))
 	rows, err := s.pool.Query(ctx, `
 		SELECT (created_at AT TIME ZONE 'UTC')::date AS d, COUNT(*)
 		FROM aveloxis_ops.account_signups WHERE created_at >= $1

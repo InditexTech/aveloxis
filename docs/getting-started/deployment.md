@@ -96,7 +96,8 @@ the ones a public host must get right:
     "dev_mode": false,                   // production: Secure cookies, no loopback confirmation links
     "github_client_id": "…", "github_client_secret": "…",
     "gitlab_client_id": "…", "gitlab_client_secret": "…",
-    "api_internal_url": "http://127.0.0.1:8383"   // where web proxies /api/* — must follow api.addr
+    "api_internal_url": "http://127.0.0.1:8383",  // where web proxies /api/* — must follow api.addr
+    "trusted_proxy": "127.0.0.1"         // nginx's peer IP: sign-ups and /api traffic through the web carry the browser's address
   },
 
   "mail": { "site_url": "https://aveloxis.example.org" },   // the origin in emailed links (confirmation, digests)
@@ -105,7 +106,7 @@ the ones a public host must get right:
     "addr": "127.0.0.1:8383",            // loopback only; the proxy forwards to it
     "trusted_proxy": "127.0.0.1",        // the proxy's peer IP, in canonical form; X-Forwarded-For is believed only from it
     "require_auth": false,               // keep false for this GUI: its charts fetch the API without a Bearer token
-    "exempt_cidrs": ["127.0.0.0/8", "::1/128"],   // bypass the per-IP limits (not an API token's own) AND require_auth — narrow the RFC1918 defaults on a shared network
+    "exempt_cidrs": ["127.0.0.0/8", "::1/128"],   // bypass the per-IP limits (not a valid token's own quotas) AND require_auth — narrow the RFC1918 defaults on a shared network
     "cors_origins": [],                  // empty = Access-Control-Allow-Origin: * ; list your origin to make it strict
     "response_cache_mb": 0,              // advanced, off by default: megabytes of repository answers the API keeps in memory
     "cache_rewarm_seconds": 60,          // with the cache on: recompute a viewed repository's answers after its collection
@@ -125,9 +126,15 @@ What the values mean:
   in canonical form — not a host name, a CIDR or `::ffff:127.0.0.1`; the
   loader refuses anything else and names the spelling it wants. Without
   it every request appears to come from the proxy, and the exemptions and
-  limits apply to all visitors as one.
-- **`api.exempt_cidrs`** waives the per-IP rate limits (an API token is
-  still counted against its own allowance, v0.29.88) *and* `require_auth`. The
+  limits apply to all visitors as one. When the browser reaches the API
+  through the web GUI's own `/api` proxy (nginx → web → api), the web
+  forwards only the client address it resolved under `web.trusted_proxy`,
+  never the client's own `X-Forwarded-For` chain; with nginx, web and api
+  on one host, set both `web.trusted_proxy` and `api.trusted_proxy` to
+  `127.0.0.1` and the api sees each browser's address on either path
+  (v0.29.91).
+- **`api.exempt_cidrs`** waives the per-IP rate limits (a valid session or
+  API token is still counted against its own quotas, v0.29.89) *and* `require_auth`. The
   defaults include the RFC1918 ranges; on a host whose private network is
   shared with others, narrow them to loopback as shown.
 - **`api.require_auth`** stays `false` with this GUI: its pages call the
@@ -217,9 +224,12 @@ aveloxis -c "$CONFIG" stop all
 
 Terminate TLS in nginx on the same host and forward two paths: `/api/` to
 the API directly, everything else (the pages and `/auth/`) to the web
-process. Sending `/api/` straight to the API is what makes the per-visitor
-rate limits work: if it went through the web process's own `/api/` proxy,
-every visitor would reach the API from loopback and count as exempt.
+process. Sending `/api/` straight to the API spares a hop. Traffic that goes
+through the web process's own `/api/` proxy instead keeps the per-visitor
+limits only when `web.trusted_proxy` is set: the web then forwards each
+browser's address, and the API (with `api.trusted_proxy` set to the web's
+address, `127.0.0.1` on one host) counts it. With `web.trusted_proxy` empty,
+every visitor on that path reaches the API as loopback and counts as exempt.
 
 Remove Ubuntu's stock site first: it is `default_server` on port 80 with
 `root /var/www/html`, so any request whose Host is not yours (the bare

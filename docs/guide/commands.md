@@ -241,7 +241,8 @@ Run on the offline machine. Writes the private key to the file named by
 
 Run on the server. Writes one account's sealed records (`--user` id or
 `--login`) to the file named by `--out`. Needs no key; the envelopes stay
-sealed. Logs the export.
+sealed. Prints an audit line to standard error (the account id, the number of
+records and the file); keep it with the request record.
 
 ### `aveloxis signup-escrow open`
 

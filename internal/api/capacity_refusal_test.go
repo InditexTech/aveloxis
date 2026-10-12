@@ -43,7 +43,7 @@ func TestAuthorizeRepoAtTheAllocationAnswersTheCapacityBody(t *testing.T) {
 // allocation's refusal through refuseCapacity (the denominator: every call
 // site is examined, so a new one cannot skip the rule).
 func TestEveryGroupLinkSiteRendersTheCapacityRefusal(t *testing.T) {
-	writers := []string{".AddRepoToGroupByID(", ".AddReposToGroup(", ".CopyCollectionToGroup(", ".EnsureRepoSharedWithUser("}
+	writers := []string{".AddRepoToGroupByID(", ".AddRepoIDsToGroup(", ".AddReposToGroup(", ".CopyCollectionToGroup(", ".EnsureRepoSharedWithUser("}
 	files := srctest.PackageFiles(t, "internal/api", 20)
 	examined := 0
 	for name, src := range files {

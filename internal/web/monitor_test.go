@@ -5,8 +5,11 @@ package web
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // TestMonitorRouteRegistered verifies the web server registers a /monitor route.
@@ -99,17 +102,33 @@ func TestListQueuePageExists(t *testing.T) {
 	}
 }
 
-// TestMonitorBehindAuth verifies the monitor route is behind requireAuth.
+// TestMonitorBehindAuth verifies both monitor routes are behind
+// requireAdmin (v0.29.91 whole-PR follow-up; requireAuth before, which let
+// any signed-in account read the queue and boost any repository). The
+// behavior: TestMonitorRoutesAreAdministratorOnly.
 func TestMonitorBehindAuth(t *testing.T) {
 	src, err := os.ReadFile("server.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	code := string(src)
-
-	// Find the route registration section.
-	if strings.Contains(code, `"/monitor"`) && !strings.Contains(code, `requireAuth(s.handleMonitor)`) {
-		t.Error("monitor route must be behind requireAuth — the old standalone monitor " +
-			"was unauthenticated, but the integrated version should require login")
+	code := srctest.StripGoComments(string(src))
+	// Each handler is referenced exactly once, and that reference is its
+	// requireAdmin registration (a second, bare registration escapes a
+	// presence check).
+	for handler, want := range map[string]string{
+		"s.handleMonitor)":           `requireAdmin(s.handleMonitor))`,
+		"s.handleMonitorPrioritize)": `requireAdmin(s.handleMonitorPrioritize))`,
+	} {
+		if strings.Count(code, handler) != 1 || strings.Count(code, want) != 1 {
+			t.Errorf("%s must be referenced once, registered behind requireAdmin (%d references)", strings.TrimSuffix(handler, ")"), strings.Count(code, handler))
+		}
+	}
+	for _, h := range []string{"s.handleMonitor", "s.handleMonitorPrioritize"} {
+		if n := len(regexp.MustCompile(regexp.QuoteMeta(h)+`\b`).FindAllString(code, -1)); n != 1 {
+			t.Errorf("%s is referenced %d times; want 1 (its requireAdmin registration)", h, n)
+		}
+	}
+	if strings.Contains(code, "requireAuth(s.handleMonitor") {
+		t.Error("a monitor route is registered behind requireAuth (any signed-in account)")
 	}
 }

@@ -51,8 +51,9 @@ needs keeps nothing the live database does not.
    aveloxis signup-escrow keygen --out "$KEY_FILE"
    ```
 
-3. **Put the private key in the safe.** The key file is one line of text
-   beginning `AGE-SECRET-KEY-`. Keep two copies, for example the USB stick and
+3. **Put the private key in the safe.** The key file is three lines of text:
+   two comment lines beginning `#` (the second names the public key), then the
+   private key, which begins `AGE-SECRET-KEY-`. Keep two copies, for example the USB stick and
    a printout, in separate physically secure places. Record where they are and
    who may take them out. If you want two people to be needed, keep the copies
    under two-person control; the software does not enforce it.
@@ -87,9 +88,10 @@ Do these steps only when your institution or legal counsel has confirmed that a
 request obliges you to disclose the address. Each step says why it is there.
 
 1. **Record the request before you start.** Note the request's reference, who
-   authorised the disclosure, the account it names, and the date. Aveloxis logs
-   the export in step 2. It cannot log step 4, because that step happens
-   offline, so your record is the only account of it.
+   authorised the disclosure, the account it names, and the date. The export
+   in step 2 prints an audit line to standard error; keep that line with this
+   record. Nothing records step 4, because that step happens offline, so your
+   record is the only account of it.
 
 2. **Export the account's envelopes on the server.** The export holds sealed
    envelopes only. Running it does not need the private key, and the file
@@ -112,9 +114,10 @@ request obliges you to disclose the address. Each step says why it is there.
    pick the one the request names and run the export again with `--user` and
    that id. It refuses if the account has
    no sealed record: the account signed up before sealing was set up, or more
-   than a year ago. It prints the log line `sign-up escrow: sealed records
-   exported for opening offline`, with the account id and the file; keep that
-   line with your record.
+   than a year ago. It prints the audit line `sign-up escrow: sealed records
+   exported for opening offline` to standard error, with the account id, the
+   number of records and the file; keep that line with your record of the
+   request.
 
 3. **Carry the export file to the offline machine** on removable media. Then
    delete it from the server, so that sealed copies do not accumulate where

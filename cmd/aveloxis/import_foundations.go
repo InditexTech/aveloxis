@@ -216,7 +216,7 @@ func runImportFoundations(cfgPath string, opts runOpts) error {
 					if rerr != nil || repoID == 0 {
 						continue
 					}
-					if _, err := store.AddOrgRepoToGroupByID(ctx, gid, repoID); err != nil {
+					if _, err := store.AddOperatorRepoToGroupByID(ctx, gid, repoID); err != nil {
 						if _, capped := capacity.AsExceeded(err); !capped { // a quota refusal: the store logs it once a day
 							logger.Warn("failed to add repo to dashboard group", "repo", platform.RedactURLUserinfo(rurl), "error", err)
 						}

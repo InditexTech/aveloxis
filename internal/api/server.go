@@ -65,8 +65,10 @@ type Server struct {
 	// newDayWindow wakes RunCapacity when the meter opens a UTC-day window
 	// (v0.29.89); nil without a store.
 	newDayWindow chan struct{}
-	autoAdds     *autoAddLimiter // v0.29.82: the per-user cap on Shared-with-Me auto-adds
-	refusals     *refusalLog     // ASVS review G5: refusals logged once a minute per user and kind
+	// capacityMaint is what RunCapacity prunes (the store; a test fake).
+	capacityMaint capacityMaintenance
+	autoAdds      *autoAddLimiter // v0.29.82: the per-user cap on Shared-with-Me auto-adds
+	refusals      *refusalLog     // ASVS review G5: refusals logged once a minute per user and kind
 
 	// accounts serves the profile routes (/me's account fields, the
 	// account-email submission and confirmation); the store, or a fake.
@@ -273,6 +275,7 @@ func NewWithOptions(store *db.PostgresStore, logger *slog.Logger, opts Options) 
 	// them; daily counts are shared through the store (RunCapacity).
 	if store != nil {
 		rl.policy = &capacityPolicy{store: store, now: time.Now, logger: s.logger}
+		s.capacityMaint = store
 		s.newDayWindow = make(chan struct{}, 1)
 		rl.meter = capacity.NewMeter(capacity.MeterOptions{MaxWindows: maxTrackedIPs,
 			Persister: requestCountsPersister{store: store},

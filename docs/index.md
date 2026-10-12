@@ -55,6 +55,13 @@ guide/troubleshooting
 
 ```{toctree}
 :maxdepth: 2
+:caption: REST API
+
+api/index
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Architecture
 
 architecture/overview

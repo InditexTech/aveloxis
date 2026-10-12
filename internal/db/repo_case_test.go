@@ -28,12 +28,17 @@ func normWS(s string) string {
 // preferring a byte-exact match when both exist (pre-dedup DBs can hold
 // both variants; the exact row is the caller's intent).
 func TestFindRepoByURLIsCaseInsensitiveForForgePlatforms(t *testing.T) {
-	body := normWS(extractFunctionBody(t, "postgres.go", "FindRepoByURL"))
+	// v0.29.91 (review round 2 R2-3): the match is resolvedRepoIDSQL, the
+	// one fragment FindRepoByURL and the capacity SQL share.
+	if !strings.Contains(normWS(extractFunctionBody(t, "postgres.go", "FindRepoByURL")), "resolvedRepoIDSQL(\"$1::text\")") {
+		t.Error("FindRepoByURL must resolve through resolvedRepoIDSQL")
+	}
+	body := normWS(resolvedRepoIDSQL("$1"))
 
 	for _, needle := range []string{
-		"LOWER(repo_git) = LOWER($1)",
-		"platform_id IN (1, 2)",
-		"ORDER BY (repo_git = $1) DESC",
+		"LOWER(rr.repo_git) = LOWER($1)",
+		"rr.platform_id IN (1, 2)",
+		"ORDER BY (rr.repo_git = $1) DESC, rr.repo_id LIMIT 1",
 	} {
 		if !strings.Contains(body, needle) {
 			t.Errorf("FindRepoByURL must contain %q — case-insensitive fallback for "+

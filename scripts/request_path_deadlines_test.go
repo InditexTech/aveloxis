@@ -41,7 +41,10 @@ func TestRequestPathDeadlinesAreReviewed(t *testing.T) {
 		// The capacity policy's read (v0.29.89; the 0.29.85 session
 		// threshold read before it) runs on context.Background() off the
 		// request path, bounded by its refresh period; it logs its own WARN.
-		"internal/api/capacity_limits.go": 1,
+		// The other three (v0.29.91) bound RunCapacity's tick steps (the
+		// flush and the two prunes) on its own loop context, never a
+		// request's; each logs its own WARN with timed_out.
+		"internal/api/capacity_limits.go": 4,
 	}
 	derived := regexp.MustCompile(`context\.With(Timeout|Deadline)(Cause)?\(`)
 	root := srctest.Root(t)
@@ -96,6 +99,11 @@ func TestRequestEndIsClassifiedInOnePlace(t *testing.T) {
 		// submitAccountEmail's clean-up runs on WithoutCancel on purpose —
 		// the second half of committed writes (NET-6 review r7 F1).
 		"internal/web/server.go": 2,
+		// RunCapacity's tick steps and FlushCapacity (v0.29.91) run on the
+		// api's loop or stop context, never a request's: a cancelled one is
+		// a stop (silent); a step's own DeadlineExceeded is logged as
+		// timed_out.
+		"internal/api/capacity_limits.go": 4,
 	}
 	bare := regexp.MustCompile(`context\.(Canceled|DeadlineExceeded|WithoutCancel)\b`)
 	root := srctest.Root(t)

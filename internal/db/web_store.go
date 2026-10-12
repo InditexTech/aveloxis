@@ -803,15 +803,20 @@ func (s *PostgresStore) AddOrgToGroup(ctx context.Context, userID int, groupID i
 	return out, nil
 }
 
-// RemoveRepoFromGroup removes a repo from a user group.
-func (s *PostgresStore) RemoveRepoFromGroup(ctx context.Context, userID int, groupID, repoID int64) error {
+// RemoveRepoFromGroup removes a repo from a user group and reports
+// whether a link was removed (false: the repository was not in the group;
+// v0.29.91 — the api answered "removed" either way).
+func (s *PostgresStore) RemoveRepoFromGroup(ctx context.Context, userID int, groupID, repoID int64) (bool, error) {
 	if err := s.verifyGroupOwned(ctx, userID, groupID); err != nil {
-		return err
+		return false, err
 	}
-	_, err := s.pool.Exec(ctx,
+	tag, err := s.pool.Exec(ctx,
 		`DELETE FROM aveloxis_ops.user_repos WHERE group_id = $1 AND repo_id = $2`,
 		groupID, repoID)
-	return err
+	if err != nil {
+		return false, fmt.Errorf("remove repository from group: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // GetOrgRequests returns all org requests that need scanning.
@@ -902,12 +907,35 @@ func (s *PostgresStore) AddRepoToGroupByID(ctx context.Context, groupID, repoID 
 	return n > 0, nil
 }
 
+// AddRepoIDsToGroup links repoIDs into groupID with ONE decision of the
+// owner's quotas: all of the new repositories or none (v0.29.91, whole-PR
+// review: the Comparisons auto-add of an organization linked item by item,
+// partial on a refusal, ~11 round trips a repository). It returns the
+// links inserted; a refusal is the *capacity.Exceeded.
+func (s *PostgresStore) AddRepoIDsToGroup(ctx context.Context, groupID int64, repoIDs []int64) (int, error) {
+	return s.linkWithinCap(ctx, groupID, repoIDs, linkAll)
+}
+
 // AddOrgRepoToGroupByID is AddRepoToGroupByID for a repository an
-// organization registration brings (the scans, the CLI loaders): within the
-// owner's repository allocation, but not counted as the account's daily
-// additions — an administrator approved the organization (v0.29.89).
+// organization registration brings (the scans, add-repo's org expansion):
+// within the owner's repository allocation, and counted as the account's
+// daily additions unless an administrator decided the registration that
+// brings it (orgLinksCounted; v0.29.91 — an auto-approved registration is
+// the account's own decision).
 func (s *PostgresStore) AddOrgRepoToGroupByID(ctx context.Context, groupID, repoID int64) (bool, error) {
 	n, err := s.linkWithinCap(ctx, groupID, []int64{repoID}, linkOrg)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// AddOperatorRepoToGroupByID is AddRepoToGroupByID for a link the
+// operator's own command makes (the foundation loader's dashboard groups):
+// within the owner's repository allocation, not counted as the account's
+// daily additions (the operator decided it).
+func (s *PostgresStore) AddOperatorRepoToGroupByID(ctx context.Context, groupID, repoID int64) (bool, error) {
+	n, err := s.linkWithinCap(ctx, groupID, []int64{repoID}, linkOperator)
 	if err != nil {
 		return false, err
 	}

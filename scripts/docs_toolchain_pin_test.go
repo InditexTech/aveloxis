@@ -18,12 +18,13 @@ import (
 )
 
 // docsToolchain names the packages docs/requirements.txt pins: Sphinx and
-// its theme and Markdown parser, Pygments (code-block markup) and
-// snowballstemmer (the search index's keys). Their dependencies (docutils,
+// its theme and Markdown parser, Pygments (code-block markup),
+// snowballstemmer (the search index's keys), and the API reference's
+// OpenAPI renderer with the HTTP domain it writes (docs/api/reference.rst). Their dependencies (docutils,
 // Jinja2, markdown-it-py) float within the ranges the pinned packages declare. v0.29.57 (worklist 39): unpinned, README's "Build docs" recipe
 // rebuilt the tracked tree with whatever was current, rewriting most
 // code-block pages and leaving site search unable to find "internal".
-var docsToolchain = []string{"sphinx", "sphinx-rtd-theme", "myst-parser", "pygments", "snowballstemmer"}
+var docsToolchain = []string{"sphinx", "sphinx-rtd-theme", "myst-parser", "pygments", "snowballstemmer", "sphinxcontrib-openapi", "sphinxcontrib-httpdomain"}
 
 // TestDocsToolchainIsPinned: docs/requirements.txt pins every package in
 // docsToolchain to one exact version, and the snowballstemmer pin is the

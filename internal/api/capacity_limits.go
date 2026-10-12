@@ -16,6 +16,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -204,14 +205,6 @@ func logQuotaOver(logger *slog.Logger, info authInfo, ds []capacity.Decision) {
 	}
 }
 
-// windowSeconds is a rate window's length, for RateLimit-Policy.
-func windowSeconds(w capacity.Window) int {
-	if w == capacity.UTCDay {
-		return int((24 * time.Hour).Seconds())
-	}
-	return int(time.Hour.Seconds())
-}
-
 // secondsUntil is capacity.SecondsUntil: one rounding rule for every
 // Retry-After and reset the api and web write (review round 1 F4).
 func secondsUntil(t, now time.Time) int { return capacity.SecondsUntil(t, now) }
@@ -228,7 +221,7 @@ func setCapacityHeaders(h http.Header, ds []capacity.Decision, now time.Time) {
 		if d.Quota.Mode != capacity.Enforce {
 			continue
 		}
-		policies = append(policies, fmt.Sprintf("%q;q=%d;w=%d", d.Quota.Name, d.Quota.Allowed, windowSeconds(d.Quota.Window)))
+		policies = append(policies, fmt.Sprintf("%q;q=%d;w=%d", d.Quota.Name, d.Quota.Allowed, d.Quota.Window.Seconds()))
 		if !found || d.Remaining < tight.Remaining {
 			tight, found = d, true
 		}
@@ -301,15 +294,25 @@ func (p requestCountsPersister) AddDeltas(ctx context.Context, day time.Time, de
 	return p.store.AddRequestCounts(ctx, day, deltas)
 }
 
+// capacityMaintenance is what RunCapacity's ticks delete (the store, or a
+// test fake).
+type capacityMaintenance interface {
+	PruneSignupPrivacy(ctx context.Context, now time.Time) (db.SignupPrivacyPruned, error)
+	PruneRequestCounts(ctx context.Context, now time.Time) (int64, error)
+}
+
 // RunCapacity shares this process's daily request counts with the other api
 // processes once per authCacheTTL (the same staleness the quotas
 // themselves have) and at once when the meter opens a UTC-day window; on
 // every tick it also deletes past days' sign-up secrets and keys (and
 // sign-up records past their retention), and once a UTC day the request
-// counts from before yesterday. It returns when ctx ends; FlushCapacity
-// saves what is left.
+// counts from before yesterday. Each step is bounded by the tick period
+// (capacityTickBound; v0.29.91, whole-PR review: they ran on the process
+// context with no deadline, so one hung statement stopped every later
+// save and prune), and a step that runs out is logged. It returns when ctx
+// ends; FlushCapacity saves what is left.
 func (s *Server) RunCapacity(ctx context.Context) {
-	if s.limiter == nil || s.limiter.meter == nil || s.store == nil {
+	if s.limiter == nil || s.limiter.meter == nil || s.capacityMaint == nil {
 		return
 	}
 	t := time.NewTicker(authCacheTTL)
@@ -322,44 +325,72 @@ func (s *Server) RunCapacity(ctx context.Context) {
 		case <-s.newDayWindow:
 			// A new day window knows only this process's counts: save now
 			// to learn the shared total (ASVS review I4).
-			s.FlushCapacity(ctx)
+			s.boundedFlush(ctx)
 			continue
 		case <-t.C:
 		}
-		s.FlushCapacity(ctx)
-		// Past days' sign-up secrets and keys, and records past their
-		// retention: every tick (idempotent and indexed), so a secret is gone
-		// within a tick of its day ending — also one a slow transaction or a
-		// web clock behind this one wrote after an earlier prune (closing
-		// review r3 F10).
-		if p, err := s.store.PruneSignupPrivacy(ctx, time.Now()); err != nil {
-			if ctx.Err() == nil { // a stop is not a failure
-				s.logger.Warn("could not delete past sign-up secrets and keys; retried next tick", "error", err)
-			}
-		} else if p.Secrets+p.KeysCleared+p.Records > 0 {
-			s.logger.Debug("past sign-up secrets and keys deleted", "secrets", p.Secrets, "keys_cleared", p.KeysCleared, "signup_records", p.Records)
+		s.capacityTick(ctx, &pruned)
+	}
+}
+
+// capacityTickBound is how long one step of a RunCapacity tick may take:
+// the tick period (a step slower than that is overtaken by the next tick
+// anyway; the capacity policy refresh's bound, the same reasoning).
+var capacityTickBound = authCacheTTL
+
+// boundedFlush is FlushCapacity under capacityTickBound.
+func (s *Server) boundedFlush(ctx context.Context) {
+	fctx, cancel := context.WithTimeout(ctx, capacityTickBound)
+	defer cancel()
+	s.FlushCapacity(fctx)
+}
+
+// capacityTick is one tick's work, each step under capacityTickBound.
+func (s *Server) capacityTick(ctx context.Context, pruned *string) {
+	s.boundedFlush(ctx)
+	// Past days' sign-up secrets and keys, and records past their
+	// retention: every tick (idempotent and indexed), so a secret is gone
+	// within a tick of its day ending — also one a slow transaction or a
+	// web clock behind this one wrote after an earlier prune (closing
+	// review r3 F10).
+	pctx, cancel := context.WithTimeout(ctx, capacityTickBound)
+	p, err := s.capacityMaint.PruneSignupPrivacy(pctx, time.Now())
+	cancel()
+	if err != nil {
+		if ctx.Err() == nil { // a stop is not a failure; a step's own bound is
+			s.logger.Warn("could not delete past sign-up secrets and keys; retried next tick", "error", err,
+				"timed_out", errors.Is(err, context.DeadlineExceeded), "bound", capacityTickBound)
 		}
-		if day := time.Now().UTC().Format(time.DateOnly); day != pruned {
-			if n, err := s.store.PruneRequestCounts(ctx, time.Now()); err != nil {
-				if ctx.Err() == nil { // a stop is not a failure
-					s.logger.Warn("could not delete old daily request counts; retried next tick", "error", err)
-				}
-			} else {
-				pruned = day
-				s.logger.Debug("old daily request counts deleted", "rows", n)
+	} else if p.Secrets+p.KeysCleared+p.Records > 0 {
+		s.logger.Debug("past sign-up secrets and keys deleted", "secrets", p.Secrets, "keys_cleared", p.KeysCleared, "signup_records", p.Records)
+	}
+	if day := capacity.UTCDate(time.Now()); day != *pruned {
+		rctx, cancel := context.WithTimeout(ctx, capacityTickBound)
+		n, err := s.capacityMaint.PruneRequestCounts(rctx, time.Now())
+		cancel()
+		if err != nil {
+			if ctx.Err() == nil { // a stop is not a failure; a step's own bound is
+				s.logger.Warn("could not delete old daily request counts; retried next tick", "error", err,
+					"timed_out", errors.Is(err, context.DeadlineExceeded), "bound", capacityTickBound)
 			}
+		} else {
+			*pruned = day
+			s.logger.Debug("old daily request counts deleted", "rows", n)
 		}
 	}
 }
 
 // FlushCapacity saves this process's unsaved daily request counts. A
-// failed save keeps them for the next one (and is logged, unless ctx ended:
-// a stop's last save runs on a fresh context in runAPI).
+// failed save keeps them for the next one and is logged — a save that ran
+// out of its bound included (timed_out) — unless ctx was cancelled: a stop
+// is not a failure, and the stop's last save runs on a fresh context in
+// runAPI.
 func (s *Server) FlushCapacity(ctx context.Context) {
 	if s.limiter == nil || s.limiter.meter == nil {
 		return
 	}
-	if err := s.limiter.meter.Flush(ctx); err != nil && ctx.Err() == nil {
-		s.logger.Warn("could not save daily request counts; kept for the next save", "error", err)
+	if err := s.limiter.meter.Flush(ctx); err != nil && !errors.Is(ctx.Err(), context.Canceled) {
+		s.logger.Warn("could not save daily request counts; kept for the next save", "error", err,
+			"timed_out", errors.Is(err, context.DeadlineExceeded))
 	}
 }

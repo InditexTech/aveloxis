@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"filippo.io/age"
+
+	"github.com/aveloxis/aveloxis/internal/capacity"
 )
 
 // SignupRecordRetention is how long a sign-up record (and its sealed
@@ -148,8 +150,8 @@ type SignupPrivacyPruned struct {
 // sign-up record (the login pins, rounds 20-21).
 func (s *PostgresStore) PruneSignupPrivacy(ctx context.Context, now time.Time) (SignupPrivacyPruned, error) {
 	var p SignupPrivacyPruned
-	today := now.UTC().Truncate(24 * time.Hour)
-	tag, err := s.pool.Exec(ctx, `DELETE FROM aveloxis_ops.signup_key_secrets WHERE day < $1::date`, today.Format(time.DateOnly))
+	today := capacity.UTCDay.Start(now)
+	tag, err := s.pool.Exec(ctx, `DELETE FROM aveloxis_ops.signup_key_secrets WHERE day < $1::date`, capacity.UTCDate(today))
 	if err != nil {
 		return p, fmt.Errorf("prune sign-up secrets: %w", err)
 	}
