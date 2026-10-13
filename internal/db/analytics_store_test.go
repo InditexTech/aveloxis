@@ -17,9 +17,13 @@ import (
 )
 
 func TestAnalyticsQueriesOnRealData(t *testing.T) {
-	dsn := os.Getenv("AVELOXIS_TEST_DB")
+	// A REAL collection, not the per-package fixture database: this test
+	// asserts non-zero series on live 8Knot data, so it runs only against a
+	// database named for that purpose (0.29.93: it used to read
+	// AVELOXIS_TEST_DB and skip on every fresh per-package database).
+	dsn := os.Getenv("AVELOXIS_TEST_REALDATA_DB")
 	if dsn == "" {
-		t.Skip("AVELOXIS_TEST_DB not set")
+		t.Skip("set AVELOXIS_TEST_REALDATA_DB to a database holding a live collection of 8Knot to run")
 	}
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -37,7 +41,7 @@ func TestAnalyticsQueriesOnRealData(t *testing.T) {
 		SELECT repo_id, repo_owner FROM aveloxis_data.repos
 		WHERE repo_name ILIKE '8knot' LIMIT 1`).Scan(&repoID, &owner)
 	if err != nil {
-		t.Skip("no 8Knot collection in this scratch DB")
+		t.Fatalf("AVELOXIS_TEST_REALDATA_DB has no 8Knot collection (%v); point it at a database that does", err)
 	}
 	ids := []int64{repoID}
 	until := time.Now().UTC()

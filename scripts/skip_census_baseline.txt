@@ -1,0 +1,115 @@
+# Tests that skip in the closing database-tier run (AVELOXIS_TEST_DB set),
+# each for a reviewed ENVIRONMENT reason. scripts/skip-census.sh fails on a
+# skipped test that is not listed here (operator rule, 2026-10-13: a refactor
+# must never turn a test silently off).
+#
+# REFERENCE HOST for the first section: a developer Mac, not root, no
+# AVELOXIS_TEST_NETWORK / tool / token variables set. Those entries are
+# reported as "gone" when they run, so the section only shrinks. The second
+# section (after "# --- allowed") lists skips that depend on the host — root,
+# Linux vs darwin, -race timing, missing tools, server role privileges or
+# timing — permitted anywhere (CI runs on Linux with -race), never reported as
+# gone. A new entry in either section is added only after review.
+#
+# Live network canaries (AVELOXIS_TEST_NETWORK=1, or a forge token):
+internal/collector TestFacadeRealRepoEndToEnd
+internal/collector TestLiveCratesIOForSerde
+internal/collector TestLiveGoProxyForCobra
+internal/collector TestLiveGoProxyForUppercaseModulePath
+internal/collector TestLiveMavenForCommonsLang
+internal/collector TestLiveNPMRegistryForLodash
+internal/collector TestLiveOSVContract
+internal/collector TestLiveOSVGitHubActionsContract
+internal/collector TestLivePyPIForFlask
+internal/collector TestNuGetResolverLiveCanary
+internal/mailinglist TestPonyMailLiveCanary
+internal/platform/depsdev TestLiveDepsDevReverseLookupForSeaborn
+internal/platform/ecosystems TestLiveEcosystemsLookupForSeaborn
+internal/platform/github TestLiveFetchContributorActivity
+internal/platform/github TestLiveGraphQLListingAndPRBatchParityFields
+internal/platform/github TestLiveRootTreeAcceptsHEAD
+internal/platform/github TestSearchCommitByAuthorEmailLive
+internal/platform/gitlab TestLiveGitLabRepoInfoForGitLabRunner
+#
+# External tool canaries (AVELOXIS_TEST_TOOLS=1; scc, scancode, scorecard installed):
+internal/collector TestLiveSCCOutputShape
+internal/collector TestLiveSCCStreamingDecodeMatchesUnmarshal
+internal/collector TestLiveScancodeOutputShape
+internal/collector TestLiveScorecardOutputShape
+#
+# The official SBOM validators (AVELOXIS_TEST_SBOM_TOOLS = a Python with spdx-tools and cyclonedx-python-lib):
+internal/collector TestSBOMsPassTheOfficialValidators
+#
+# Dedicated databases (never the per-package fixture database):
+internal/collector TestLocalDevBuildDepsCanary
+internal/collector TestWhitespaceScaleValidation
+internal/db TestAnalyticsQueriesOnRealData
+#
+# --- allowed (host-dependent; permitted, never reported as gone) ---
+# Running as root (permission bits do not deny):
+cmd/aveloxis TestComponentAlreadyRunningUnreadablePidfileIsUnknown
+cmd/aveloxis TestRunScorecardPidfileErrorNamesThePathOnce
+cmd/aveloxis TestStopReportsAPidfileItCannotRemoveAfterSignalling
+cmd/aveloxis TestStopReportsAStalePidfileItCannotRemove
+internal/collector TestHasBareCloneDoesNotReadAStatFailureAsNoClone
+internal/pidfile TestRemoveIfOwnReportsARefusedUnlink
+internal/scheduler TestRunFacadeAndAnalysis_ReturnsTheFacadeError
+# Process / network behaviour of the host:
+cmd/aveloxis TestStopComponentDoesNotSignalOnePIDTwice
+internal/collector TestExecErrMapsAKilledSubprocessToContextCanceled
+internal/collector TestIsTransientNetErrorOnARealRefusedDial
+# Platform (darwin-only code paths; symlink support):
+internal/collector TestLibmagicProbeReadsACancelAsCancel
+internal/collector TestCargoWorkspaceRootSymlinkIsNotRead
+internal/collector TestWhitespaceTypeChangeKeepsFilesAligned
+# Timing comparisons (skipped under -race or -short):
+internal/costtest TestCheckPassesAllocatingLinearWork
+internal/costtest TestCheckSeparatesLinearFromSuperlinear
+internal/costtest TestLinearReportsAFailure
+internal/db TestAllInsideCostIsLinear
+internal/db TestNoticeCostIsLinear
+internal/db TestPositionLookupsAreLogarithmic
+internal/db TestURLReferenceCostIsLinear
+internal/spdx TestNestedExpressionCostIsLinear
+internal/spdx TestOperandTextsCostIsLinear
+internal/spdx TestValidCostIsLinear
+# Tools that may be missing (git, go, scancode, scorecard, sha256sum/shasum):
+internal/collector TestCollectRepoReportsTheCloneOutcome
+internal/collector TestCommitResolverSkipsCommitsNoLongerOnTheDefaultBranch
+internal/collector TestEnsureCloneKeepsTheBareCloneWhenShutdownKillsTheFetch
+internal/collector TestFacadeMaintainsTheCommitBounds
+internal/collector TestGoBinDirAsksTheGoTool
+internal/collector TestGoBinDirIgnoresTheCwdModulesToolchain
+internal/collector TestGoModGraphBudgetLineNamesTheRepo
+internal/collector TestGoModGraphFailureLinesNameTheRepo
+internal/collector TestGoModGraphOneLogsToolchainStderr
+internal/collector TestGoModGraphOneWorksInsideAGoWorkspace
+internal/collector TestLoadDefaultBranchKeepsOnlyUnresolvedHashes
+internal/collector TestLoadDefaultBranchStopIsNotAWarning
+internal/collector TestParseGitLogEmptyRepositoryIsNotAnError
+internal/collector TestParseGitLogErrorCarriesGitStderr
+internal/collector TestRefusedCloneStillFillsTheCommitBounds
+internal/collector TestScorecardInstallCreatesDestAndStagesBesideIt
+internal/collector TestScorecardInstallShadowedIsAnError
+internal/collector TestUnrecordedNewCommitsClearTheDailyStamp
+internal/collector TestWhitespacePairsEveryNumstatNameShape
+internal/collector TestWhitespaceWalkArgsIgnoreHostDiffConfig
+internal/collector TestWhitespaceWalkEmptyRepositoryIsNotAnError
+internal/collector TestWhitespaceWalkEndToEnd
+internal/collector TestWhitespaceWalkErrorDoesNotDeadlock
+internal/collector TestWhitespaceWalkRevParseErrorCarriesGitStderr
+internal/mailinglist TestPublicInboxFetchMonthFromGitArchive
+scripts TestCheckKeysNamesKeysLikeTheLogs
+# Checkout shape (a source tarball has no git work tree; a public checkout has no CLAUDE.md):
+internal/collector TestNoStaleCycloneDXVersion
+scripts TestClaudeMdStaysWithinContextBudget
+# Database server role privileges and server-side premises:
+internal/db TestBackgroundDiscriminatorMatchesVisibleBackendType
+internal/db TestColumnFillDiffHandlesShapeDrift
+internal/db TestHiddenBackendsNeverReadAsThisHost
+internal/db TestInheritedRoleReadsBackendsOfThatRoleAsThisHost
+internal/db TestListDedupHandlesStagingCollisions
+internal/db TestNoninheritedStatsGrantStillReadsHidden
+internal/db TestSharedHostnameNeverPromotesARemoteBackend
+internal/db TestStaleRoleSweepSparesAConcurrentRunsRole
+internal/db TestStampSchemaVersionSurfacesMissingRow

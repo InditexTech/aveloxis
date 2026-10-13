@@ -1170,7 +1170,7 @@ func runImportKeysFromAugur(cfgPath string) error {
 
 func prioritizeCmd(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "prioritize [repo-url-or-id]",
+		Use:   "prioritize [repo-url]",
 		Short: "Push a repo to the top of the collection queue",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

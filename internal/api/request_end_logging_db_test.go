@@ -106,7 +106,7 @@ func TestNoEndpointBlamesTheRequestsEnd(t *testing.T) {
 		mark := len(logs.String())
 		end = fn
 		for route, rc := range smokeRecipes {
-			if rc.skip == "" && !strings.HasSuffix(route, "?") {
+			if !strings.HasSuffix(route, "?") {
 				do(route, rc)
 			}
 		}

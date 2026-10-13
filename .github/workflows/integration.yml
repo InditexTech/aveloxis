@@ -105,8 +105,14 @@ jobs:
       # found this way: an explicit repo_group_id = 1 that collided with the
       # Default group's sequence). A failure prints `-test.shuffle N`;
       # rerun with that seed to reproduce.
-      - name: Run full suite with integration tier enabled
-        run: go test -race -count=1 -shuffle=on ./...
+      # The skip census (2026-10-13): the same run, counted — a test that
+      # SKIPS without a reviewed environment reason (scripts/
+      # skip_census_baseline.txt) fails the job, so a refactor can never turn
+      # a test silently off. It exits non-zero on any test failure too.
+      - name: Run full suite with integration tier enabled (skip census)
+        env:
+          SKIP_CENSUS_GOFLAGS: -race -shuffle=on
+        run: scripts/skip-census.sh
 
       # v0.27.43: smoke-test the data-verify command end to end (build →
       # connect → probe → report) on every PR. The base database is

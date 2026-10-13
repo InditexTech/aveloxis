@@ -520,9 +520,10 @@ Your Aveloxis account has been created via %s OAuth. You can now
 sign in, create groups and add the repositories you'd like to track.
 
 A repository Aveloxis already tracks is added to your group at once.
-A repository it does not track yet, and every organization, waits for
-an administrator to approve the addition before collection starts.
-You'll get an email when it is decided.
+A repository it does not track yet, and every organization, may wait
+for an administrator to approve the addition before collection starts
+(this site can approve small additions of repositories automatically).
+You'll get an email when an addition is decided.
 
 Sign in: %s
 

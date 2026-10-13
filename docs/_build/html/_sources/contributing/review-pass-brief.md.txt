@@ -76,6 +76,12 @@ right confirms it.
 Before running the next pass on your own fixes, check the fixes for the
 shapes that dominated eight consecutive rounds of one release:
 
+- **The closing suite run is the skip census**: `scripts/skip-census.sh` with
+  `AVELOXIS_TEST_DB` exported. It fails on any failing test and on any test
+  that skipped without a reviewed environment reason. A test whose subject
+  moved must fail, never skip — the reviewer checks that a moved function
+  turned its tests red.
+
 - **Pins**: every needle is counted on the comment-STRIPPED body, exactly
   once, and the statement that follows is matched as a PREFIX at that
   offset; ordering checks require both indexes ≥ 0; hand-written counts

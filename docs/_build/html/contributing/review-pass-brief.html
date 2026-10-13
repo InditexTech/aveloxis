@@ -1840,6 +1840,11 @@ taken/declined, headline items.</p></li>
 <p>Before running the next pass on your own fixes, check the fixes for the
 shapes that dominated eight consecutive rounds of one release:</p>
 <ul class="simple">
+<li><p><strong>The closing suite run is the skip census</strong>: <code class="docutils literal notranslate"><span class="pre">scripts/skip-census.sh</span></code> with
+<code class="docutils literal notranslate"><span class="pre">AVELOXIS_TEST_DB</span></code> exported. It fails on any failing test and on any test
+that skipped without a reviewed environment reason. A test whose subject
+moved must fail, never skip — the reviewer checks that a moved function
+turned its tests red.</p></li>
 <li><p><strong>Pins</strong>: every needle is counted on the comment-STRIPPED body, exactly
 once, and the statement that follows is matched as a PREFIX at that
 offset; ordering checks require both indexes ≥ 0; hand-written counts

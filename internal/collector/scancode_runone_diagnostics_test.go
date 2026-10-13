@@ -72,7 +72,7 @@ func TestRunOneCapturesScancodeStderr(t *testing.T) {
 func TestRunOneCloneSkipsLFSSmudge(t *testing.T) {
 	src := readScancodeWorkerSource(t)
 	// v0.27.6: the clone phase of the runOne pipeline lives in
-	// prepareClone; 0.29.92 (H-3) builds the command in scancodeCloneCmd,
+	// prepareClone; 0.29.93 (H-3) builds the command in scancodeCloneCmd,
 	// whose environment is the shared gitCloneEnv (the runtime check is
 	// TestScancodeCloneCmdUsesTheCloneEnvironment).
 	body := scancodeMethodBody(t, src, "func scancodeCloneCmd(")

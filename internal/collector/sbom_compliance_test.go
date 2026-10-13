@@ -4,10 +4,11 @@
 package collector
 
 import (
-	"github.com/aveloxis/aveloxis/internal/model"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/model"
 )
 
 // --- CycloneDX compliance tests ---

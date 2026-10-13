@@ -107,6 +107,11 @@ func TestDedupGatedUniqueIndexesRebuildAnInvalidLeftover(t *testing.T) {
 			// the package (other tests insert through these arbiters).
 			t.Cleanup(func() {
 				if valid, ok := indexValid(ctx, t, store, "aveloxis_data", c.name); !ok || !valid {
+					// A fixture that failed partway can leave its duplicate pair
+					// behind; remove this repository's rows first so the rebuild
+					// below can succeed (review HF-8).
+					cleanupExecRetry(ctx, store, `DELETE FROM aveloxis_data.commits WHERE repo_id = $1`, repoID)
+					cleanupExecRetry(ctx, store, `DELETE FROM aveloxis_data.repo_labor WHERE repo_id = $1`, repoID)
 					cleanupExecRetry(ctx, store, `DROP INDEX IF EXISTS aveloxis_data.`+c.name)
 					cleanupExecRetry(ctx, store, strings.Replace(c.createSQL, "CONCURRENTLY", "CONCURRENTLY IF NOT EXISTS", 1))
 				}

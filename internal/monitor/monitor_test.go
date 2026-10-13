@@ -16,10 +16,6 @@ import (
 	"testing"
 )
 
-func TestMonitorIntegration(t *testing.T) {
-	t.Skip("requires live PostgreSQL — set AVELOXIS_TEST_DB to run")
-}
-
 // TestHandleAddRepoValidation tests the handleAddRepo endpoint's input
 // validation by constructing a Server with a nil store. The endpoint does not
 // touch the database for the validation-failure path (empty body / missing URL),

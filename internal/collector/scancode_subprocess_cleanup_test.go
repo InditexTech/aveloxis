@@ -45,7 +45,7 @@ import (
 // included.
 func TestSubprocessGroupKillIsTheSharedHelper(t *testing.T) {
 	// spawn is how the site gets its command: exec.CommandContext, or (the
-	// scancode clone since 0.29.92, H-3) the guarded builder scancodeCloneCmd.
+	// scancode clone since 0.29.93, H-3) the guarded builder scancodeCloneCmd.
 	for _, site := range []struct{ file, fn, call, spawn string }{
 		{"internal/collector/scancode_worker.go", "func (w *ScancodeWorker) prepareClone(", "groupKilled(cloneCmd)", "scancodeCloneCmd("},
 		{"internal/collector/scancode_worker.go", "func (w *ScancodeWorker) executeScan(", "groupKilled(cmd)", "exec.CommandContext("},

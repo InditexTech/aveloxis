@@ -50,8 +50,10 @@ func TestTrackedRepoIDLooksUpWithoutWriting(t *testing.T) {
 	if err != nil || got != knownID {
 		t.Fatalf("trackedRepoID(tracked) = %d, %v; want %d", got, err, knownID)
 	}
-	if got, err := trackedRepoID(ctx, store, tracked+".git"); err != nil || got != knownID {
-		t.Fatalf("a .git variant of a tracked URL = %d, %v; want %d (the stored spelling)", got, err, knownID)
+	for _, variant := range []string{tracked + ".git", tracked + "/", strings.ToUpper(tracked[:len("https://github.com/")]) + "_AV_TRACKED_PROBE/Known"} {
+		if got, err := trackedRepoID(ctx, store, variant); err != nil || got != knownID {
+			t.Fatalf("variant %q of a tracked URL = %d, %v; want %d (the stored spelling: suffix and case variants)", variant, got, err, knownID)
+		}
 	}
 
 	if _, err := trackedRepoID(ctx, store, unknown); !errors.Is(err, errRepoNotTracked) {
