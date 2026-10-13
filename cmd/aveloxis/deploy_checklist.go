@@ -575,6 +575,12 @@ var deployChecklists = map[string][]deployStep{
 	// built-in GUI's inline scripts render API answers with DOM calls, never
 	// as markup (stored XSS through license names, ScanCode paths and
 	// copyright lines, repository names). No schema change.
+	// v0.29.93 (2026-10-13, branch rate-limit-hci): hotfix H-2..H-7 — an
+	// INVALID dedup-gated unique index is rebuilt, the scancode clone is
+	// URL-checked, a failed dependency clear aborts the pass, prioritize and
+	// recollect never create a repos row, the welcome email, missing error
+	// logs. No schema change.
+	"0.29.93": v02993DeployChecklist,
 	"0.29.92": v02992DeployChecklist,
 	"0.29.91": v02991DeployChecklist,
 	"0.29.90": v02990DeployChecklist,
@@ -604,6 +610,19 @@ var deployChecklists = map[string][]deployStep{
 // ALTER): repository answers are cached until the repository changes; it
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
+
+// v02993DeployChecklist is 0.29.92's ladder with a note on the start step.
+var v02993DeployChecklist = func() []deployStep {
+	prev := v02992DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.93: no schema change. The migrate now rebuilds the commits table's duplicate guard (idx_commits_repo_hash_file) and the repo_labor one when an earlier, interrupted index build left either INVALID — before, it took them as done; a WARN 'dropping invalid index from prior interrupted CONCURRENT build' in the migrate log means it did that. The scancode worker refuses a repository URL git should not be handed (file://, option-shaped). A dependency scan whose clear of the previous snapshot fails now stops for that cycle (ERROR 'failed to clear old dependencies') instead of duplicating rows. `aveloxis prioritize` and `aveloxis recollect` refuse a URL that is not tracked instead of creating it. New users' welcome email describes per-addition approval. A fleet already running 0.29.92 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.92's notes below in the same one migrate. " + out[i].desc
+		}
+	}
+	return out
+}()
 
 // v02992DeployChecklist is 0.29.91's ladder with a note on the start step.
 var v02992DeployChecklist = func() []deployStep {

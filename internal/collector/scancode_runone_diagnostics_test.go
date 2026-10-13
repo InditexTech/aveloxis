@@ -6,6 +6,8 @@ package collector
 import (
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // v0.21.4 — diagnostic + reliability fixes for repeatedly-failing
@@ -70,8 +72,14 @@ func TestRunOneCapturesScancodeStderr(t *testing.T) {
 func TestRunOneCloneSkipsLFSSmudge(t *testing.T) {
 	src := readScancodeWorkerSource(t)
 	// v0.27.6: the clone phase of the runOne pipeline lives in
-	// prepareClone.
-	body := scancodeMethodBody(t, src, "func (w *ScancodeWorker) prepareClone(")
+	// prepareClone; 0.29.92 (H-3) builds the command in scancodeCloneCmd,
+	// whose environment is the shared gitCloneEnv (the runtime check is
+	// TestScancodeCloneCmdUsesTheCloneEnvironment).
+	body := scancodeMethodBody(t, src, "func scancodeCloneCmd(")
+	if !strings.Contains(body, "cmd.Env = gitCloneEnv()") {
+		t.Fatal("scancodeCloneCmd must set its command's environment from gitCloneEnv()")
+	}
+	body += srctest.FuncBody(t, srctest.Read(t, "internal/collector/facade.go"), "func gitCloneEnv(")
 
 	// The git clone command must set GIT_LFS_SKIP_SMUDGE=1 in its
 	// environment. Otherwise repos whose LFS quota is exhausted
@@ -88,8 +96,8 @@ func TestRunOneCloneSkipsLFSSmudge(t *testing.T) {
 	// Must be set via cloneCmd.Env (or equivalent). A bare
 	// `os.Setenv` in runOne would pollute every other subprocess
 	// in the worker. Pin the per-command shape.
-	if !strings.Contains(body, "cloneCmd.Env") {
-		t.Error("GIT_LFS_SKIP_SMUDGE=1 must be set on cloneCmd.Env (the per-process environment), NOT via os.Setenv (which would leak to every other subprocess this worker spawns).")
+	if strings.Contains(srctest.StripGoComments(src), "os.Setenv(") {
+		t.Error("GIT_LFS_SKIP_SMUDGE=1 must be set on the clone command's Env (the per-process environment), NOT via os.Setenv (which would leak to every other subprocess this worker spawns).")
 	}
 }
 

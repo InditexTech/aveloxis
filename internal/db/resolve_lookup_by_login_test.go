@@ -76,7 +76,7 @@ func TestResolveBackfillsContributorIdentitiesAfterReuse(t *testing.T) {
 	src := mustReadStoreSource(t, "contributors.go")
 	body := extractResolverFunc(src, "Resolve")
 	if body == "" {
-		t.Skip("Resolve not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): Resolve not yet refactored")
 	}
 
 	// The reuse path must reference an INSERT INTO contributor_identities.

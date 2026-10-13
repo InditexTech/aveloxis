@@ -88,7 +88,7 @@ func TestEnsureRepoCollectedOnlyUpsertsWhenNotFound(t *testing.T) {
 	findIdx := strings.Index(body, "s.FindRepoByURL(")
 	upsertIdx := strings.Index(body, "s.UpsertRepo(")
 	if findIdx < 0 || upsertIdx < 0 {
-		t.Skip("resolver calls missing — covered by TestAddReposToGroupUsesSharedResolvers")
+		t.Fatal("source structure changed (a skip would hide it): resolver calls missing — covered by TestAddReposToGroupUsesSharedResolvers")
 	}
 	if findIdx > upsertIdx {
 		t.Error("ensureRepoCollectedInGroup must look up via FindRepoByURL FIRST and only call " +

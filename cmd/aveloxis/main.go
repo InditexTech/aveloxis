@@ -1191,16 +1191,10 @@ func runPrioritize(cfgPath, target string) error {
 	}
 	defer store.Close()
 
-	// Try parsing as a repo URL first, then look up the ID.
-	parsed, parseErr := platform.ParseRepoURL(target)
+	// Parse as a repo URL, then look up the tracked row (never create one).
+	_, parseErr := platform.ParseRepoURL(target)
 	if parseErr == nil {
-		// Look up repo_id by URL.
-		repoID, err := store.UpsertRepo(ctx, &model.Repo{
-			Platform: parsed.Platform,
-			GitURL:   target,
-			Name:     parsed.Repo,
-			Owner:    parsed.Owner,
-		})
+		repoID, err := trackedRepoID(ctx, store, target)
 		if err != nil {
 			return err
 		}
@@ -1268,22 +1262,16 @@ func runRecollect(cfgPath string, targets []string) error {
 
 	var firstErr error
 	for _, target := range targets {
-		parsed, parseErr := platform.ParseRepoURL(target)
-		if parseErr != nil {
+		if _, parseErr := platform.ParseRepoURL(target); parseErr != nil {
 			logger.Error("could not parse repo URL — skipping", "url", platform.RedactURLUserinfo(target), "error", parseErr)
 			if firstErr == nil {
 				firstErr = parseErr
 			}
 			continue
 		}
-		// UpsertRepo is idempotent; use it to resolve the URL to a
-		// repo_id without requiring the caller to know the ID.
-		repoID, err := store.UpsertRepo(ctx, &model.Repo{
-			Platform: parsed.Platform,
-			GitURL:   target,
-			Name:     parsed.Repo,
-			Owner:    parsed.Owner,
-		})
+		// Look the repository up; never create a row for a URL that was
+		// not added (H-5).
+		repoID, err := trackedRepoID(ctx, store, target)
 		if err != nil {
 			logger.Error("failed to resolve repo_id — skipping", "url", platform.RedactURLUserinfo(target), "error", err)
 			if firstErr == nil {

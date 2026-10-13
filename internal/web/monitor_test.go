@@ -77,7 +77,7 @@ func TestMonitorPagination(t *testing.T) {
 	// Find the function definition, not just a reference.
 	idx := strings.Index(code, "func (s *Server) handleMonitor(")
 	if idx < 0 {
-		t.Skip("handleMonitor function not found")
+		t.Fatal("source structure changed (a skip would hide it): handleMonitor function not found")
 	}
 	fnBody := code[idx:]
 	if len(fnBody) > 3000 {

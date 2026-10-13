@@ -93,7 +93,7 @@ func TestUpsertOAuthUserSetsEmailConfirmedAt(t *testing.T) {
 	src := mustReadStoreSource(t, "web_store.go")
 	body := extractBatchFunc(src, "SignInOAuthUser") // the body since round 3 of the final review
 	if body == "" {
-		t.Skip("SignInOAuthUser not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): SignInOAuthUser not yet refactored")
 	}
 	if !strings.Contains(body, "email_confirmed_at") {
 		t.Error("SignInOAuthUser must set email_confirmed_at on signup so the audit column reflects the OAuth-verified state. " +
@@ -135,7 +135,7 @@ func TestApproveGroupEnqueuesRepos(t *testing.T) {
 	src := mustReadStoreSource(t, "web_store.go")
 	body := extractBatchFunc(src, "ApproveGroup")
 	if body == "" {
-		t.Skip("ApproveGroup not yet defined")
+		t.Fatal("source structure changed (a skip would hide it): ApproveGroup not yet defined")
 	}
 	if !strings.Contains(body, "collection_queue") {
 		t.Error("ApproveGroup must INSERT into aveloxis_ops.collection_queue for every repo in the group's user_repos. " +

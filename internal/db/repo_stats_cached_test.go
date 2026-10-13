@@ -68,7 +68,7 @@ func TestGetRepoStatsBatchAvoidsBigChildTableCounts(t *testing.T) {
 	src := mustReadStoreSource(t, "repo_stats.go")
 	body := extractBatchFunc(src, "GetRepoStatsBatch")
 	if body == "" {
-		t.Skip("GetRepoStatsBatch not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): GetRepoStatsBatch not yet refactored")
 	}
 
 	for _, banned := range []string{

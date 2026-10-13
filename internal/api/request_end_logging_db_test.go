@@ -87,7 +87,7 @@ func TestNoEndpointBlamesTheRequestsEnd(t *testing.T) {
 	}
 	routes := 0
 	for route, rc := range smokeRecipes {
-		if rc.skip == "" && !strings.HasSuffix(route, "?") {
+		if !strings.HasSuffix(route, "?") {
 			do(route, rc) // warm: caches the tokens
 			routes++
 		}

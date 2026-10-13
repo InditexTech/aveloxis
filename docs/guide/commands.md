@@ -367,7 +367,7 @@ Pushes a repository to the front of the collection queue.
 aveloxis prioritize <url>
 ```
 
-Sets the repo's priority to 0 and due time to now. The scheduler will collect it next.
+Sets the repo's priority to 0 and due time to now. The scheduler will collect it next. The repository must already be tracked: a URL Aveloxis does not know (a typo, or a repository never added) is refused with a message to add it first with `aveloxis add-repo`, and nothing is created (since 0.29.93).
 
 ```bash
 aveloxis prioritize https://github.com/chaoss/augur
@@ -391,7 +391,7 @@ Flags one or more repositories for a **full** (`since=zero`) re-collection on th
 aveloxis recollect <url>...
 ```
 
-Sets the `force_full_collect` flag on each named repo's `aveloxis_ops.collection_queue` row. When the scheduler dequeues a flagged repo, `determineSince()` returns zero time, triggering a full re-collection regardless of `last_collected`. The flag clears itself on the next successful completion.
+Sets the `force_full_collect` flag on each named repo's `aveloxis_ops.collection_queue` row. Each repository must already be tracked; an unknown URL is reported and skipped, nothing is created, and the command exits with an error (since 0.29.93). When the scheduler dequeues a flagged repo, `determineSince()` returns zero time, triggering a full re-collection regardless of `last_collected`. The flag clears itself on the next successful completion.
 
 ```bash
 aveloxis recollect https://github.com/chaoss/augur

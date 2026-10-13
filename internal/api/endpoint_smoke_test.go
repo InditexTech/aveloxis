@@ -42,7 +42,6 @@ type smokeRecipe struct {
 	body       string // JSON body for POST/PUT
 	auth       string // "", "user", "admin"
 	wantStatus []int  // default {200}
-	skip       string // non-empty = skipped, with a visible reason
 	after      string // "METHOD path" of a recipe that must run first
 }
 
@@ -205,7 +204,7 @@ func TestSmokeRecipesCoverEveryRoute(t *testing.T) {
 	for _, m := range smokeRouteRe.FindAllStringSubmatch(src, -1) {
 		route := m[1]
 		if _, ok := smokeRecipes[route]; !ok {
-			t.Errorf("route %q has no smoke recipe — add one to smokeRecipes (or an explicit skip with a reason). Every endpoint must be executed against the real schema by TestEveryEndpointExecutes.", route)
+			t.Errorf("route %q has no smoke recipe — add one to smokeRecipes. Every endpoint must be executed against the real schema by TestEveryEndpointExecutes.", route)
 		}
 		seen++
 	}
@@ -257,9 +256,6 @@ func TestEveryEndpointExecutes(t *testing.T) {
 
 	run := func(route string, r smokeRecipe) {
 		t.Run(route, func(t *testing.T) {
-			if r.skip != "" {
-				t.Skip(r.skip)
-			}
 			method, path, _ := strings.Cut(route, " ")
 			url := ts.URL + fill.Replace(path)
 			if r.query != "" {

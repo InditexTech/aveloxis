@@ -116,7 +116,7 @@ func TestBackgroundDrainReleasesPerRepo(t *testing.T) {
 	src := mustReadSchedulerSource(t)
 	idx := strings.Index(src, "func (s *Scheduler) processLeftoverStagingBackground(")
 	if idx < 0 {
-		t.Skip("processLeftoverStagingBackground not yet defined; covered by TestProcessLeftoverStagingBackgroundExists")
+		t.Fatal("source structure changed (a skip would hide it): processLeftoverStagingBackground not yet defined; covered by TestProcessLeftoverStagingBackgroundExists")
 	}
 	body := src[idx:]
 	if end := strings.Index(body[1:], "\nfunc "); end > 0 {

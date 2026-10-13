@@ -124,7 +124,7 @@ func TestStartAbortMessageBranchesOnChecklist(t *testing.T) {
 	// reason can have produced the refusal.
 	withChecklist := db.ToolVersion
 	if _, ok := deployChecklistFor(withChecklist); !ok {
-		t.Skipf("this binary's version (%s) has no checklist entry; the with-checklist arm is unreachable here", withChecklist)
+		t.Fatalf("source structure changed (a skip would hide it): this binary's version (%s) has no checklist entry; the with-checklist arm is unreachable here", withChecklist)
 	}
 	msg = startAbortMessage(withChecklist, ladderMigrateStep(withChecklist))
 	// The stamp remedy is the migrate step of THIS version's checklist

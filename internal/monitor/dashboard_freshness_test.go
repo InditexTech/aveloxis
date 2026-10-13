@@ -45,7 +45,7 @@ func TestDashboardTemplateShowsLastUpdated(t *testing.T) {
 	src := mustReadMonitorSource(t)
 	body := extractMonitorFn(src, "handleDashboard")
 	if body == "" {
-		t.Skip("handleDashboard not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): handleDashboard not yet refactored")
 	}
 
 	hasIndicator := strings.Contains(body, "Stats last refreshed") ||
@@ -64,7 +64,7 @@ func TestDashboardTemplateShowsNextRefresh(t *testing.T) {
 	src := mustReadMonitorSource(t)
 	body := extractMonitorFn(src, "handleDashboard")
 	if body == "" {
-		t.Skip("handleDashboard not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): handleDashboard not yet refactored")
 	}
 
 	hasIndicator := strings.Contains(body, "Next refresh") ||

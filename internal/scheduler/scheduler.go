@@ -2440,6 +2440,11 @@ func (s *Scheduler) refreshGitHubOrg(ctx context.Context, g db.OrgGroup) int {
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
 			resp.Body.Close()
+			if errors.Is(err, context.Canceled) {
+				return newCount // shutdown mid-listing, not a failure
+			}
+			// H-7: a page that does not decode ends the listing; say so.
+			s.logger.Warn("org refresh: page did not decode — listing stopped", "org", g.Name, "error", err)
 			break
 		}
 		resp.Body.Close()
@@ -2582,6 +2587,11 @@ func (s *Scheduler) refreshGitLabGroup(ctx context.Context, g db.OrgGroup) int {
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
 			resp.Body.Close()
+			if errors.Is(err, context.Canceled) {
+				return newCount // shutdown mid-listing, not a failure
+			}
+			// H-7: a page that does not decode ends the listing; say so.
+			s.logger.Warn("group refresh: page did not decode — listing stopped", "group", g.Name, "error", err)
 			break
 		}
 		resp.Body.Close()
@@ -2674,6 +2684,11 @@ func (s *Scheduler) checkForRenames(ctx context.Context) {
 		}
 		prelim, err := collector.RunPrelim(ctx, s.store, &repo, s.logger)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			// H-7: a failed rename check was dropped without a word.
+			s.logger.Warn("rename check: prelim failed", "repo_id", repo.ID, "url", platform.RedactURLUserinfo(repo.GitURL), "error", err)
 			continue
 		}
 		if prelim != nil && (prelim.Skip || prelim.Redirected) {
@@ -2980,6 +2995,13 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 					path := fmt.Sprintf("%s?per_page=100&type=all&page=%d", basePath, page)
 					resp, err := httpC.Get(platform.WithoutETag(ctx), path)
 					if err != nil {
+						if errors.Is(err, context.Canceled) {
+							return // shutdown mid-listing: stamp nothing, the next pass re-enumerates
+						}
+						// H-7: the failure was dropped without a word. Which
+						// failures may fall back to /users/ and whether the
+						// row is stamped is stage 1's (summary/59 N8, N16).
+						s.logger.Warn("user-org scan: listing request failed", "org", g.name, "path", basePath, "page", page, "error", err)
 						break
 					}
 					var items []struct {

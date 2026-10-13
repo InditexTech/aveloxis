@@ -4,6 +4,7 @@
 package collector
 
 import (
+	"github.com/aveloxis/aveloxis/internal/model"
 	"os"
 	"strings"
 	"testing"
@@ -70,22 +71,16 @@ func TestCDXRootHasBOMRef(t *testing.T) {
 // scope "optional". CycloneDX scope describes runtime inclusion:
 // "required" = production, "excluded" = dev/test, "optional" = truly optional.
 func TestCDXDevScopeNotOptional(t *testing.T) {
-	src, err := os.ReadFile("sbom.go")
-	if err != nil {
-		t.Fatal(err)
+	// The mapping lives in one place, model.CycloneDXScopeForScope (it moved
+	// there from sbom.go; this test skipped silently on the source search
+	// until the no-structural-skip rule of 0.29.93 made it fail).
+	for _, scope := range []string{model.ScopeDev, model.ScopeTest, model.ScopeBuild} {
+		if got := model.CycloneDXScopeForScope(scope); got != "excluded" {
+			t.Errorf("CycloneDX scope for %q = %q; dev/test/build dependencies are 'excluded' — scope describes runtime inclusion, not the manifest section", scope, got)
+		}
 	}
-	code := string(src)
-
-	// Find the dev scope assignment.
-	idx := strings.Index(code, `dep.Type == "dev"`)
-	if idx < 0 {
-		t.Skip("cannot find dev type check")
-	}
-	section := code[idx : idx+200]
-
-	if strings.Contains(section, `"optional"`) {
-		t.Error("Dev dependencies must use scope 'excluded' not 'optional' — " +
-			"CycloneDX scope describes runtime inclusion, not manifest section")
+	if got := model.CycloneDXScopeForScope("runtime"); got != "required" {
+		t.Errorf("CycloneDX scope for runtime = %q, want required", got)
 	}
 }
 

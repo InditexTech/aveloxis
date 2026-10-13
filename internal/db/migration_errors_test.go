@@ -187,7 +187,7 @@ func TestRunMigrationsNoBareExecWithoutCheck(t *testing.T) {
 // (which guarantees Exec fails) to avoid needing a live DB.
 func TestRunMigrationsReportsErrorsToCollector(t *testing.T) {
 	if !execMigrationStepHelperPresent() {
-		t.Skip("execMigrationStep helper not yet implemented — pinned by TestExecMigrationStepHelperExists")
+		t.Fatal("source structure changed (a skip would hide it): execMigrationStep helper not yet implemented — pinned by TestExecMigrationStepHelperExists")
 	}
 	// Construct a PostgresStore with a nil pool and call the helper.
 	// A nil pool dereferenced via Exec panics in pgxpool, so this test

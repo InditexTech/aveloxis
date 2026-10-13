@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Commands Reference &mdash; Aveloxis 0.29.92 documentation</title>
+  <title>Commands Reference &mdash; Aveloxis 0.29.93 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=abacf586"></script>
+      <script src="../_static/documentation_options.js?v=0fd4719f"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -2295,7 +2295,7 @@ aveloxis<span class="w"> </span>add-key<span class="w"> </span>--from-augur
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>aveloxis prioritize &lt;url&gt;
 </pre></div>
 </div>
-<p>Sets the repo’s priority to 0 and due time to now. The scheduler will collect it next.</p>
+<p>Sets the repo’s priority to 0 and due time to now. The scheduler will collect it next. The repository must already be tracked: a URL Aveloxis does not know (a typo, or a repository never added) is refused with a message to add it first with <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">add-repo</span></code>, and nothing is created (since 0.29.93).</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>aveloxis<span class="w"> </span>prioritize<span class="w"> </span>https://github.com/chaoss/augur
 </pre></div>
 </div>
@@ -2312,7 +2312,7 @@ aveloxis<span class="w"> </span>add-key<span class="w"> </span>--from-augur
 <div class="highlight-text notranslate"><div class="highlight"><pre><span></span>aveloxis recollect &lt;url&gt;...
 </pre></div>
 </div>
-<p>Sets the <code class="docutils literal notranslate"><span class="pre">force_full_collect</span></code> flag on each named repo’s <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.collection_queue</span></code> row. When the scheduler dequeues a flagged repo, <code class="docutils literal notranslate"><span class="pre">determineSince()</span></code> returns zero time, triggering a full re-collection regardless of <code class="docutils literal notranslate"><span class="pre">last_collected</span></code>. The flag clears itself on the next successful completion.</p>
+<p>Sets the <code class="docutils literal notranslate"><span class="pre">force_full_collect</span></code> flag on each named repo’s <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.collection_queue</span></code> row. Each repository must already be tracked; an unknown URL is reported and skipped, nothing is created, and the command exits with an error (since 0.29.93). When the scheduler dequeues a flagged repo, <code class="docutils literal notranslate"><span class="pre">determineSince()</span></code> returns zero time, triggering a full re-collection regardless of <code class="docutils literal notranslate"><span class="pre">last_collected</span></code>. The flag clears itself on the next successful completion.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>aveloxis<span class="w"> </span>recollect<span class="w"> </span>https://github.com/chaoss/augur
 aveloxis<span class="w"> </span>recollect<span class="w"> </span>https://github.com/a/b<span class="w"> </span>https://github.com/c/d<span class="w">     </span><span class="c1"># multiple</span>
 </pre></div>

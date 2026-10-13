@@ -111,8 +111,11 @@ func isValidAppPassword(p string) bool {
 	return true
 }
 
-// ValidateConfig checks the operator-supplied mail block at
-// config-load time. Returns nil for both:
+// ValidateConfig checks the operator-supplied mail block when the mailer
+// is built (New, at process start-up) — not when the config file is
+// loaded, so an invalid mail block does not stop start-up the way an
+// invalid config file does (summary/59 N7 decides whether it should).
+// Returns nil for both:
 //   - a fully-configured block (gmail_user contains @ AND the
 //     normalized app password is 16 lowercase letters), and
 //   - a fully-empty block (mailer disabled — Send attempts nothing

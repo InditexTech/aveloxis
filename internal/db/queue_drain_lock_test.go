@@ -64,7 +64,7 @@ func TestLockReposForDrainSQLDoesNotTouchLastCollected(t *testing.T) {
 	src := mustReadStoreSource(t, "queue_drain.go")
 	body := extractDrainFunc(src, "LockReposForDrain")
 	if body == "" {
-		t.Skip("LockReposForDrain not yet defined; covered by TestLockReposForDrainExists")
+		t.Fatal("source structure changed (a skip would hide it): LockReposForDrain not yet defined; covered by TestLockReposForDrainExists")
 	}
 	sql := firstRawLiteral(body)
 	if sql == "" {
@@ -89,7 +89,7 @@ func TestReleaseDrainLockSQLDoesNotTouchLastCollected(t *testing.T) {
 	src := mustReadStoreSource(t, "queue_drain.go")
 	body := extractDrainFunc(src, "ReleaseDrainLock")
 	if body == "" {
-		t.Skip("ReleaseDrainLock not yet defined; covered by TestReleaseDrainLockExists")
+		t.Fatal("source structure changed (a skip would hide it): ReleaseDrainLock not yet defined; covered by TestReleaseDrainLockExists")
 	}
 	sql := firstRawLiteral(body)
 	if sql == "" {
@@ -128,7 +128,7 @@ func TestDrainLockSuffixUsesWorkerID(t *testing.T) {
 	src := mustReadStoreSource(t, "queue_drain.go")
 	body := extractDrainFunc(src, "LockReposForDrain")
 	if body == "" {
-		t.Skip("LockReposForDrain not yet defined")
+		t.Fatal("source structure changed (a skip would hide it): LockReposForDrain not yet defined")
 	}
 	// The function should accept workerID as a parameter and concatenate
 	// it with ':drain' (or similar suffix marker) for the locked_by value.

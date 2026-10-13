@@ -93,7 +93,7 @@ func TestBackfillGitLabCommitCountSQLShape(t *testing.T) {
 		}
 	}
 	if src == "" {
-		t.Skip("BackfillGitLabCommitCount not yet implemented (see TestBackfillGitLabCommitCountExists)")
+		t.Fatal("source structure changed (a skip would hide it): BackfillGitLabCommitCount not yet implemented (see TestBackfillGitLabCommitCountExists)")
 	}
 
 	idx := strings.Index(src, "func (s *PostgresStore) BackfillGitLabCommitCount(")

@@ -70,7 +70,7 @@ func TestResolveSourceUpdatesLoginOnConflict(t *testing.T) {
 	src := mustReadStoreSource(t, "contributors.go")
 	body := extractResolverFunc(src, "Resolve")
 	if body == "" {
-		t.Skip("Resolve not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): Resolve not yet refactored")
 	}
 
 	// We expect the DO UPDATE clause for the cntrb_id path to mention
@@ -78,7 +78,7 @@ func TestResolveSourceUpdatesLoginOnConflict(t *testing.T) {
 	// pattern is fine — newest non-empty observation wins.
 	idIdx := strings.Index(body, "ON CONFLICT (cntrb_id)")
 	if idIdx < 0 {
-		t.Skip("cntrb_id branch not yet present; covered by sibling test")
+		t.Fatal("source structure changed (a skip would hide it): cntrb_id branch not yet present; covered by sibling test")
 	}
 	// Slice from the cntrb_id ON CONFLICT to the end of that SQL block
 	// (loosely: until a closing backtick or RETURNING).
@@ -103,7 +103,7 @@ func TestResolveSourceKeepsLoginPathForRandomUUID(t *testing.T) {
 	src := mustReadStoreSource(t, "contributors.go")
 	body := extractResolverFunc(src, "Resolve")
 	if body == "" {
-		t.Skip("Resolve not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): Resolve not yet refactored")
 	}
 	if !strings.Contains(body, "ON CONFLICT (cntrb_login)") {
 		t.Error("Resolve must keep the ON CONFLICT (cntrb_login) WHERE cntrb_login != '' branch " +
@@ -118,7 +118,7 @@ func TestResolveSourceBranchesOnUserID(t *testing.T) {
 	src := mustReadStoreSource(t, "contributors.go")
 	body := extractResolverFunc(src, "Resolve")
 	if body == "" {
-		t.Skip("Resolve not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): Resolve not yet refactored")
 	}
 	// Look for a branch on userID (or platformID/userID). We accept any
 	// of `userID > 0`, `userID != 0`, or a switch/early-return pattern.
