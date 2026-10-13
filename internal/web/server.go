@@ -1946,8 +1946,32 @@ func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "compare", map[string]any{
 		"Session": sess,
 		"Groups":  groups,
-		"RepoIDs": r.URL.Query().Get("repos"),
+		"RepoIDs": compareRepoIDs(r.URL.Query().Get("repos")),
 	})
+}
+
+// compareMaxRepos is the compare page's own limit (addRepo refuses a sixth;
+// CHART_COLORS has five).
+const compareMaxRepos = 5
+
+// compareRepoIDs keeps the positive integer ids of a /compare?repos= list,
+// in order, without repeats and at most compareMaxRepos, so the page script
+// only ever sees ids it can chart (review of 0.29.92, W3 and W2-5).
+func compareRepoIDs(raw string) string {
+	var out []string
+	seen := map[int64]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		if len(out) == compareMaxRepos {
+			break
+		}
+		id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
+		if err != nil || id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, strconv.FormatInt(id, 10))
+	}
+	return strings.Join(out, ",")
 }
 
 // handleSBOMDownload generates and returns an SBOM for a repo. The caller

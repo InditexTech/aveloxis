@@ -59,6 +59,35 @@ h3{font-size:16px;margin-bottom:12px;color:#24292e}
 .pagination span.disabled{color:#d1d5da;border:1px solid #eee}
 .result-info{color:#586069;font-size:13px;margin-bottom:12px}
 </style>
+<script>
+// avxEl(tag, props, ...children): the one DOM builder for data the page
+// scripts render (H-1). Data goes in as text nodes and properties, never as
+// markup, so an answer field cannot add elements or attributes. props:
+// className, title, type, colSpan, style (cssText from constants), dataset
+// {key: value} and on<event> handlers; anything else is refused (an href
+// from data would need its own scheme check). Children are nodes or text.
+function avxEl(tag, props) {
+  if (['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base'].indexOf(String(tag).toLowerCase()) >= 0) {
+    throw new Error('avxEl: refused tag ' + tag);
+  }
+  const e = document.createElement(tag);
+  const p = props || {};
+  Object.keys(p).forEach(function (k) {
+    const v = p[k];
+    if (k === 'style') e.style.cssText = v;
+    else if (k === 'dataset') Object.keys(v).forEach(function (d) { e.dataset[d] = String(v[d]); });
+    else if (k.slice(0, 2) === 'on' && typeof v === 'function') e.addEventListener(k.slice(2), v);
+    else if (k === 'className' || k === 'title' || k === 'type' || k === 'colSpan') e[k] = v;
+    else throw new Error('avxEl: unsupported property ' + k);
+  });
+  for (let i = 2; i < arguments.length; i++) {
+    const c = arguments[i];
+    if (c == null || c === false) continue;
+    e.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  return e;
+}
+</script>
 </head>
 <body>{{end}}
 
@@ -433,6 +462,17 @@ fetch(API_BASE + '/api/v1/repos/' + REPO_ID + '/timeseries')
     });
   });
 
+// One table row of a license table: name (text or a node), a count, an OSI mark.
+function osiMark(isOSI) {
+  return isOSI ? avxEl('span', { style: 'color:#059669' }, '\u2713') : avxEl('span', { style: 'color:#d1d5da' }, '\u2014');
+}
+function licenseRow(table, name, count, isOSI) {
+  (table.tBodies[0] || table).append(avxEl('tr', null,
+    avxEl('td', null, name),
+    avxEl('td', { style: 'text-align:right' }, String(Number(count) || 0)),
+    avxEl('td', { style: 'text-align:center' }, osiMark(isOSI))));
+}
+
 // Fetch license data.
 fetch(API_BASE + '/api/v1/repos/' + REPO_ID + '/licenses')
   .then(r => r.json())
@@ -443,16 +483,15 @@ fetch(API_BASE + '/api/v1/repos/' + REPO_ID + '/licenses')
         '<tr><td colspan="3" class="empty">No dependency license data yet.</td></tr>';
       return;
     }
-    let html = '<tr><th>License</th><th style="text-align:right">Count</th><th style="text-align:center">OSI Compliant</th></tr>';
+    table.innerHTML = '<tr><th>License</th><th style="text-align:right">Count</th><th style="text-align:center">OSI Compliant</th></tr>';
+    // License names are written by package authors: text nodes only (H-1).
     licenses.forEach(l => {
-      const osi = l.is_osi ? '<span style="color:#059669">&#10003;</span>' : '<span style="color:#d1d5da">&mdash;</span>';
       // Style "Unknown" licenses distinctly so undeclared deps stand out.
       const name = l.license === 'Unknown'
-        ? '<span style="color:#b45309;font-style:italic" title="No license declared by this dependency">Unknown</span>'
-        : l.license;
-      html += '<tr><td>' + name + '</td><td style="text-align:right">' + l.count + '</td><td style="text-align:center">' + osi + '</td></tr>';
+        ? avxEl('span', { style: 'color:#b45309;font-style:italic', title: 'No license declared by this dependency' }, 'Unknown')
+        : String(l.license || '');
+      licenseRow(table, name, l.count, l.is_osi);
     });
-    table.innerHTML = html;
   })
   .catch(() => {
     document.getElementById('license-table').innerHTML =
@@ -473,8 +512,9 @@ fetch(API_BASE + '/api/v1/repos/' + REPO_ID + '/scancode-licenses')
     const freshEl = document.getElementById('scancode-freshness');
     if (freshEl) {
       if (data.last_run) {
-        const verSuffix = data.scancode_version ? ' (scancode ' + data.scancode_version + ')' : '';
-        freshEl.innerHTML = 'Last run: <strong>' + data.last_run + '</strong>' + verSuffix;
+        freshEl.textContent = 'Last run: ';
+        freshEl.append(avxEl('strong', null, String(data.last_run)),
+          data.scancode_version ? ' (scancode ' + data.scancode_version + ')' : '');
       } else {
         freshEl.innerHTML = 'Last run: <em>not yet run — will run in the next scancode worker cycle</em>';
       }
@@ -486,24 +526,26 @@ fetch(API_BASE + '/api/v1/repos/' + REPO_ID + '/scancode-licenses')
       return;
     }
 
-    let html = '<tr><th>License (SPDX)</th><th style="text-align:right">Files</th><th style="text-align:center">OSI</th></tr>';
+    table.innerHTML = '<tr><th>License (SPDX)</th><th style="text-align:right">Files</th><th style="text-align:center">OSI</th></tr>';
     licenses.forEach(l => {
-      const osi = l.is_osi ? '<span style="color:#059669">&#10003;</span>' : '<span style="color:#d1d5da">&mdash;</span>';
       const name = l.license === 'Unknown'
-        ? '<span style="color:#b45309;font-style:italic" title="No license detected in these files">Unknown</span>'
-        : l.license;
-      html += '<tr><td>' + name + '</td><td style="text-align:right">' + l.file_count + '</td><td style="text-align:center">' + osi + '</td></tr>';
+        ? avxEl('span', { style: 'color:#b45309;font-style:italic', title: 'No license detected in these files' }, 'Unknown')
+        : String(l.license || '');
+      licenseRow(table, name, l.file_count, l.is_osi);
     });
-    table.innerHTML = html;
 
     // Render copyright holders if present.
     if (copyrights.length > 0) {
       const section = document.getElementById('copyright-section');
       section.style.display = 'block';
       const list = document.getElementById('copyright-list');
-      list.innerHTML = copyrights.map(c =>
-        '<li>' + c.holder + ' <span style="color:#9ca3af">(' + c.file_count + ' file' + (c.file_count !== 1 ? 's' : '') + ')</span></li>'
-      ).join('');
+      // Copyright holders come from file contents: text nodes only (H-1).
+      list.textContent = '';
+      copyrights.forEach(c => {
+        const n = Number(c.file_count) || 0;
+        list.append(avxEl('li', null, String(c.holder || ''), ' ',
+          avxEl('span', { style: 'color:#9ca3af' }, '(' + n + ' file' + (n !== 1 ? 's' : '') + ')')));
+      });
     }
 
   })
@@ -529,17 +571,21 @@ function renderScancodeFiles() {
     const cmp = (a[key] || '').localeCompare(b[key] || '');
     return scancodeSortAsc ? cmp : -cmp;
   });
-  tbody.innerHTML = sorted.map(f => {
+  // File paths, licenses and copyright lines come from the repository's
+  // own files: text nodes only (H-1).
+  tbody.textContent = '';
+  sorted.forEach(f => {
     const lic = f.license === 'Unknown'
-      ? '<span style="color:#b45309;font-style:italic">Unknown</span>'
-      : f.license;
+      ? avxEl('span', { style: 'color:#b45309;font-style:italic' }, 'Unknown')
+      : String(f.license || '');
     const cr = f.copyright
-      ? '<span title="' + f.copyright.replace(/"/g, '&quot;') + '">' + f.copyright + '</span>'
-      : '<span style="color:#d1d5da">&mdash;</span>';
-    return '<tr><td style="padding:4px 8px;word-break:break-all;max-width:280px;font-family:monospace;font-size:11px">' + f.path +
-      '</td><td style="padding:4px 8px;max-width:160px">' + lic +
-      '</td><td style="padding:4px 8px;max-width:300px;font-size:11px">' + cr + '</td></tr>';
-  }).join('');
+      ? avxEl('span', { title: String(f.copyright) }, String(f.copyright))
+      : avxEl('span', { style: 'color:#d1d5da' }, '\u2014');
+    tbody.append(avxEl('tr', null,
+      avxEl('td', { style: 'padding:4px 8px;word-break:break-all;max-width:280px;font-family:monospace;font-size:11px' }, String(f.path || '')),
+      avxEl('td', { style: 'padding:4px 8px;max-width:160px' }, lic),
+      avxEl('td', { style: 'padding:4px 8px;max-width:300px;font-size:11px' }, cr)));
+  });
 }
 
 function sortScancodeFiles(col) {
@@ -731,20 +777,22 @@ searchInput.addEventListener('input', function() {
           searchResults.style.display = 'block';
           return;
         }
-        searchResults.innerHTML = data.slice(0, 15).map(r =>
-          '<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0" ' +
-          'onmouseover="this.style.background=\'#f6f8fa\'" onmouseout="this.style.background=\'white\'" ' +
-          'data-id="' + r.id + '" data-owner="' + r.owner + '" data-name="' + r.name + '">' +
-          r.owner + '/<strong>' + r.name + '</strong></div>'
-        ).join('');
-        searchResults.style.display = 'block';
-        searchResults.querySelectorAll('div[data-id]').forEach(el => {
-          el.onclick = () => {
-            addRepo({id: +el.dataset.id, owner: el.dataset.owner, name: el.dataset.name});
-            searchResults.style.display = 'none';
-            searchInput.value = '';
-          };
+        // Owner and name are text nodes, never markup (H-1).
+        searchResults.textContent = '';
+        data.slice(0, 15).forEach(r => {
+          const repo = { id: Number(r.id), owner: String(r.owner), name: String(r.name) };
+          searchResults.append(avxEl('div', {
+            style: 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0',
+            onmouseover: function () { this.style.background = '#f6f8fa'; },
+            onmouseout: function () { this.style.background = 'white'; },
+            onclick: () => {
+              addRepo(repo);
+              searchResults.style.display = 'none';
+              searchInput.value = '';
+            },
+          }, repo.owner + '/', avxEl('strong', null, repo.name)));
         });
+        searchResults.style.display = 'block';
       })
       .catch(() => { searchResults.style.display = 'none'; });
   }, 200);
@@ -776,11 +824,12 @@ function removeRepo(id) {
 
 function renderTags() {
   const container = document.getElementById('selected-repos');
-  container.innerHTML = selectedRepos.map((r, i) =>
-    '<span class="repo-tag" style="background:' + CHART_COLORS[i] + '20;color:' + CHART_COLORS[i] + '">' +
-    r.owner + '/' + r.name +
-    ' <button onclick="removeRepo(' + r.id + ')">&times;</button></span>'
-  ).join('');
+  container.textContent = '';
+  selectedRepos.forEach((r, i) => {
+    container.append(avxEl('span', { className: 'repo-tag', style: 'background:' + CHART_COLORS[i] + '20;color:' + CHART_COLORS[i] },
+      r.owner + '/' + r.name + ' ',
+      avxEl('button', { type: 'button', onclick: () => removeRepo(r.id) }, '\u00d7')));
+  });
 }
 
 function fetchAndRender(repo) {
@@ -1052,16 +1101,18 @@ if (urlRepos.length > 0) {
         .then(r => r.json())
         .then(data => {
           if (!data || data.length === 0) { results.style.display = 'none'; return; }
-          results.innerHTML = data.slice(0, 15).map(r =>
-            '<div style="padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0" ' +
-            'onmouseover="this.style.background=\'#f6f8fa\'" onmouseout="this.style.background=\'white\'" ' +
-            'data-id="' + r.id + '" data-owner="' + r.owner + '" data-name="' + r.name + '">' +
-            r.owner + '/<strong>' + r.name + '</strong></div>'
-          ).join('');
-          results.style.display = 'block';
-          results.querySelectorAll('div').forEach(el => {
-            el.onclick = () => addRepo(+el.dataset.id, el.dataset.owner, el.dataset.name);
+          // Owner and name are text nodes, never markup (H-1).
+          results.textContent = '';
+          data.slice(0, 15).forEach(r => {
+            const id = Number(r.id), owner = String(r.owner), name = String(r.name);
+            results.append(avxEl('div', {
+              style: 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0',
+              onmouseover: function () { this.style.background = '#f6f8fa'; },
+              onmouseout: function () { this.style.background = 'white'; },
+              onclick: () => addRepo(id, owner, name),
+            }, owner + '/', avxEl('strong', null, name)));
           });
+          results.style.display = 'block';
         })
         .catch(() => { results.style.display = 'none'; });
     }, 200);
@@ -1089,18 +1140,15 @@ if (urlRepos.length > 0) {
     repos = repos.filter(r => r.id !== id);
     render();
   }
-  // Expose a uniquely-named global so multiple widgets on one page (not
-  // today, but nothing prevents it in the future) don't collide.
-  const removeFnName = '_' + prefix + 'RemoveRepo';
-  window[removeFnName] = removeRepo;
-
   function render() {
-    selected.innerHTML = repos.map((r, i) =>
-      '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;font-size:13px;font-weight:500;background:' +
-      COLORS[i] + '20;color:' + COLORS[i] + '">' +
-      r.owner + '/' + r.name +
-      ' <button onclick="' + removeFnName + '(' + r.id + ')" style="background:none;border:none;cursor:pointer;color:inherit;font-size:14px">&times;</button></span>'
-    ).join('');
+    selected.textContent = '';
+    repos.forEach((r, i) => {
+      selected.append(avxEl('span', {
+        style: 'display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;font-size:13px;font-weight:500;background:' +
+          COLORS[i] + '20;color:' + COLORS[i],
+      }, r.owner + '/' + r.name + ' ',
+      avxEl('button', { type: 'button', style: 'background:none;border:none;cursor:pointer;color:inherit;font-size:14px', onclick: () => removeRepo(r.id) }, '\u00d7')));
+    });
     hiddenIds.value = repos.map(r => r.id).join(',');
   }
 })();

@@ -571,6 +571,11 @@ var deployChecklists = map[string][]deployStep{
 	// toward repo_links_per_day, sign-out is never refused, the api WARNs a
 	// missing api.trusted_proxy behind a proxy, a comparison of an
 	// organization links all or nothing. No schema change.
+	// v0.29.92 (2026-10-13, branch rate-limit-hci): H-1 hotfix — the
+	// built-in GUI's inline scripts render API answers with DOM calls, never
+	// as markup (stored XSS through license names, ScanCode paths and
+	// copyright lines, repository names). No schema change.
+	"0.29.92": v02992DeployChecklist,
 	"0.29.91": v02991DeployChecklist,
 	"0.29.90": v02990DeployChecklist,
 	"0.29.89": v02989DeployChecklist,
@@ -599,6 +604,19 @@ var deployChecklists = map[string][]deployStep{
 // ALTER): repository answers are cached until the repository changes; it
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
+
+// v02992DeployChecklist is 0.29.91's ladder with a note on the start step.
+var v02992DeployChecklist = func() []deployStep {
+	prev := v02991DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.92: no schema change; a security fix in the built-in web GUI. Its repository page, compare page and the repository search on the dashboard and group pages wrote license names, ScanCode file paths and copyright lines, and repository names from the API into the page as markup, so a tracked repository or a package's license text could run script in a signed-in viewer's browser; they now render that text as text. A fleet already running 0.29.91 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.91's notes below in the same one migrate. " + out[i].desc
+		}
+	}
+	return out
+}()
 
 // v02991DeployChecklist is 0.29.90's ladder with a note on the start step.
 var v02991DeployChecklist = func() []deployStep {
