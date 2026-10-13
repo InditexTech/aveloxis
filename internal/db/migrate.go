@@ -3746,17 +3746,15 @@ func setToolVersionDefaults(ctx context.Context, pg *PostgresStore, logger *slog
 // ON CONFLICT clause on commit inserts, so re-collection runs created
 // duplicate (repo_id, cmt_commit_hash, cmt_filename) rows.
 func deduplicateCommits(ctx context.Context, pg *PostgresStore, logger *slog.Logger) {
-	// Check if the unique index already exists — if so, dedup was already done.
-	var exists bool
-	if err := pg.pool.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM pg_indexes
-			WHERE schemaname = 'aveloxis_data' AND indexname = 'idx_commits_repo_hash_file'
-		)`).Scan(&exists); err != nil {
+	// A VALID unique index means dedup was already done. An INVALID one (an
+	// interrupted CONCURRENTLY build) is not done: it falls through, and the
+	// build below drops and rebuilds it (H-2).
+	valid, err := validIndexExists(ctx, pg, "aveloxis_data", "idx_commits_repo_hash_file")
+	if err != nil {
 		logger.Warn("commit-dedup gate: index probe failed — skipping dedup this run", "error", err)
 		return
 	}
-	if exists {
+	if valid {
 		return // already cleaned up
 	}
 
@@ -3791,33 +3789,42 @@ func deduplicateCommits(ctx context.Context, pg *PostgresStore, logger *slog.Log
 		logger.Info("deduplicated commits", "rows_removed", tag.RowsAffected())
 	}
 
-	// Create the unique index now that duplicates are gone. v0.20.1
-	// uses CONCURRENTLY so the index build doesn't ShareLock the
-	// commits table while the scheduler is running. deduplicateCommits
-	// itself is warn-only (this isn't through the err-collector), so
-	// keep that behavior here too.
-	// ErrNoRows = the index doesn't exist at all — nothing to drop.
-	var existsInvalid bool
-	if err := pg.pool.QueryRow(ctx, `
-		SELECT NOT i.indisvalid
+	// Create the unique index now that duplicates are gone, through the one
+	// CONCURRENTLY builder (it drops an INVALID leftover first). v0.20.1
+	// uses CONCURRENTLY so the build doesn't ShareLock the commits table
+	// while the scheduler runs. deduplicateCommits is warn-only (not
+	// through the err-collector), so a failure is logged and retried by
+	// the next migrate.
+	var errs []error
+	execCreateIndexConcurrently(ctx, pg, logger, &errs,
+		"aveloxis_data", "idx_commits_repo_hash_file",
+		`CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_commits_repo_hash_file
+		 ON aveloxis_data.commits (repo_id, cmt_commit_hash, cmt_filename)`)
+	for _, e := range errs {
+		logger.Warn("failed to create commits unique index (warn-only — retried next migrate)", "error", e)
+	}
+}
+
+// validIndexExists reports whether schema.name exists AND is valid. pg_indexes
+// also lists an INVALID index — the leftover of an interrupted CREATE INDEX
+// CONCURRENTLY — so a dedup gate that asked pg_indexes took a broken index as
+// done and never rebuilt it (H-2). Only "no such index" (no rows) is false
+// without an error; any other probe failure is the caller's error (SR-5).
+func validIndexExists(ctx context.Context, pg *PostgresStore, schema, name string) (bool, error) {
+	var valid bool
+	err := pg.pool.QueryRow(ctx, `
+		SELECT i.indisvalid
 		FROM pg_index i
 		JOIN pg_class c ON c.oid = i.indexrelid
 		JOIN pg_namespace n ON n.oid = c.relnamespace
-		WHERE n.nspname = 'aveloxis_data' AND c.relname = 'idx_commits_repo_hash_file'`).Scan(&existsInvalid); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		logger.Warn("invalid-index probe failed for idx_commits_repo_hash_file", "error", err)
+		WHERE n.nspname = $1 AND c.relname = $2`, schema, name).Scan(&valid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
 	}
-	if existsInvalid {
-		logger.Warn("dropping invalid idx_commits_repo_hash_file from prior interrupted CONCURRENT build")
-		if _, err := pg.pool.Exec(ctx, `DROP INDEX IF EXISTS aveloxis_data.idx_commits_repo_hash_file`); err != nil {
-			logger.Warn("dropping invalid idx_commits_repo_hash_file failed", "error", err)
-		}
-	}
-	_, err := pg.pool.Exec(ctx, `
-		CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_commits_repo_hash_file
-		ON aveloxis_data.commits (repo_id, cmt_commit_hash, cmt_filename)`)
 	if err != nil {
-		logger.Warn("failed to create commits unique index", "error", err)
+		return false, err
 	}
+	return valid, nil
 }
 
 // ensureRepoGitCaseInsensitiveUnique creates the UNIQUE partial index
@@ -4507,14 +4514,13 @@ func cleanupBadTimestamps(ctx context.Context, pg *PostgresStore, logger *slog.L
 // with residual duplicate groups get a WARN naming the recount query
 // instead of a failed migration.
 func ensureRepoLaborNaturalKeyUnique(ctx context.Context, pg *PostgresStore, logger *slog.Logger) {
-	var exists bool
-	if err := pg.pool.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM pg_indexes
-		 WHERE schemaname='aveloxis_data' AND indexname='uq_repo_labor_natural_key')`).Scan(&exists); err != nil {
+	// Only a VALID index is done; an INVALID leftover is rebuilt below (H-2).
+	valid, err := validIndexExists(ctx, pg, "aveloxis_data", "uq_repo_labor_natural_key")
+	if err != nil {
 		logger.Warn("repo_labor unique: existence check failed — skipping", "error", err)
 		return
 	}
-	if exists {
+	if valid {
 		return
 	}
 	var dupGroups int
