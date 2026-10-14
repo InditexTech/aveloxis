@@ -50,12 +50,10 @@ This means `go test ./...` (no env var) skips them cleanly. CI runs both modes �
 
 ### Tier 3 — `data-test` harness (cross-version regression detection)
 
-The `aveloxis data-test` subcommand collects the same repo into two scratch databases (one with a released-tag binary, one with the local working-tree binary) and row-count-diffs them. Catches schema-regression data loss before it ships.
+The `aveloxis data-test` subcommand collects the same repositories into two scratch databases (one with a binary built from a release tag or `origin/main`, one with the local working-tree binary) and diffs them table by table. Catches schema-regression data loss before it ships. Without `--repo` it collects the standing set: `backstage/backstage`, `MISP/MISP` and `sunpy/sunpy` (a run takes hours, most of it on backstage).
 
 ```bash
-aveloxis data-test \
-  --released-tag 0.23.3 \
-  --repo https://github.com/augurlabs/augur
+aveloxis data-test --released-tag origin/main
 ```
 
 This is documented in [`docs/guide/data-test.md`](../guide/data-test.md). You don't run it during normal feature work — it's the operator-side gate before a release.

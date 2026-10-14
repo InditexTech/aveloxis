@@ -952,9 +952,10 @@ that no longer matters for the host verdict.
 ## `aveloxis data-test`
 
 Operator-driven shadow-database verification harness for schema
-changes. Builds binaries from a tagged release and the local working
-tree, provisions two scratch databases (`aveloxis_released` and
-`aveloxis_new`), collects the same repo into each, and reports
+changes. Builds binaries from a git ref (a release tag or `origin/main`)
+and the local working tree, provisions two scratch databases
+(`aveloxis_released` and `aveloxis_new`), collects the same repositories
+into each (by default the standing set), and reports
 row-count differences. Catches data-loss regressions before they
 ship. Shipped in v0.22.8.
 
@@ -962,11 +963,12 @@ See the full guide: [Schema-change verification](data-test.md).
 
 ### Flags
 
-- `--released-tag TAG` — git tag of the released aveloxis version
-  to compare against (e.g., `0.22.6`). The tag must exist in the
-  local clone; `git fetch --tags` if missing. **Required.**
-- `--repo URL` — git URL of the test repo to collect into both
-  scratch DBs. `augurlabs/augur` is the canonical choice. **Required.**
+- `--released-tag REF` — the git ref to compare against: a release
+  tag (e.g., `v0.22.6`), a branch such as `origin/main`, or a commit.
+  It must exist in the local clone; `git fetch` if missing. **Required.**
+- `--repo URL` — git URL of a repository to collect into both
+  scratch DBs; repeatable. Without it the harness collects its
+  standing set: `backstage/backstage`, `MISP/MISP` and `sunpy/sunpy`.
 - `--keep-dbs` — retain the scratch DBs after the run. Default is
   to drop them. Pass when you want to inspect a failing table via
   `psql` after the report is written.
@@ -982,28 +984,30 @@ See the full guide: [Schema-change verification](data-test.md).
   `aveloxis.json` credentials. The user must have **CREATEDB
   privilege** because the harness creates and drops scratch
   databases.
-- Copies API keys from the operator's primary `aveloxis_ops.api_keys`
+- Copies API keys from the operator's primary `aveloxis_ops.worker_oauth`
   table into both scratch DBs — operator doesn't re-paste tokens.
-- Collections run **sequentially** (~30 min each), not parallel,
-  because both sides share the API key pool.
+- Collections run **sequentially**, not in parallel, because both sides
+  share the API key pool. Each is a full collection: tens of minutes for
+  a mid-size repository, hours for `backstage/backstage`, so a run of the
+  standing set can take most of a day.
 - Exit code 0 on PASS or FLAG-only; exit code 1 on any FAIL (row
   loss detected) — suitable for CI gating.
 
 ### Examples
 
 ```bash
-# Validate the current working tree against v0.22.6 using augur
-aveloxis data-test --released-tag 0.22.6 \
-  --repo https://github.com/augurlabs/augur
+# Validate the current working tree against main, on the standing set
+aveloxis data-test --released-tag origin/main
 
 # Keep scratch DBs for ad-hoc inspection after a FAIL
-aveloxis data-test --released-tag 0.22.6 \
-  --repo https://github.com/augurlabs/augur \
-  --keep-dbs
+aveloxis data-test --released-tag origin/main --keep-dbs
+
+# One repository only, against a release tag
+aveloxis data-test --released-tag v0.22.6 \
+  --repo https://github.com/sunpy/sunpy
 
 # Custom work directory (useful for CI artifact retention)
-aveloxis data-test --released-tag 0.22.6 \
-  --repo https://github.com/augurlabs/augur \
+aveloxis data-test --released-tag origin/main \
   --work-dir /var/cache/aveloxis-data-test
 ```
 

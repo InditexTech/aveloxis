@@ -2872,20 +2872,22 @@ that no longer matters for the host verdict.</p>
 <section id="aveloxis-data-test">
 <h2><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">data-test</span></code><a class="headerlink" href="#aveloxis-data-test" title="Link to this heading"></a></h2>
 <p>Operator-driven shadow-database verification harness for schema
-changes. Builds binaries from a tagged release and the local working
-tree, provisions two scratch databases (<code class="docutils literal notranslate"><span class="pre">aveloxis_released</span></code> and
-<code class="docutils literal notranslate"><span class="pre">aveloxis_new</span></code>), collects the same repo into each, and reports
+changes. Builds binaries from a git ref (a release tag or <code class="docutils literal notranslate"><span class="pre">origin/main</span></code>)
+and the local working tree, provisions two scratch databases
+(<code class="docutils literal notranslate"><span class="pre">aveloxis_released</span></code> and <code class="docutils literal notranslate"><span class="pre">aveloxis_new</span></code>), collects the same repositories
+into each (by default the standing set), and reports
 row-count differences. Catches data-loss regressions before they
 ship. Shipped in v0.22.8.</p>
 <p>See the full guide: <a class="reference internal" href="data-test.html"><span class="std std-doc">Schema-change verification</span></a>.</p>
 <section id="id9">
 <h3>Flags<a class="headerlink" href="#id9" title="Link to this heading"></a></h3>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--released-tag</span> <span class="pre">TAG</span></code> — git tag of the released aveloxis version
-to compare against (e.g., <code class="docutils literal notranslate"><span class="pre">0.22.6</span></code>). The tag must exist in the
-local clone; <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">fetch</span> <span class="pre">--tags</span></code> if missing. <strong>Required.</strong></p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--repo</span> <span class="pre">URL</span></code> — git URL of the test repo to collect into both
-scratch DBs. <code class="docutils literal notranslate"><span class="pre">augurlabs/augur</span></code> is the canonical choice. <strong>Required.</strong></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--released-tag</span> <span class="pre">REF</span></code> — the git ref to compare against: a release
+tag (e.g., <code class="docutils literal notranslate"><span class="pre">v0.22.6</span></code>), a branch such as <code class="docutils literal notranslate"><span class="pre">origin/main</span></code>, or a commit.
+It must exist in the local clone; <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">fetch</span></code> if missing. <strong>Required.</strong></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--repo</span> <span class="pre">URL</span></code> — git URL of a repository to collect into both
+scratch DBs; repeatable. Without it the harness collects its
+standing set: <code class="docutils literal notranslate"><span class="pre">backstage/backstage</span></code>, <code class="docutils literal notranslate"><span class="pre">MISP/MISP</span></code> and <code class="docutils literal notranslate"><span class="pre">sunpy/sunpy</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--keep-dbs</span></code> — retain the scratch DBs after the run. Default is
 to drop them. Pass when you want to inspect a failing table via
 <code class="docutils literal notranslate"><span class="pre">psql</span></code> after the report is written.</p></li>
@@ -2903,28 +2905,30 @@ clone’s objects — no remote fetch).</p></li>
 <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> credentials. The user must have <strong>CREATEDB
 privilege</strong> because the harness creates and drops scratch
 databases.</p></li>
-<li><p>Copies API keys from the operator’s primary <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.api_keys</span></code>
+<li><p>Copies API keys from the operator’s primary <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.worker_oauth</span></code>
 table into both scratch DBs — operator doesn’t re-paste tokens.</p></li>
-<li><p>Collections run <strong>sequentially</strong> (~30 min each), not parallel,
-because both sides share the API key pool.</p></li>
+<li><p>Collections run <strong>sequentially</strong>, not in parallel, because both sides
+share the API key pool. Each is a full collection: tens of minutes for
+a mid-size repository, hours for <code class="docutils literal notranslate"><span class="pre">backstage/backstage</span></code>, so a run of the
+standing set can take most of a day.</p></li>
 <li><p>Exit code 0 on PASS or FLAG-only; exit code 1 on any FAIL (row
 loss detected) — suitable for CI gating.</p></li>
 </ul>
 </section>
 <section id="id11">
 <h3>Examples<a class="headerlink" href="#id11" title="Link to this heading"></a></h3>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Validate the current working tree against v0.22.6 using augur</span>
-aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span><span class="m">0</span>.22.6<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--repo<span class="w"> </span>https://github.com/augurlabs/augur
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Validate the current working tree against main, on the standing set</span>
+aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span>origin/main
 
 <span class="c1"># Keep scratch DBs for ad-hoc inspection after a FAIL</span>
-aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span><span class="m">0</span>.22.6<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--repo<span class="w"> </span>https://github.com/augurlabs/augur<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--keep-dbs
+aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span>origin/main<span class="w"> </span>--keep-dbs
+
+<span class="c1"># One repository only, against a release tag</span>
+aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span>v0.22.6<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--repo<span class="w"> </span>https://github.com/sunpy/sunpy
 
 <span class="c1"># Custom work directory (useful for CI artifact retention)</span>
-aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span><span class="m">0</span>.22.6<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--repo<span class="w"> </span>https://github.com/augurlabs/augur<span class="w"> </span><span class="se">\</span>
+aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span>origin/main<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--work-dir<span class="w"> </span>/var/cache/aveloxis-data-test
 </pre></div>
 </div>

@@ -1935,24 +1935,26 @@ of wall-clock; cheap insurance.</p>
 <h3>Running the gate<a class="headerlink" href="#running-the-gate" title="Link to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># From the contributor&#39;s working branch, with the schema change</span>
 <span class="c1"># checked out locally:</span>
-aveloxis<span class="w"> </span>data-test<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--released-tag<span class="w"> </span><span class="m">0</span>.22.6<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--repo<span class="w"> </span>https://github.com/augurlabs/augur
+aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span>origin/main
 </pre></div>
 </div>
 <p>The harness:</p>
 <ol class="arabic simple">
-<li><p>Builds binaries from the released tag (via <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">worktree</span></code>) and
-the current working tree.</p></li>
+<li><p>Builds binaries from the given ref — a release tag or <code class="docutils literal notranslate"><span class="pre">origin/main</span></code>
+(via <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">worktree</span></code>) — and the current working tree.</p></li>
 <li><p>Provisions two scratch PostgreSQL databases.</p></li>
-<li><p>Collects <code class="docutils literal notranslate"><span class="pre">augurlabs/augur</span></code> into each.</p></li>
+<li><p>Collects the same repositories into each — by default the standing
+set: <code class="docutils literal notranslate"><span class="pre">backstage/backstage</span></code>, <code class="docutils literal notranslate"><span class="pre">MISP/MISP</span></code> and <code class="docutils literal notranslate"><span class="pre">sunpy/sunpy</span></code>.</p></li>
 <li><p>Diffs row counts table-by-table.</p></li>
 <li><p>Writes a markdown report to <code class="docutils literal notranslate"><span class="pre">&lt;work-dir&gt;/report.md</span></code>.</p></li>
 <li><p>Exits 0 if all rows PASS or FLAG; exits 1 on any FAIL.</p></li>
 </ol>
-<p>The canonical test repo is <code class="docutils literal notranslate"><span class="pre">augurlabs/augur</span></code> — moderate size (a few
-thousand issues, a few thousand PRs, lots of commits) that exercises
-every collection path without taking hours.</p>
+<p>The standing set pairs one large, busy repository (<code class="docutils literal notranslate"><span class="pre">backstage/backstage</span></code>:
+review-comment volume, the page-size step-down, long histories) with two
+active mid-size ones (<code class="docutils literal notranslate"><span class="pre">MISP/MISP</span></code>, <code class="docutils literal notranslate"><span class="pre">sunpy/sunpy</span></code>) whose Python and
+JavaScript dependency trees exercise the analysis phases. Collections are
+full and sequential, so a run takes hours — most of it on backstage. Pass
+<code class="docutils literal notranslate"><span class="pre">--repo</span></code> (repeatable) to collect other repositories instead.</p>
 </section>
 <section id="interpreting-results">
 <h3>Interpreting results<a class="headerlink" href="#interpreting-results" title="Link to this heading"></a></h3>
@@ -1975,8 +1977,8 @@ job:</p>
 <span class="w">  </span><span class="nt">if</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">contains(github.event.pull_request.labels.*.name, &#39;schema-change&#39;)</span>
 <span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
 <span class="w">    </span><span class="no">aveloxis data-test \</span>
-<span class="w">      </span><span class="no">--released-tag $LAST_RELEASED \</span>
-<span class="w">      </span><span class="no">--repo https://github.com/augurlabs/augur \</span>
+<span class="w">      </span><span class="no">--released-tag &quot;$LAST_RELEASED&quot; \</span>
+<span class="w">      </span><span class="no">--repo https://github.com/sunpy/sunpy \</span>
 <span class="w">      </span><span class="no">--work-dir /tmp/aveloxis-data-test-${{ github.run_id }}</span>
 <span class="w">  </span><span class="c1"># Exit code 1 on FAIL → fails the workflow.</span>
 
@@ -1991,9 +1993,13 @@ job:</p>
 <p>This requires the CI runner to have:</p>
 <ul class="simple">
 <li><p>Access to a PostgreSQL server with CREATEDB privilege.</p></li>
-<li><p>API keys pre-seeded into a primary <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.api_keys</span></code> table
+<li><p>API keys pre-seeded into a primary <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.worker_oauth</span></code> table
 on that server.</p></li>
-<li><p>Enough wall-clock budget for the ~1-hour cycle.</p></li>
+<li><p>Enough wall-clock budget. The standing set takes most of a day
+(backstage alone takes hours per side), well past a hosted runner’s
+job limit, so a CI job should pass <code class="docutils literal notranslate"><span class="pre">--repo</span></code> with one mid-size
+repository, as the example above does, and leave the standing set to
+the operator-run check.</p></li>
 </ul>
 <p>For projects without those, the harness still works as an
 operator-invoked local check before pushing the PR. The CI job is a

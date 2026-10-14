@@ -54,19 +54,22 @@ FLAGGED table.
 
 ## Prerequisites
 
-- A local clone of the aveloxis repository with the tag you want to
-  test against. If the tag is missing locally: `git fetch --tags`.
+- A local clone of the aveloxis repository with the ref you want to
+  test against (a release tag, or `origin/main`). If it is missing
+  locally: `git fetch` (with `--tags` for a tag).
 - PostgreSQL access via the operator's existing `aveloxis.json`
   credentials. The user must have **CREATEDB privilege** on the
   database server — required because the harness creates and drops
   scratch databases. Standard for development-mode aveloxis
   deployments.
 - API keys already loaded into the operator's primary
-  `aveloxis_ops.api_keys` table. The harness copies keys into both
+  `aveloxis_ops.worker_oauth` table. The harness copies keys into both
   scratch DBs automatically — you don't re-paste tokens.
-- ~1.5 hours of wall-clock time for a moderate test repo. Most of
-  this is sequential **full-history** collection passes (two of them,
-  ~30–45 min each on augurlabs/augur with a 73-token GitHub pool).
+- Hours of wall-clock time. Nearly all of it is sequential
+  **full-history** collection: every repository is collected twice, once
+  per side. A mid-size repository takes tens of minutes per side; the
+  standing set includes `backstage/backstage`, which takes hours per side,
+  so a run of the whole set can take most of a day.
   The harness always passes `--full` to `aveloxis collect` so both
   scratch DBs receive complete data with all parent records present.
   This is essential — see "Why full collection" below.
@@ -75,21 +78,25 @@ FLAGGED table.
 ## Running the harness
 
 ```bash
-aveloxis data-test \
-  --released-tag 0.22.6 \
-  --repo https://github.com/augurlabs/augur
+aveloxis data-test --released-tag origin/main
 ```
 
-Required flags:
+Required flag:
 
-- `--released-tag TAG` — a git tag in the local clone (e.g.,
-  `0.22.6`). The harness materializes the tag's source via
-  `git worktree add` and builds it.
-- `--repo URL` — the test repo to collect. `augurlabs/augur` is the
-  canonical choice: enough issues, PRs, and commits to exercise every
-  collection path without being so large that the cycle takes hours.
+- `--released-tag REF` — a git ref in the local clone: a release tag
+  (e.g., `v0.22.6`), `origin/main`, or a commit. The harness materializes
+  that source via `git worktree add` and builds it.
 
 Optional flags:
+
+- `--repo URL` — a repository to collect into both sides; repeatable.
+  Without it the harness collects its **standing set** (decided
+  2026-10-13; `augurlabs/augur` before that had grown too quiet):
+  - `https://github.com/backstage/backstage` — large and busy: review
+    comment volume, the page-size step-down, long histories;
+  - `https://github.com/MISP/MISP` and `https://github.com/sunpy/sunpy` —
+    active mid-size projects whose dependency trees exercise the analysis
+    phases.
 
 - `--keep-dbs` — retain `aveloxis_released` and `aveloxis_new` after
   the run. Default is to drop them. Pass this when you want to inspect
@@ -104,9 +111,9 @@ The report at `<work-dir>/report.md` opens with a summary:
 ```markdown
 # aveloxis data-test report
 
-- Released tag: 0.22.6 (in aveloxis_released)
+- Released tag: v0.22.6 (in aveloxis_released)
 - Local version: working tree (in aveloxis_new)
-- Test repo: https://github.com/augurlabs/augur
+- Test repo: https://github.com/backstage/backstage, https://github.com/MISP/MISP, https://github.com/sunpy/sunpy
 - Schemas: aveloxis_data, aveloxis_ops
 - Generated: 2026-05-17T14:30:00Z
 
@@ -236,8 +243,9 @@ will surface, instead of being masked by the partial-collection
 noise. Empirically confirmed in v0.22.10 after a 2026-05-17 diagnostic
 showed this exact pattern obscuring v0.22.7's FK behavior change.
 
-The trade-off is wall-clock time: a full collection takes ~30–45
-minutes on augurlabs/augur vs ~20–25 minutes incremental. The
+The trade-off is wall-clock time: a full collection takes markedly
+longer than an incremental one (hours rather than minutes on
+`backstage/backstage`). The
 signal quality is worth it; the whole point of the harness is to
 detect FK / data-loss regressions, and partial collection
 fundamentally cannot detect them.
@@ -246,8 +254,9 @@ fundamentally cannot detect them.
 
 - **Sequential collection, not parallel.** Both sides share the
   operator's API key pool. Parallel runs would burn 2× the rate budget
-  and produce non-reproducible timings. ~1.5 hours total (with --full)
-  is the cost of reliable results.
+  and produce non-reproducible timings. Hours of wall-clock time (full
+  collections, sequential; most of it on backstage) are the cost of
+  reliable results.
 - **`git worktree`, not `git clone`.** Reuses the local clone's git
   objects. Works offline. Faster.
 - **Self-discovering tables, not a per-table fixture.** Adding a new
@@ -269,8 +278,7 @@ fundamentally cannot detect them.
 - name: Validate schema change
   run: |
     aveloxis data-test \
-      --released-tag ${{ env.LAST_RELEASED_TAG }} \
-      --repo https://github.com/augurlabs/augur
+      --released-tag "${{ env.LAST_RELEASED_TAG }}"
   # Exit code 1 on any FAIL → fails the build
   # Exit code 0 on PASS or FLAG-only → proceeds
 ```
@@ -362,11 +370,13 @@ FLAGging as new > released against those tags is likewise expected.
 A run with `--keep-dbs` leaves `aveloxis_released` and `aveloxis_new` in
 place. `--diff-only` skips the builds, provisioning, and collection
 phases entirely and re-runs ONLY the row-count + column-fill diff and
-the report against those databases:
+the report against those databases. It names the repositories the
+collecting run recorded in its work directory (`repos.txt`); pass
+`--repo` only if that file is missing:
 
 ```bash
 aveloxis data-test --diff-only \
-  --released-tag main --repo https://github.com/augurlabs/augur \
+  --released-tag origin/main \
   --work-dir /path/from/the/original/run
 ```
 

@@ -314,7 +314,7 @@ This was added in v0.19.5 specifically for the "iterate on a v0.19.4 schema-erro
    step — a column documented at introduction can never drift
    silently.
 9. Run `go test ./...` AND the integration tier.
-10. (Optional but recommended) Run `aveloxis data-test --released-tag <prev> --repo <test-repo>` to verify the new version doesn't lose data vs the prior release. See [`docs/guide/data-test.md`](../guide/data-test.md).
+10. (Optional but recommended) Run `aveloxis data-test --released-tag origin/main` (or the previous release's tag) to verify the new version doesn't lose data; it collects the standing repository set unless you pass `--repo`. See [`docs/guide/data-test.md`](../guide/data-test.md).
 
 ## What v0.21.5 made explicit: who can run migrations
 

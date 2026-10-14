@@ -1803,10 +1803,8 @@ SPDX-License-Identifier: MIT
 </section>
 <section id="tier-3-data-test-harness-cross-version-regression-detection">
 <h3>Tier 3 — <code class="docutils literal notranslate"><span class="pre">data-test</span></code> harness (cross-version regression detection)<a class="headerlink" href="#tier-3-data-test-harness-cross-version-regression-detection" title="Link to this heading"></a></h3>
-<p>The <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">data-test</span></code> subcommand collects the same repo into two scratch databases (one with a released-tag binary, one with the local working-tree binary) and row-count-diffs them. Catches schema-regression data loss before it ships.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>aveloxis<span class="w"> </span>data-test<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--released-tag<span class="w"> </span><span class="m">0</span>.23.3<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--repo<span class="w"> </span>https://github.com/augurlabs/augur
+<p>The <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">data-test</span></code> subcommand collects the same repositories into two scratch databases (one with a binary built from a release tag or <code class="docutils literal notranslate"><span class="pre">origin/main</span></code>, one with the local working-tree binary) and diffs them table by table. Catches schema-regression data loss before it ships. Without <code class="docutils literal notranslate"><span class="pre">--repo</span></code> it collects the standing set: <code class="docutils literal notranslate"><span class="pre">backstage/backstage</span></code>, <code class="docutils literal notranslate"><span class="pre">MISP/MISP</span></code> and <code class="docutils literal notranslate"><span class="pre">sunpy/sunpy</span></code> (a run takes hours, most of it on backstage).</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span>origin/main
 </pre></div>
 </div>
 <p>This is documented in <a class="reference internal" href="../guide/data-test.html"><span class="std std-doc"><code class="docutils literal notranslate"><span class="pre">docs/guide/data-test.md</span></code></span></a>. You don’t run it during normal feature work — it’s the operator-side gate before a release.</p>

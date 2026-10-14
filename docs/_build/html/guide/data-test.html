@@ -1821,19 +1821,22 @@ FLAGGED table.</p>
 <section id="prerequisites">
 <h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h2>
 <ul class="simple">
-<li><p>A local clone of the aveloxis repository with the tag you want to
-test against. If the tag is missing locally: <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">fetch</span> <span class="pre">--tags</span></code>.</p></li>
+<li><p>A local clone of the aveloxis repository with the ref you want to
+test against (a release tag, or <code class="docutils literal notranslate"><span class="pre">origin/main</span></code>). If it is missing
+locally: <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">fetch</span></code> (with <code class="docutils literal notranslate"><span class="pre">--tags</span></code> for a tag).</p></li>
 <li><p>PostgreSQL access via the operator’s existing <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code>
 credentials. The user must have <strong>CREATEDB privilege</strong> on the
 database server — required because the harness creates and drops
 scratch databases. Standard for development-mode aveloxis
 deployments.</p></li>
 <li><p>API keys already loaded into the operator’s primary
-<code class="docutils literal notranslate"><span class="pre">aveloxis_ops.api_keys</span></code> table. The harness copies keys into both
+<code class="docutils literal notranslate"><span class="pre">aveloxis_ops.worker_oauth</span></code> table. The harness copies keys into both
 scratch DBs automatically — you don’t re-paste tokens.</p></li>
-<li><p>~1.5 hours of wall-clock time for a moderate test repo. Most of
-this is sequential <strong>full-history</strong> collection passes (two of them,
-~30–45 min each on augurlabs/augur with a 73-token GitHub pool).
+<li><p>Hours of wall-clock time. Nearly all of it is sequential
+<strong>full-history</strong> collection: every repository is collected twice, once
+per side. A mid-size repository takes tens of minutes per side; the
+standing set includes <code class="docutils literal notranslate"><span class="pre">backstage/backstage</span></code>, which takes hours per side,
+so a run of the whole set can take most of a day.
 The harness always passes <code class="docutils literal notranslate"><span class="pre">--full</span></code> to <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">collect</span></code> so both
 scratch DBs receive complete data with all parent records present.
 This is essential — see “Why full collection” below.</p></li>
@@ -1842,22 +1845,28 @@ This is essential — see “Why full collection” below.</p></li>
 </section>
 <section id="running-the-harness">
 <h2>Running the harness<a class="headerlink" href="#running-the-harness" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>aveloxis<span class="w"> </span>data-test<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--released-tag<span class="w"> </span><span class="m">0</span>.22.6<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--repo<span class="w"> </span>https://github.com/augurlabs/augur
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span>origin/main
 </pre></div>
 </div>
-<p>Required flags:</p>
+<p>Required flag:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--released-tag</span> <span class="pre">TAG</span></code> — a git tag in the local clone (e.g.,
-<code class="docutils literal notranslate"><span class="pre">0.22.6</span></code>). The harness materializes the tag’s source via
-<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">worktree</span> <span class="pre">add</span></code> and builds it.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--repo</span> <span class="pre">URL</span></code> — the test repo to collect. <code class="docutils literal notranslate"><span class="pre">augurlabs/augur</span></code> is the
-canonical choice: enough issues, PRs, and commits to exercise every
-collection path without being so large that the cycle takes hours.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--released-tag</span> <span class="pre">REF</span></code> — a git ref in the local clone: a release tag
+(e.g., <code class="docutils literal notranslate"><span class="pre">v0.22.6</span></code>), <code class="docutils literal notranslate"><span class="pre">origin/main</span></code>, or a commit. The harness materializes
+that source via <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">worktree</span> <span class="pre">add</span></code> and builds it.</p></li>
 </ul>
 <p>Optional flags:</p>
 <ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--repo</span> <span class="pre">URL</span></code> — a repository to collect into both sides; repeatable.
+Without it the harness collects its <strong>standing set</strong> (decided
+2026-10-13; <code class="docutils literal notranslate"><span class="pre">augurlabs/augur</span></code> before that had grown too quiet):</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">https://github.com/backstage/backstage</span></code> — large and busy: review
+comment volume, the page-size step-down, long histories;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">https://github.com/MISP/MISP</span></code> and <code class="docutils literal notranslate"><span class="pre">https://github.com/sunpy/sunpy</span></code> —
+active mid-size projects whose dependency trees exercise the analysis
+phases.</p></li>
+</ul>
+</li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--keep-dbs</span></code> — retain <code class="docutils literal notranslate"><span class="pre">aveloxis_released</span></code> and <code class="docutils literal notranslate"><span class="pre">aveloxis_new</span></code> after
 the run. Default is to drop them. Pass this when you want to inspect
 a FAILing table directly via <code class="docutils literal notranslate"><span class="pre">psql</span></code> after the report is written.</p></li>
@@ -1870,9 +1879,9 @@ Default is a fresh <code class="docutils literal notranslate"><span class="pre">
 <p>The report at <code class="docutils literal notranslate"><span class="pre">&lt;work-dir&gt;/report.md</span></code> opens with a summary:</p>
 <div class="highlight-markdown notranslate"><div class="highlight"><pre><span></span><span class="gh"># aveloxis data-test report</span>
 
-<span class="k">-</span><span class="w"> </span>Released tag: 0.22.6 (in aveloxis_released)
+<span class="k">-</span><span class="w"> </span>Released tag: v0.22.6 (in aveloxis_released)
 <span class="k">-</span><span class="w"> </span>Local version: working tree (in aveloxis_new)
-<span class="k">-</span><span class="w"> </span>Test repo: https://github.com/augurlabs/augur
+<span class="k">-</span><span class="w"> </span>Test repo: https://github.com/backstage/backstage, https://github.com/MISP/MISP, https://github.com/sunpy/sunpy
 <span class="k">-</span><span class="w"> </span>Schemas: aveloxis_data, aveloxis_ops
 <span class="k">-</span><span class="w"> </span>Generated: 2026-05-17T14:30:00Z
 
@@ -2005,8 +2014,9 @@ parent tables. Any real regression introduced by a schema change
 will surface, instead of being masked by the partial-collection
 noise. Empirically confirmed in v0.22.10 after a 2026-05-17 diagnostic
 showed this exact pattern obscuring v0.22.7’s FK behavior change.</p>
-<p>The trade-off is wall-clock time: a full collection takes ~30–45
-minutes on augurlabs/augur vs ~20–25 minutes incremental. The
+<p>The trade-off is wall-clock time: a full collection takes markedly
+longer than an incremental one (hours rather than minutes on
+<code class="docutils literal notranslate"><span class="pre">backstage/backstage</span></code>). The
 signal quality is worth it; the whole point of the harness is to
 detect FK / data-loss regressions, and partial collection
 fundamentally cannot detect them.</p>
@@ -2016,8 +2026,9 @@ fundamentally cannot detect them.</p>
 <ul class="simple">
 <li><p><strong>Sequential collection, not parallel.</strong> Both sides share the
 operator’s API key pool. Parallel runs would burn 2× the rate budget
-and produce non-reproducible timings. ~1.5 hours total (with –full)
-is the cost of reliable results.</p></li>
+and produce non-reproducible timings. Hours of wall-clock time (full
+collections, sequential; most of it on backstage) are the cost of
+reliable results.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">worktree</span></code>, not <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">clone</span></code>.</strong> Reuses the local clone’s git
 objects. Works offline. Faster.</p></li>
 <li><p><strong>Self-discovering tables, not a per-table fixture.</strong> Adding a new
@@ -2039,8 +2050,7 @@ database server they target.</p></li>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Validate schema change</span>
 <span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
 <span class="w">    </span><span class="no">aveloxis data-test \</span>
-<span class="w">      </span><span class="no">--released-tag ${{ env.LAST_RELEASED_TAG }} \</span>
-<span class="w">      </span><span class="no">--repo https://github.com/augurlabs/augur</span>
+<span class="w">      </span><span class="no">--released-tag &quot;${{ env.LAST_RELEASED_TAG }}&quot;</span>
 <span class="w">  </span><span class="c1"># Exit code 1 on any FAIL → fails the build</span>
 <span class="w">  </span><span class="c1"># Exit code 0 on PASS or FLAG-only → proceeds</span>
 </pre></div>
@@ -2134,9 +2144,11 @@ FLAGging as new &gt; released against those tags is likewise expected.</p>
 <p>A run with <code class="docutils literal notranslate"><span class="pre">--keep-dbs</span></code> leaves <code class="docutils literal notranslate"><span class="pre">aveloxis_released</span></code> and <code class="docutils literal notranslate"><span class="pre">aveloxis_new</span></code> in
 place. <code class="docutils literal notranslate"><span class="pre">--diff-only</span></code> skips the builds, provisioning, and collection
 phases entirely and re-runs ONLY the row-count + column-fill diff and
-the report against those databases:</p>
+the report against those databases. It names the repositories the
+collecting run recorded in its work directory (<code class="docutils literal notranslate"><span class="pre">repos.txt</span></code>); pass
+<code class="docutils literal notranslate"><span class="pre">--repo</span></code> only if that file is missing:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>aveloxis<span class="w"> </span>data-test<span class="w"> </span>--diff-only<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--released-tag<span class="w"> </span>main<span class="w"> </span>--repo<span class="w"> </span>https://github.com/augurlabs/augur<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--released-tag<span class="w"> </span>origin/main<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--work-dir<span class="w"> </span>/path/from/the/original/run
 </pre></div>
 </div>
