@@ -631,7 +631,7 @@ var v02996DeployChecklist = func() []deployStep {
 	copy(out, prev)
 	for i := range out {
 		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.96: no schema change. The WARN 'organization repositories not linked' now names the quota that refused (quota=repos_per_account or repo_links_per_day) with a `used` field instead of calling every refusal the repository quota; a log filter on its old text ('the account's repository quota is reached') or on `reach=` must follow. A fleet already running 0.29.95 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.95's notes below in the same one migrate. " + out[i].desc
+			out[i].desc = "0.29.96: no schema change. Every log line about a refused quota (the WARN 'organization repositories not linked', the once-a-day 'repository quota' / 'daily additions quota' / 'sign-up quota' lines and the API's two 'request refused' lines) now carries quota=, used=, allowed= and wanted=; the organization line names the quota that refused instead of calling every refusal the repository quota. A log filter on the old text ('the account's repository quota is reached') or on reach=, added_today=, adding= or signups_today= must follow. Unchanged: the API's per-request rate quotas refuse on the once-per-window 'quota reached — refused until its window ends' line, which carries window_ends= instead of wanted=. A fleet already running 0.29.95 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.95's notes below in the same one migrate. " + out[i].desc
 		}
 	}
 	return out

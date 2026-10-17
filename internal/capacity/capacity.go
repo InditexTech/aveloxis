@@ -171,6 +171,17 @@ type Exceeded struct {
 	Contact string    // where a heavy user may write; empty → not offered
 }
 
+// LogAttrs is the ONE vocabulary a logged refusal carries (v0.29.96, L18;
+// Copilot review 5559632343): the quota that refused, what it counted as
+// used (an allocation: the reach; a rate quota: the window's count), the
+// allowance and what it was asked for (a per-request quota: 1). Every
+// site that logs a refusal's numbers appends these (internal/db's
+// TestCapacityRefusalLogsShareOneVocabulary); before 0.29.96 the sites
+// spelled reach/added_today/adding/signups_today.
+func (e *Exceeded) LogAttrs() []any {
+	return []any{"quota", e.Quota, "used", e.Used, "allowed", e.Allowed, "wanted", e.Wanted}
+}
+
 func (e *Exceeded) Error() string {
 	if e.Kind == KindAllocation {
 		return fmt.Sprintf("capacity: %s: %d of %d in use, %d more refused", e.Quota, e.Used, e.Allowed, e.Wanted)
@@ -413,7 +424,9 @@ func (m *Meter) Charge(s Subject, quotas ...RateQuota) Result {
 		if q.Mode == Enforce && w.used() >= int64(q.Allowed) && res.Refusal == nil {
 			d := decision(q, w)
 			d.Over = true
-			res.Refusal = &Exceeded{Kind: KindRate, Quota: q.Name, Window: q.Window, Used: d.Used, Allowed: q.Allowed, ResetAt: d.ResetAt}
+			// Wanted: the request asked for one unit (v0.29.96: wanted= is
+			// logged for every refusal, and 0 would read as "nothing").
+			res.Refusal = &Exceeded{Kind: KindRate, Quota: q.Name, Window: q.Window, Used: d.Used, Allowed: q.Allowed, Wanted: 1, ResetAt: d.ResetAt}
 			if !w.notified {
 				w.notified = true
 				notify = append(notify, d)

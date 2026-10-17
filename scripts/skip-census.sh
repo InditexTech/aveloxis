@@ -35,9 +35,23 @@ else
 fi
 trap '[ "$keep_out" -eq 1 ] || rm -rf "$OUT"' EXIT
 
-# output_text prints the text of `go test -json` output events, unescaped.
+# output_text prints the text of `go test -json` output events, decoded in
+# one pass: an escaped backslash is set aside first so a literal `\t` in a
+# test's message is not read as a tab (and put back by concatenation — a
+# gsub replacement reads backslashes differently per awk), and the HTML
+# escapes test2json's json.Marshal writes (< > &) are turned back.
 output_text() {
-	sed -E 's/.*"Output":"(.*)"}$/\1/; s/\\n$//; s/\\t/	/g; s/\\"/"/g; s/\\\\/\\/g'
+	awk '{
+		s = $0
+		sub(/.*"Output":"/, "", s); sub(/"}$/, "", s)
+		gsub(/\\\\/, "\001", s)
+		sub(/\\n$/, "", s)
+		gsub(/\\n/, "\n", s); gsub(/\\t/, "\t", s); gsub(/\\"/, "\"", s)
+		gsub(/\\u003c/, "<", s); gsub(/\\u003e/, ">", s); gsub(/\\u0026/, "\\&", s)
+		n = split(s, part, "\001"); s = part[1]
+		for (i = 2; i <= n; i++) s = s "\\" part[i]
+		print s
+	}'
 }
 
 cd "$ROOT" || exit 2
@@ -94,26 +108,35 @@ if [ "$suite_status" -ne 0 ]; then
 	grep -E '"Action":"fail"' "$OUT/suite.json" | grep '"Test":"' |
 		sed -E 's/.*"Package":"([^"]*)".*"Test":"([^"]*)".*/  test    \1 \2/' | sort -u | head -40
 	grep -E '"Action":"fail"' "$OUT/suite.json" | grep -v '"Test":"' |
-		sed -E 's/.*"Package":"([^"]*)".*/  package \1 (build, TestMain or timeout — see below)/' | sort -u
+		sed -E 's/.*"Package":"([^"]*)".*/\1/' | sort -u |
+		while IFS= read -r pkg; do
+			if grep -F "\"Package\":\"$pkg\"" "$OUT/suite.json" | grep '"Action":"fail"' | grep -q '"Test":"'; then
+				echo "  package $pkg (a test failed — see below)"
+			else
+				echo "  package $pkg (build, TestMain or timeout — see below)"
+			fi
+		done
 	# Each failed package's own output (its `-test.shuffle N` seed — rerun
 	# with it to reproduce an order dependency — and anything outside a
-	# test: a panic in TestMain, the FAIL line), then each failed test's
-	# output: the assertion messages, panic and race traces (Copilot review
-	# 5559632343: names alone, with the JSON in a discarded runner, left
-	# nothing to diagnose). The last 200 lines of a test; the whole stream
-	# is in suite.json.
+	# test: a panic in TestMain, the FAIL line), then the whole output of
+	# every test of it that did not pass or skip: the failed ones, and the
+	# ones that never finished — a timed-out test gets no fail event, and
+	# the `panic: test timed out` and the goroutine dump are attributed to
+	# it (Copilot review 5559632343: names alone, with the JSON in a
+	# discarded runner, left nothing to diagnose; L10 round 1 F1: hangs).
+	# Nothing is cut: a dump is the diagnosis, and the stream is kept too.
 	grep '"Action":"fail"' "$OUT/suite.json" | grep -v '"Test":"' |
 		sed -E 's/.*"Package":"([^"]*)".*/\1/' | sort -u |
 		while IFS= read -r pkg; do
 			echo "  --- $pkg ---"
 			grep -F "\"Package\":\"$pkg\"" "$OUT/suite.json" | grep '"Action":"output"' | grep -v '"Test":"' |
 				output_text | sed 's/^/  /'
-			grep -F "\"Package\":\"$pkg\"" "$OUT/suite.json" | grep '"Action":"fail"' | grep '"Test":"' |
-				sed -E 's/.*"Test":"([^"]*)".*/\1/' | sort -u |
+			pkg_tests() { grep -F "\"Package\":\"$pkg\"" "$OUT/suite.json" | grep "\"Action\":\"$1\"" | grep '"Test":"' | sed -E 's/.*"Test":"([^"]*)".*/\1/' | sort -u; }
+			comm -23 <(pkg_tests run) <({ pkg_tests pass; pkg_tests skip; } | sort -u) |
 				while IFS= read -r test; do
 					echo "  --- $pkg $test ---"
 					grep -F "\"Package\":\"$pkg\"" "$OUT/suite.json" | grep -F "\"Test\":\"$test\"" | grep '"Action":"output"' |
-						output_text | tail -200 | sed 's/^/  /'
+						output_text | sed 's/^/  /'
 				done
 		done
 	# Build errors arrive as "build-output" events in the JSON stream (and

@@ -8,6 +8,11 @@
 {"Time":"2026-10-17T15:00:00Z","Action":"pass","Package":"github.com/aveloxis/aveloxis/internal/okpkg","Elapsed":0.1}
 {"Time":"2026-10-17T15:00:01Z","Action":"start","Package":"github.com/aveloxis/aveloxis/internal/badpkg"}
 {"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Output":"-test.shuffle 4242424242\n"}
+{"Time":"2026-10-17T15:00:01Z","Action":"run","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestAardvarkSkipped"}
+{"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestAardvarkSkipped","Output":"=== RUN   TestAardvarkSkipped\n"}
+{"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestAardvarkSkipped","Output":"    aardvark_test.go:9: AVELOXIS_TEST_TOOL not set\n"}
+{"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestAardvarkSkipped","Output":"--- SKIP: TestAardvarkSkipped (0.00s)\n"}
+{"Time":"2026-10-17T15:00:01Z","Action":"skip","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestAardvarkSkipped","Elapsed":0}
 {"Time":"2026-10-17T15:00:01Z","Action":"run","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestAlsoFine"}
 {"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestAlsoFine","Output":"=== RUN   TestAlsoFine\n"}
 {"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestAlsoFine","Output":"--- PASS: TestAlsoFine (0.00s)\n"}
@@ -15,8 +20,24 @@
 {"Time":"2026-10-17T15:00:01Z","Action":"run","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestBroken"}
 {"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestBroken","Output":"=== RUN   TestBroken\n"}
 {"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestBroken","Output":"    broken_test.go:12: reach = 2; want 1 (the \"fill\" links what fits)\n"}
+{"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestBroken","Output":"    broken_test.go:13: got \u003cnil\u003e \u0026 \"q\" want \"a\\tb\\\\c\"\n"}
 {"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestBroken","Output":"--- FAIL: TestBroken (0.01s)\n"}
 {"Time":"2026-10-17T15:00:01Z","Action":"fail","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Test":"TestBroken","Elapsed":0.01}
 {"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Output":"FAIL\n"}
 {"Time":"2026-10-17T15:00:01Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Output":"FAIL\tgithub.com/aveloxis/aveloxis/internal/badpkg\t0.020s\n"}
 {"Time":"2026-10-17T15:00:01Z","Action":"fail","Package":"github.com/aveloxis/aveloxis/internal/badpkg","Elapsed":0.02}
+{"Time":"2026-10-17T15:00:02Z","Action":"start","Package":"github.com/aveloxis/aveloxis/internal/hangpkg"}
+{"Time":"2026-10-17T15:00:02Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Output":"-test.shuffle 777\n"}
+{"Time":"2026-10-17T15:00:02Z","Action":"run","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestQuick"}
+{"Time":"2026-10-17T15:00:02Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestQuick","Output":"=== RUN   TestQuick\n"}
+{"Time":"2026-10-17T15:00:02Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestQuick","Output":"--- PASS: TestQuick (0.00s)\n"}
+{"Time":"2026-10-17T15:00:02Z","Action":"pass","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestQuick","Elapsed":0}
+{"Time":"2026-10-17T15:00:02Z","Action":"run","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestHangs"}
+{"Time":"2026-10-17T15:00:02Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestHangs","Output":"=== RUN   TestHangs\n"}
+{"Time":"2026-10-17T15:00:04Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestHangs","Output":"panic: test timed out after 2s\n"}
+{"Time":"2026-10-17T15:00:04Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestHangs","Output":"\trunning tests:\n"}
+{"Time":"2026-10-17T15:00:04Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestHangs","Output":"\t\tTestHangs (2s)\n"}
+{"Time":"2026-10-17T15:00:04Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestHangs","Output":"goroutine 7 [select]:\n"}
+{"Time":"2026-10-17T15:00:04Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Test":"TestHangs","Output":"example.com/hangpkg.TestHangs(0xc000104000)\n"}
+{"Time":"2026-10-17T15:00:04Z","Action":"output","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Output":"FAIL\tgithub.com/aveloxis/aveloxis/internal/hangpkg\t2.214s\n"}
+{"Time":"2026-10-17T15:00:04Z","Action":"fail","Package":"github.com/aveloxis/aveloxis/internal/hangpkg","Elapsed":2.214}

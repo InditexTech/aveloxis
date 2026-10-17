@@ -1193,7 +1193,7 @@ func keepAdmitted(repoIDs, fresh []int64, admit int) []int64 {
 func (s *PostgresStore) noteShadowAllocation(owner int, ex *capacity.Exceeded) {
 	if s.capacityNotifier().Due(fmt.Sprintf("repos_per_account|%d", owner)) {
 		s.logger.Warn("repository quota (shadow): an enforced quota would have refused this addition",
-			"user_id", owner, "reach", ex.Used, "allowed", ex.Allowed, "adding", ex.Wanted)
+			append([]any{"user_id", owner}, ex.LogAttrs()...)...)
 	}
 }
 
@@ -1202,7 +1202,7 @@ func (s *PostgresStore) noteShadowAllocation(owner int, ex *capacity.Exceeded) {
 func (s *PostgresStore) noteShadowLinks(owner int, ex *capacity.Exceeded) {
 	if s.capacityNotifier().Due(fmt.Sprintf("repo_links_per_day|%d", owner)) {
 		s.logger.Warn("daily additions quota (shadow): an enforced quota would have refused this addition",
-			"user_id", owner, "added_today", ex.Used, "allowed", ex.Allowed, "adding", ex.Wanted)
+			append([]any{"user_id", owner}, ex.LogAttrs()...)...)
 	}
 }
 
@@ -1211,7 +1211,7 @@ func (s *PostgresStore) noteShadowLinks(owner int, ex *capacity.Exceeded) {
 func (s *PostgresStore) noteLinksRefused(owner int, ex *capacity.Exceeded) {
 	if s.capacityNotifier().Due(fmt.Sprintf("links_refused|%d", owner)) {
 		s.logger.Info("daily additions quota reached: an addition was refused (logged once a day per account)",
-			"user_id", owner, "added_today", ex.Used, "allowed", ex.Allowed, "adding", ex.Wanted)
+			append([]any{"user_id", owner}, ex.LogAttrs()...)...)
 	}
 }
 
@@ -1221,7 +1221,7 @@ func (s *PostgresStore) noteLinksRefused(owner int, ex *capacity.Exceeded) {
 func (s *PostgresStore) noteAllocationRefused(owner int, ex *capacity.Exceeded) {
 	if s.capacityNotifier().Due(fmt.Sprintf("repos_refused|%d", owner)) {
 		s.logger.Info("repository quota reached: an addition was refused (logged once a day per account)",
-			"user_id", owner, "reach", ex.Used, "allowed", ex.Allowed, "adding", ex.Wanted)
+			append([]any{"user_id", owner}, ex.LogAttrs()...)...)
 	}
 }
 
@@ -1336,17 +1336,17 @@ func (s *PostgresStore) admitSignup(ctx context.Context, tx pgx.Tx, addr netip.A
 		return key, nil
 	}
 	ex := &capacity.Exceeded{Kind: capacity.KindRate, Subject: capacity.Subject{Kind: capacity.KindSignupAddress, ID: key[:12]},
-		Quota: q.Name, Window: capacity.UTCDay, Used: used, Allowed: q.Allowed, ResetAt: capacity.UTCDay.End(day), Contact: pol.contact}
+		Quota: q.Name, Window: capacity.UTCDay, Used: used, Allowed: q.Allowed, Wanted: 1, ResetAt: capacity.UTCDay.End(day), Contact: pol.contact}
 	if q.Mode == capacity.Shadow {
 		if s.capacityNotifier().Due("signups|" + key) {
 			s.logger.Warn("sign-up quota (shadow): an enforced quota would have refused this new account",
-				"address_key", key[:12], "signups_today", used, "allowed", q.Allowed)
+				append([]any{"address_key", key[:12]}, ex.LogAttrs()...)...)
 		}
 		return key, nil
 	}
 	if s.capacityNotifier().Due("signups-refused|" + key) {
 		s.logger.Info("sign-up quota reached: a new account was refused (logged once a day per address)",
-			"address_key", key[:12], "signups_today", used, "allowed", q.Allowed)
+			append([]any{"address_key", key[:12]}, ex.LogAttrs()...)...)
 	}
 	return "", ex
 }

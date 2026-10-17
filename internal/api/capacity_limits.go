@@ -282,7 +282,9 @@ func (s *Server) refuseCapacity(w http.ResponseWriter, info authInfo, err error)
 	if !ok {
 		return false
 	}
-	s.logRefusal(ex.Quota, info, "used", ex.Used, "allowed", ex.Allowed, "wanted", ex.Wanted)
+	// The kind (the once-a-minute key) is the quota's name; LogAttrs names
+	// it again as quota= — the one vocabulary every refusal line carries.
+	s.logRefusal(ex.Quota, info, ex.LogAttrs()...)
 	writeCapacityRefusal(w, ex, time.Now())
 	return true
 }

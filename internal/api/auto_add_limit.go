@@ -94,7 +94,7 @@ func (s *Server) settleAutoAdd(userID int, slot autoAddSlot, linkedAny bool, err
 // capacity body (429, Retry-After, the kind message); logged once a minute
 // per user (ASVS review G5).
 func (s *Server) refuseAutoAdd(w http.ResponseWriter, info authInfo, ex *capacity.Exceeded) {
-	s.logRefusal("auto_add_cap", info, "window_ends", ex.ResetAt)
+	s.logRefusal("auto_add_cap", info, append(ex.LogAttrs(), "window_ends", ex.ResetAt)...)
 	if s.limiter != nil && s.limiter.policy != nil {
 		ex.Contact = s.limiter.policy.contact()
 	}
