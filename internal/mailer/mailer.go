@@ -517,11 +517,13 @@ func (m *Mailer) SendWelcome(toEmail, login, provider string) error {
 	body := fmt.Sprintf(`Hello %s,
 
 Your Aveloxis account has been created via %s OAuth. You can now
-log in and create groups of repositories you'd like to track.
+sign in, create groups and add the repositories you'd like to track.
 
-Note: groups created by non-administrator accounts enter a pending
-state and are reviewed by an administrator before collection begins.
-You'll get an email when your group is approved.
+A repository Aveloxis already tracks is added to your group at once.
+A repository it does not track yet, and every organization, may wait
+for an administrator to approve the addition before collection starts
+(this site can approve small additions of repositories automatically).
+You'll get an email when an addition is decided.
 
 Sign in: %s
 

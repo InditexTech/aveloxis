@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/aveloxis/aveloxis/internal/api"
+	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/collector"
 	"github.com/aveloxis/aveloxis/internal/config"
 	"github.com/aveloxis/aveloxis/internal/db"
@@ -67,6 +68,7 @@ func newRootCmd() *cobra.Command {
 
 	root.AddCommand(
 		collectCmd(&cfgPath),
+		signupEscrowCmd(&cfgPath),
 		serveCmd(&cfgPath),
 		apiCmd(&cfgPath),
 		scancodeWorkerCmd(&cfgPath),
@@ -233,6 +235,7 @@ func runServe(cfgPath, monitorAddr string, workers int, useAugurKeys, allowSecon
 	if err := store.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrating database: %w", err)
 	}
+	store.LogCapacityInForce(ctx, "serve")
 
 	ghKeys, glKeys, err := loadKeys(ctx, cfg, store, useAugurKeys, logger)
 	if err != nil {
@@ -431,6 +434,7 @@ func runAPI(cfgPath, addr string) error {
 		return fmt.Errorf("refusing to start api: %w", err)
 	}
 
+	store.LogCapacityInForce(ctx, "api")
 	apiServer, err := api.NewWithOptions(store, logger, apiOptions(cfg, logger))
 	if err != nil {
 		return fmt.Errorf("api middleware config: %w", err)
@@ -451,8 +455,17 @@ func runAPI(cfgPath, addr string) error {
 	// v0.29.73: recompute cached repository pages after their collections.
 	safego.Go(logger, "repository page cache re-warm", func() { apiServer.RunRewarm(ctx) })
 
+	// v0.29.89: share the daily request counts with the other api
+	// processes, and save what is left once the server has stopped (the
+	// same bound serveUntilDone gives in-flight requests).
+	safego.Go(logger, "capacity counts", func() { apiServer.RunCapacity(ctx) })
+
 	srv := newAPIServer(cfg, addr, apiServer.Handler(), logger)
-	return serveUntilDone(ctx, srv, ln, logger, "API server")
+	err = serveUntilDone(ctx, srv, ln, logger, "API server")
+	flushCtx, cancelFlush := context.WithTimeout(context.Background(), serverShutdownTimeout)
+	defer cancelFlush()
+	apiServer.FlushCapacity(flushCtx)
+	return err
 }
 
 // --- collect: one-shot collection ---
@@ -738,7 +751,10 @@ func runAddRepo(cfgPath string, repoURLs []string, priority int) error {
 					continue
 				}
 				for _, gid := range userGroupIDs {
-					if _, err := store.AddRepoToGroupByID(ctx, gid, repoID); err != nil {
+					if _, err := store.AddOrgRepoToGroupByID(ctx, gid, repoID); err != nil {
+						if _, capped := capacity.AsExceeded(err); capped {
+							continue // the account's repository quota: the store logs it once a day
+						}
 						logger.Warn("failed to link repo into user_repos",
 							"group_id", gid, "repo_id", repoID, "error", err)
 					}
@@ -1154,7 +1170,7 @@ func runImportKeysFromAugur(cfgPath string) error {
 
 func prioritizeCmd(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "prioritize [repo-url-or-id]",
+		Use:   "prioritize [repo-url]",
 		Short: "Push a repo to the top of the collection queue",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1175,16 +1191,10 @@ func runPrioritize(cfgPath, target string) error {
 	}
 	defer store.Close()
 
-	// Try parsing as a repo URL first, then look up the ID.
-	parsed, parseErr := platform.ParseRepoURL(target)
+	// Parse as a repo URL, then look up the tracked row (never create one).
+	_, parseErr := platform.ParseRepoURL(target)
 	if parseErr == nil {
-		// Look up repo_id by URL.
-		repoID, err := store.UpsertRepo(ctx, &model.Repo{
-			Platform: parsed.Platform,
-			GitURL:   target,
-			Name:     parsed.Repo,
-			Owner:    parsed.Owner,
-		})
+		repoID, err := trackedRepoID(ctx, store, target)
 		if err != nil {
 			return err
 		}
@@ -1252,22 +1262,16 @@ func runRecollect(cfgPath string, targets []string) error {
 
 	var firstErr error
 	for _, target := range targets {
-		parsed, parseErr := platform.ParseRepoURL(target)
-		if parseErr != nil {
+		if _, parseErr := platform.ParseRepoURL(target); parseErr != nil {
 			logger.Error("could not parse repo URL — skipping", "url", platform.RedactURLUserinfo(target), "error", parseErr)
 			if firstErr == nil {
 				firstErr = parseErr
 			}
 			continue
 		}
-		// UpsertRepo is idempotent; use it to resolve the URL to a
-		// repo_id without requiring the caller to know the ID.
-		repoID, err := store.UpsertRepo(ctx, &model.Repo{
-			Platform: parsed.Platform,
-			GitURL:   target,
-			Name:     parsed.Repo,
-			Owner:    parsed.Owner,
-		})
+		// Look the repository up; never create a row for a URL that was
+		// not added (H-5).
+		repoID, err := trackedRepoID(ctx, store, target)
 		if err != nil {
 			logger.Error("failed to resolve repo_id — skipping", "url", platform.RedactURLUserinfo(target), "error", err)
 			if firstErr == nil {
@@ -1543,6 +1547,17 @@ Create a GitLab OAuth app at: https://gitlab.com/-/profile/applications`,
 					return nil // a stop during startup, not a refusal
 				}
 				return fmt.Errorf("refusing to start web: %w", err)
+			}
+			store.LogCapacityInForce(ctx, "web")
+			// v0.29.89: the sign-up address escrow (validated at load).
+			if err := store.SetSignupEscrowRecipient(cfg.Web.SignupEscrowRecipient); err != nil {
+				return fmt.Errorf("web.signup_escrow_recipient: %w", err)
+			}
+			if r := strings.TrimSpace(cfg.Web.SignupEscrowRecipient); r != "" {
+				logger.Info("sign-up escrow: each new account's address is sealed to the configured public key and kept for a year",
+					"public_key", r, "retention_days", int(db.SignupRecordRetention.Hours()/24))
+			} else {
+				logger.Info("sign-up escrow: off (web.signup_escrow_recipient is empty); no address is kept past its UTC day")
 			}
 
 			// Load GitHub keys for immediate org scanning (non-fatal for web — it
@@ -2300,11 +2315,14 @@ func versionCmd() *cobra.Command {
 func loadConfig(cfgPath string, logger *slog.Logger) *config.Config {
 	cfg, err := config.Load(cfgPath)
 	if err == nil {
+		db.SetProcessCapacitySources(cfg.CapacitySources()) // v0.29.89: every store this process opens
 		return cfg
 	}
 	if errors.Is(err, config.ErrNotFound) {
 		logger.Warn("config file not found, using defaults", "path", cfgPath, "error", err)
-		return config.DefaultConfig()
+		cfg = config.DefaultConfig()
+		db.SetProcessCapacitySources(cfg.CapacitySources())
+		return cfg
 	}
 	// v0.29.61: a file that EXISTS but does not parse or validate used to
 	// fall into the same arm and run every command on the compiled

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Aveloxis 0.29.88 documentation</title>
+  <title>Testing &mdash; Aveloxis 0.29.96 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=7f7018be"></script>
+      <script src="../_static/documentation_options.js?v=57ddef21"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -80,6 +80,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#monitor-dashboard-v0-23-0">Monitor (dashboard, v0.23.0)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#mail-gmail-smtp-optional">Mail (Gmail SMTP, optional)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#logging">Logging</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#capacity-fair-use-quotas-v0-29-89">Capacity (fair-use quotas, v0.29.89)</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#api-key-sources">API key sources</a></li>
@@ -203,6 +204,12 @@
 <li class="toctree-l2"><a class="reference internal" href="../guide/commands.html#aveloxis-api"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">api</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/commands.html#aveloxis-scancode-worker"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">scancode-worker</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/commands.html#aveloxis-test-mail"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">test-mail</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/commands.html#aveloxis-signup-escrow"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">signup-escrow</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../guide/commands.html#aveloxis-signup-escrow-keygen"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">signup-escrow</span> <span class="pre">keygen</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../guide/commands.html#aveloxis-signup-escrow-export"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">signup-escrow</span> <span class="pre">export</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="../guide/commands.html#aveloxis-signup-escrow-open"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">signup-escrow</span> <span class="pre">open</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/commands.html#aveloxis-collect"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">collect</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../guide/commands.html#id3">Flags</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/commands.html#id4">Examples</a></li>
@@ -331,6 +338,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#repository-statistics">Repository Statistics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#forge-id-changes-admin-v0-29-63">Forge-ID changes (admin, v0.29.63)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#api-tokens-admin-v0-29-82">API tokens (admin, v0.29.82)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../guide/api.html#capacity-admin-v0-29-89">Capacity (admin, v0.29.89)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#batch-statistics">Batch Statistics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#time-series">Time Series</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#dependency-licenses">Dependency Licenses</a></li>
@@ -603,6 +611,15 @@
 <li class="toctree-l2"><a class="reference internal" href="../guide/scaling.html#next-steps">Next steps</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="../guide/signup-escrow.html">Sign-up address escrow</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/signup-escrow.html#what-is-kept-and-for-how-long">What is kept, and for how long</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/signup-escrow.html#set-it-up-once">Set it up (once)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/signup-escrow.html#open-an-envelope-when-you-are-required-to">Open an envelope when you are required to</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/signup-escrow.html#change-the-key-or-lose-it">Change the key, or lose it</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/signup-escrow.html#what-an-envelope-does-and-does-not-show">What an envelope does and does not show</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/signup-escrow.html#what-this-does-not-cover">What this does not cover</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/troubleshooting.html">Troubleshooting</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="../guide/troubleshooting.html#commits-not-collected-but-issues-and-pull-requests-are-collected">Commits not collected, but Issues and Pull Requests are collected</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/troubleshooting.html#monitor-dashboard-renders-slowly-on-a-large-fleet">Monitor dashboard renders slowly on a large fleet</a></li>
@@ -690,6 +707,51 @@
 </ul>
 </li>
 </ul>
+<p class="caption" role="heading"><span class="caption-text">REST API</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api/index.html#a-first-call">A first call</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/conventions.html">API design conventions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#fundamentals">Fundamentals</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#naming">Naming</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#documentation">Documentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#access">Access</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#errors">Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#rate-limits-and-quotas">Rate limits and quotas</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#caching-and-validators">Caching and validators</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#times-and-windows">Times and windows</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#compatibility">Compatibility</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#what-the-tests-check">What the tests check</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/reference.html">API reference</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#service">Service</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#repositories">Repositories</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#vulnerabilities">Vulnerabilities</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#contributors">Contributors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#comparison">Comparison</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#supply-chain">Supply chain</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#account">Account</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#home">Home</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#groups">Groups</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#collections">Collections</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-users-and-groups">Admin users and groups</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-add-requests">Admin add requests</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-monitor">Admin monitor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-collections">Admin collections</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-api-tokens">Admin API tokens</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-capacity">Admin capacity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-forge-id-changes">Admin forge-ID changes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#augur-catalog">Augur catalog</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#augur-metrics">Augur metrics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#shared-responses">Shared responses</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
 <p class="caption" role="heading"><span class="caption-text">Architecture</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../architecture/overview.html">Architecture Overview</a><ul>
@@ -697,7 +759,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../architecture/overview.html#four-schemas">Four schemas</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../architecture/overview.html#aveloxis-data-103-tables-22-materialized-views"><code class="docutils literal notranslate"><span class="pre">aveloxis_data</span></code> (103 tables + 22 materialized views)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../architecture/overview.html#aveloxis-scan-4-tables"><code class="docutils literal notranslate"><span class="pre">aveloxis_scan</span></code> (4 tables)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../architecture/overview.html#aveloxis-ops-44-tables"><code class="docutils literal notranslate"><span class="pre">aveloxis_ops</span></code> (44 tables)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../architecture/overview.html#aveloxis-ops-51-tables"><code class="docutils literal notranslate"><span class="pre">aveloxis_ops</span></code> (51 tables)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../architecture/overview.html#aveloxis-augur-data-6-views"><code class="docutils literal notranslate"><span class="pre">aveloxis_augur_data</span></code> (6 views)</a></li>
 </ul>
 </li>
@@ -1315,6 +1377,7 @@
 <li class="toctree-l2"><a class="reference internal" href="review-lenses.html#l15-the-forge-s-cache-and-session-semantics">L15 — The forge’s cache and session semantics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="review-lenses.html#l16-widening-a-tripwire-is-a-contract-change">L16 — Widening a tripwire is a contract change</a></li>
 <li class="toctree-l2"><a class="reference internal" href="review-lenses.html#l17-what-the-pr-193-rounds-kept-finding-the-four-blind-spots">L17 — What the PR #193 rounds kept finding (the four blind spots)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="review-lenses.html#l18-consolidate-before-you-add">L18 — Consolidate before you add</a></li>
 <li class="toctree-l2"><a class="reference internal" href="review-lenses.html#running-the-pass">Running the pass</a></li>
 </ul>
 </li>
@@ -1734,15 +1797,14 @@ SPDX-License-Identifier: MIT
 </pre></div>
 </div>
 <p>This means <code class="docutils literal notranslate"><span class="pre">go</span> <span class="pre">test</span> <span class="pre">./...</span></code> (no env var) skips them cleanly. CI runs both modes — see <code class="docutils literal notranslate"><span class="pre">.github/workflows/integration.yml</span></code> for the Postgres-service-container recipe.</p>
+<p><strong>A test skips only for its environment, never for its code.</strong> The variable, token or tool it needs is missing, it runs as root, or it is on the wrong platform — and its message names that reason. A test whose subject moved, was renamed or cannot be found must <strong>fail</strong> (<code class="docutils literal notranslate"><span class="pre">t.Fatal</span></code>), not skip: a refactor should turn tests red, never quietly off. <code class="docutils literal notranslate"><span class="pre">TestNoStructuralSkips</span></code> (in <code class="docutils literal notranslate"><span class="pre">scripts/</span></code>) enforces this on the source, and <code class="docutils literal notranslate"><span class="pre">scripts/skip-census.sh</span></code> checks the closing run: with <code class="docutils literal notranslate"><span class="pre">AVELOXIS_TEST_DB</span></code> set it lists every skipped test and fails on any that is not in the reviewed, shrink-only <code class="docutils literal notranslate"><span class="pre">scripts/skip_census_baseline.txt</span></code>. When the suite itself fails it prints each failed package’s own output (its <code class="docutils literal notranslate"><span class="pre">-test.shuffle</span></code> seed when the run shuffles, as CI’s does) and the output of every test in it that failed or never finished (assertions, panic and race traces, a timeout’s goroutine dump); the integration job keeps the whole <code class="docutils literal notranslate"><span class="pre">go</span> <span class="pre">test</span> <span class="pre">-json</span></code> stream as the <code class="docutils literal notranslate"><span class="pre">skip-census</span></code> artifact. A test that needs particular data seeds it; a test that needs a real collection runs behind its own variable (for example <code class="docutils literal notranslate"><span class="pre">AVELOXIS_TEST_REALDATA_DB</span></code>).</p>
 <p><strong>Each package gets a database of its own.</strong> <code class="docutils literal notranslate"><span class="pre">AVELOXIS_TEST_DB</span></code> names a <em>base</em> database. Every package with integration tests has a <code class="docutils literal notranslate"><span class="pre">TestMain</span></code> (by convention in <code class="docutils literal notranslate"><span class="pre">testmain_test.go</span></code>) that calls <code class="docutils literal notranslate"><span class="pre">testdb.Main</span></code> (<code class="docutils literal notranslate"><span class="pre">internal/testdb</span></code>). For each run it creates a fresh <code class="docutils literal notranslate"><span class="pre">aveloxis_t_&lt;pid&gt;_&lt;random&gt;</span></code> database next to the base one, prepares it as an established deployment (migrated, without the materialized views; the <code class="docutils literal notranslate"><span class="pre">Default</span></code> repo group, as id 1; a bootstrap admin signed up first, so fixture users are regular users unless a test promotes them), points <code class="docutils literal notranslate"><span class="pre">AVELOXIS_TEST_DB</span></code> at it for the package’s tests, and drops it afterwards. Rows a killed or failed run leaves behind therefore never reach a later run, and packages that <code class="docutils literal notranslate"><span class="pre">go</span> <span class="pre">test</span> <span class="pre">./...</span></code> runs in parallel never migrate the same database at once. The database is still shared by the package’s own tests, in the order they run: a test can still pass because an earlier test in the same package left rows it relied on, which <code class="docutils literal notranslate"><span class="pre">-shuffle</span></code> surfaces rather than prevents (see the pre-cleanup note under Patterns). A run killed before it could drop its database leaves it behind; the next run’s sweep drops every <code class="docutils literal notranslate"><span class="pre">aveloxis_t_*</span></code> database nobody is connected to (a live run keeps a connection open to its own). The role needs <code class="docutils literal notranslate"><span class="pre">CREATEDB</span></code>. A new package with integration tests adds the same <code class="docutils literal notranslate"><span class="pre">testmain_test.go</span></code>; <code class="docutils literal notranslate"><span class="pre">scripts/testdb_main_registry_test.go</span></code> fails the build until it does. Do not insert explicit ids into sequence-backed (<code class="docutils literal notranslate"><span class="pre">BIGSERIAL</span></code>) tables with values a fresh database’s sequence will reach — the sequence does not advance, and the next row the code creates collides on the primary key (an explicit <code class="docutils literal notranslate"><span class="pre">repo_group_id</span> <span class="pre">=</span> <span class="pre">1</span></code> did exactly that); insert without the id and use <code class="docutils literal notranslate"><span class="pre">RETURNING</span></code>, or use the store’s helpers.</p>
 <p><strong>Safety:</strong> point <code class="docutils literal notranslate"><span class="pre">AVELOXIS_TEST_DB</span></code> at a scratch server, never a production one. Test data goes to the per-package databases, but the tests also act on the server as a whole: they create and drop databases there (the per-package ones, and <code class="docutils literal notranslate"><span class="pre">_avcolfill_sidedb</span></code> for the column-fill diff test), create and drop login roles (the backend-visibility tests), and some helpers (<code class="docutils literal notranslate"><span class="pre">store.RealignDueDates</span></code>, the <code class="docutils literal notranslate"><span class="pre">dm_</span></code> aggregate refresh, the <code class="docutils literal notranslate"><span class="pre">cntrb_id</span></code> migration) update every matching row of the database they run in.</p>
 </section>
 <section id="tier-3-data-test-harness-cross-version-regression-detection">
 <h3>Tier 3 — <code class="docutils literal notranslate"><span class="pre">data-test</span></code> harness (cross-version regression detection)<a class="headerlink" href="#tier-3-data-test-harness-cross-version-regression-detection" title="Link to this heading"></a></h3>
-<p>The <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">data-test</span></code> subcommand collects the same repo into two scratch databases (one with a released-tag binary, one with the local working-tree binary) and row-count-diffs them. Catches schema-regression data loss before it ships.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>aveloxis<span class="w"> </span>data-test<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--released-tag<span class="w"> </span><span class="m">0</span>.23.3<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--repo<span class="w"> </span>https://github.com/augurlabs/augur
+<p>The <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">data-test</span></code> subcommand collects the same repositories into two scratch databases (one with a binary built from a release tag or <code class="docutils literal notranslate"><span class="pre">origin/main</span></code>, one with the local working-tree binary) and diffs them table by table. Catches schema-regression data loss before it ships. Without <code class="docutils literal notranslate"><span class="pre">--repo</span></code> it collects the standing set: <code class="docutils literal notranslate"><span class="pre">backstage/backstage</span></code>, <code class="docutils literal notranslate"><span class="pre">MISP/MISP</span></code> and <code class="docutils literal notranslate"><span class="pre">sunpy/sunpy</span></code> (a run takes hours, most of it on backstage).</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span>origin/main
 </pre></div>
 </div>
 <p>This is documented in <a class="reference internal" href="../guide/data-test.html"><span class="std std-doc"><code class="docutils literal notranslate"><span class="pre">docs/guide/data-test.md</span></code></span></a>. You don’t run it during normal feature work — it’s the operator-side gate before a release.</p>

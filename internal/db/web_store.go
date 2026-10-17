@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -82,6 +83,11 @@ type OAuthUserInfo struct {
 	GLUsername string
 	GLHost     string // the GitLab instance that answered (web.gitlab_base_url); see GitLabOAuthHost
 	Provider   string
+	// SignupAddr is the browser's address on the callback (web.trusted_proxy
+	// decides whether X-Forwarded-For is believed); a creation from it counts
+	// toward signups_per_address_per_day (v0.29.89). Zero: not known, not
+	// counted.
+	SignupAddr netip.Addr
 }
 
 // GitLabOAuthHost is the one spelling of the GitLab instance a login came
@@ -173,7 +179,7 @@ func (s *PostgresStore) SignInOAuthUser(ctx context.Context, info OAuthUserInfo)
 	var rowGH, rowGL int64
 	var rowProvider string
 	err := s.pool.QueryRow(ctx,
-		`SELECT user_id, COALESCE(gh_user_id, 0), COALESCE(gl_user_id, 0), COALESCE(NULLIF(oauth_provider, ''), 'github')
+		`SELECT user_id, COALESCE(gh_user_id, 0), COALESCE(gl_user_id, 0), `+effectiveProviderSQL("")+`
 		 FROM aveloxis_ops.users WHERE login_name = $1`,
 		info.Login).Scan(&userID, &rowGH, &rowGL, &rowProvider)
 
@@ -209,7 +215,23 @@ func (s *PostgresStore) SignInOAuthUser(ctx context.Context, info OAuthUserInfo)
 		}
 		isFirstUser := existingCount == 0
 
-		err = s.pool.QueryRow(ctx, `
+		// v0.29.89 (summary/53): the account and its sign-up record are one
+		// transaction, decided by the sign-ups-per-address quota under a
+		// per-address lock (SR-18: where the account is created).
+		pol, err := s.readSignupPolicy(ctx) // before Begin: no pool read inside the transaction
+		if err != nil {
+			return 0, false, fmt.Errorf("create account: sign-up quota: %w", err)
+		}
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			return 0, false, fmt.Errorf("create account: %w", err)
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		key, err := s.admitSignup(ctx, tx, info.SignupAddr, isFirstUser, pol)
+		if err != nil {
+			return 0, false, err
+		}
+		err = tx.QueryRow(ctx, `
 			INSERT INTO aveloxis_ops.users
 				(login_name, email, first_name, last_name, avatar_url,
 				 gh_user_id, gh_login, gl_user_id, gl_username,
@@ -222,7 +244,17 @@ func (s *PostgresStore) SignInOAuthUser(ctx context.Context, info OAuthUserInfo)
 			info.GHUserID, info.GHLogin, info.GLUserID, info.GLUsername,
 			info.Provider, ToolVersion, isFirstUser, info.GLHost,
 		).Scan(&userID)
-		return userID, err == nil, err
+		if err != nil {
+			return 0, false, err
+		}
+		if err := recordSignup(ctx, tx, key, s.sealSignupAddr(info.SignupAddr), userID); err != nil {
+			return 0, false, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return 0, false, fmt.Errorf("create account: %w", err)
+		}
+		s.logAccountCreated(ctx, userID)
+		return userID, true, nil
 	}
 
 	// Found and owned (an ID-less row of this provider): the claim stamps
@@ -771,15 +803,20 @@ func (s *PostgresStore) AddOrgToGroup(ctx context.Context, userID int, groupID i
 	return out, nil
 }
 
-// RemoveRepoFromGroup removes a repo from a user group.
-func (s *PostgresStore) RemoveRepoFromGroup(ctx context.Context, userID int, groupID, repoID int64) error {
+// RemoveRepoFromGroup removes a repo from a user group and reports
+// whether a link was removed (false: the repository was not in the group;
+// v0.29.91 — the api answered "removed" either way).
+func (s *PostgresStore) RemoveRepoFromGroup(ctx context.Context, userID int, groupID, repoID int64) (bool, error) {
 	if err := s.verifyGroupOwned(ctx, userID, groupID); err != nil {
-		return err
+		return false, err
 	}
-	_, err := s.pool.Exec(ctx,
+	tag, err := s.pool.Exec(ctx,
 		`DELETE FROM aveloxis_ops.user_repos WHERE group_id = $1 AND repo_id = $2`,
 		groupID, repoID)
-	return err
+	if err != nil {
+		return false, fmt.Errorf("remove repository from group: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // GetOrgRequests returns all org requests that need scanning.
@@ -861,13 +898,48 @@ func (s *PostgresStore) GetGroupIDForOrgRequest(ctx context.Context, orgRequestI
 // org scan counted every no-op re-link as new, claiming 9.3M new repos in
 // one 8.8-day production run).
 func (s *PostgresStore) AddRepoToGroupByID(ctx context.Context, groupID, repoID int64) (bool, error) {
-	tag, err := s.pool.Exec(ctx, `
-		INSERT INTO aveloxis_ops.user_repos (group_id, repo_id) VALUES ($1, $2)
-		ON CONFLICT DO NOTHING`, groupID, repoID)
+	// Within the owner's repository allocation (v0.29.89, summary/53): an
+	// enforced quota refuses with a *capacity.Exceeded.
+	n, err := s.linkWithinCap(ctx, groupID, []int64{repoID}, linkAll)
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() > 0, nil
+	return n > 0, nil
+}
+
+// AddRepoIDsToGroup links repoIDs into groupID with ONE decision of the
+// owner's quotas: all of the new repositories or none (v0.29.91, whole-PR
+// review: the Comparisons auto-add of an organization linked item by item,
+// partial on a refusal, ~11 round trips a repository). It returns the
+// links inserted; a refusal is the *capacity.Exceeded.
+func (s *PostgresStore) AddRepoIDsToGroup(ctx context.Context, groupID int64, repoIDs []int64) (int, error) {
+	return s.linkWithinCap(ctx, groupID, repoIDs, linkAll)
+}
+
+// AddOrgRepoToGroupByID is AddRepoToGroupByID for a repository an
+// organization registration brings (the scans, add-repo's org expansion):
+// within the owner's repository allocation, and counted as the account's
+// daily additions unless an administrator decided the registration that
+// brings it (orgLinksCounted; v0.29.91 — an auto-approved registration is
+// the account's own decision).
+func (s *PostgresStore) AddOrgRepoToGroupByID(ctx context.Context, groupID, repoID int64) (bool, error) {
+	n, err := s.linkWithinCap(ctx, groupID, []int64{repoID}, linkOrg)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// AddOperatorRepoToGroupByID is AddRepoToGroupByID for a link the
+// operator's own command makes (the foundation loader's dashboard groups):
+// within the owner's repository allocation, not counted as the account's
+// daily additions (the operator decided it).
+func (s *PostgresStore) AddOperatorRepoToGroupByID(ctx context.Context, groupID, repoID int64) (bool, error) {
+	n, err := s.linkWithinCap(ctx, groupID, []int64{repoID}, linkOperator)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
 
 // MarkOrgRequestScanned updates the last_scanned timestamp.

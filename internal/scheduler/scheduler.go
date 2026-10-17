@@ -26,6 +26,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/collector"
 	"github.com/aveloxis/aveloxis/internal/config"
 	"github.com/aveloxis/aveloxis/internal/db"
@@ -2439,6 +2440,11 @@ func (s *Scheduler) refreshGitHubOrg(ctx context.Context, g db.OrgGroup) int {
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
 			resp.Body.Close()
+			if errors.Is(err, context.Canceled) {
+				return newCount // shutdown mid-listing, not a failure
+			}
+			// H-7: a page that does not decode ends the listing; say so.
+			s.logger.Warn("org refresh: page did not decode — listing stopped", "org", g.Name, "error", err)
 			break
 		}
 		resp.Body.Close()
@@ -2480,10 +2486,23 @@ func (s *Scheduler) refreshGitHubOrg(ctx context.Context, g db.OrgGroup) int {
 					PlatformID: model.ForgeIDString(item.ID), // v0.27.102
 				})
 				if err != nil {
+					if errors.Is(err, context.Canceled) {
+						return newCount // shutdown mid-listing, not a failure
+					}
+					// H-7 (review HF-2): a repository the listing found but could not record.
+					s.logger.Warn("org refresh: could not record discovered repository", "org", g.Name, "repo", platform.RedactURLUserinfo(item.HTMLURL), "error", err)
 					continue
 				}
 				repoID = rid
 				if err := s.store.EnqueueRepo(ctx, repoID, 100); err != nil {
+					if errors.Is(err, context.Canceled) {
+						return newCount // shutdown mid-listing, not a failure
+					}
+					// H-7 (review HF-2): recorded but NOT queued. The next refresh finds
+					// the row and takes the existing-row branch, which links but never
+					// enqueues (re-queuing there would revive gone repositories and
+					// rename duplicates), so the operator repairs it (review HF2-1).
+					s.logger.Warn("org refresh: could not queue discovered repository — it will not be collected until `aveloxis reconcile-repos` queues it", "org", g.Name, "repo_id", repoID, "error", err)
 					continue
 				}
 				s.logger.Info("new repo discovered", "org", g.Name, "repo", platform.RedactURLUserinfo(item.HTMLURL))
@@ -2496,9 +2515,12 @@ func (s *Scheduler) refreshGitHubOrg(ctx context.Context, g db.OrgGroup) int {
 				}
 			}
 			for _, gid := range userGroupIDs {
-				_, err := s.store.AddRepoToGroupByID(ctx, gid, repoID)
+				_, err := s.store.AddOrgRepoToGroupByID(ctx, gid, repoID)
 				if errors.Is(err, context.Canceled) {
 					return newCount // shutdown, not a failure
+				}
+				if _, capped := capacity.AsExceeded(err); capped {
+					continue // the account's repository quota (the store logs it once a day)
 				}
 				if err != nil {
 					s.logger.Warn("failed to link discovered repo into user_repos",
@@ -2578,6 +2600,11 @@ func (s *Scheduler) refreshGitLabGroup(ctx context.Context, g db.OrgGroup) int {
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
 			resp.Body.Close()
+			if errors.Is(err, context.Canceled) {
+				return newCount // shutdown mid-listing, not a failure
+			}
+			// H-7: a page that does not decode ends the listing; say so.
+			s.logger.Warn("group refresh: page did not decode — listing stopped", "group", g.Name, "error", err)
 			break
 		}
 		resp.Body.Close()
@@ -2615,10 +2642,23 @@ func (s *Scheduler) refreshGitLabGroup(ctx context.Context, g db.OrgGroup) int {
 					PlatformID: model.ForgeIDString(item.ID), // v0.27.102
 				})
 				if err != nil {
+					if errors.Is(err, context.Canceled) {
+						return newCount // shutdown mid-listing, not a failure
+					}
+					// H-7 (review HF-2): a repository the listing found but could not record.
+					s.logger.Warn("group refresh: could not record discovered repository", "group", g.Name, "repo", platform.RedactURLUserinfo(item.WebURL), "error", err)
 					continue
 				}
 				repoID = rid
 				if err := s.store.EnqueueRepo(ctx, repoID, 100); err != nil {
+					if errors.Is(err, context.Canceled) {
+						return newCount // shutdown mid-listing, not a failure
+					}
+					// H-7 (review HF-2): recorded but NOT queued. The next refresh finds
+					// the row and takes the existing-row branch, which links but never
+					// enqueues (re-queuing there would revive gone repositories and
+					// rename duplicates), so the operator repairs it (review HF2-1).
+					s.logger.Warn("group refresh: could not queue discovered repository — it will not be collected until `aveloxis reconcile-repos` queues it", "group", g.Name, "repo_id", repoID, "error", err)
 					continue
 				}
 				s.logger.Info("new repo discovered", "group", g.Name, "repo", platform.RedactURLUserinfo(item.WebURL))
@@ -2628,9 +2668,12 @@ func (s *Scheduler) refreshGitLabGroup(ctx context.Context, g db.OrgGroup) int {
 				}
 			}
 			for _, gid := range userGroupIDs {
-				_, err := s.store.AddRepoToGroupByID(ctx, gid, repoID)
+				_, err := s.store.AddOrgRepoToGroupByID(ctx, gid, repoID)
 				if errors.Is(err, context.Canceled) {
 					return newCount // shutdown, not a failure
+				}
+				if _, capped := capacity.AsExceeded(err); capped {
+					continue // the account's repository quota (the store logs it once a day)
 				}
 				if err != nil {
 					s.logger.Warn("failed to link discovered repo into user_repos",
@@ -2667,6 +2710,11 @@ func (s *Scheduler) checkForRenames(ctx context.Context) {
 		}
 		prelim, err := collector.RunPrelim(ctx, s.store, &repo, s.logger)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			// H-7: a failed rename check was dropped without a word.
+			s.logger.Warn("rename check: prelim failed", "repo_id", repo.ID, "url", platform.RedactURLUserinfo(repo.GitURL), "error", err)
 			continue
 		}
 		if prelim != nil && (prelim.Skip || prelim.Redirected) {
@@ -2973,6 +3021,19 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 					path := fmt.Sprintf("%s?per_page=100&type=all&page=%d", basePath, page)
 					resp, err := httpC.Get(platform.WithoutETag(ctx), path)
 					if err != nil {
+						if errors.Is(err, context.Canceled) {
+							return // shutdown mid-listing: stamp nothing, the next pass re-enumerates
+						}
+						// H-7: the failure was dropped without a word. Which
+						// failures may fall back to /users/ and whether the
+						// row is stamped is stage 1's (summary/59 N8, N16).
+						// A 404 on /orgs/ is the designed personal-account
+						// fallback, not a failure (review HF-1): Debug.
+						if errors.Is(err, platform.ErrNotFound) && strings.HasPrefix(basePath, "/orgs/") {
+							s.logger.Debug("user-org scan: not an organization — trying the personal account", "org", g.name)
+							break
+						}
+						s.logger.Warn("user-org scan: listing request failed", "org", g.name, "path", basePath, "page", page, "error", err)
 						break
 					}
 					var items []struct {
@@ -3042,6 +3103,11 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 					PlatformID: repo.ForgeID, // v0.27.102 — enables the rename-heal inside UpsertRepo
 				})
 				if err != nil {
+					if errors.Is(err, context.Canceled) {
+						return // shutdown, not a failure
+					}
+					// H-7 (review HF-2): a repository the scan found but could not record.
+					s.logger.Warn("user-org scan: could not record discovered repository", "repo", platform.RedactURLUserinfo(repo.URL), "error", err)
 					continue
 				}
 				enqErr := s.store.EnqueueRepo(ctx, repoID, 100)
@@ -3073,9 +3139,12 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 			// claiming the org's full repo count every pass forever
 			// (9.3M bogus new repos in the Aug 7–16 2026 run).
 			for _, gid := range groupIDs {
-				inserted, err := s.store.AddRepoToGroupByID(ctx, gid, repoID)
+				inserted, err := s.store.AddOrgRepoToGroupByID(ctx, gid, repoID)
 				if errors.Is(err, context.Canceled) {
 					return // shutdown, not a failure
+				}
+				if _, capped := capacity.AsExceeded(err); capped {
+					continue // the account's repository quota (the store logs it once a day)
 				}
 				if err != nil {
 					// Same message as refreshGitHubOrg/refreshGitLabGroup so

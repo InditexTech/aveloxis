@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/model"
 	"github.com/aveloxis/aveloxis/internal/platform"
 	"github.com/jackc/pgx/v5"
@@ -107,7 +108,10 @@ func (s *PostgresStore) ensureRepoCollectedInGroup(ctx context.Context, groupID 
 	if err := s.EnqueueRepo(ctx, repoID, 100); err != nil {
 		return 0, fmt.Errorf("enqueue repo: %w", err)
 	}
-	if _, err := s.AddRepoToGroupByID(ctx, groupID, repoID); err != nil {
+	// The repository's place is already held (v0.29.89): by the approved
+	// item this pass stamps next (reachSQL counts it until then), or the
+	// caller is an administrator's own session, which the quota exempts.
+	if _, err := s.linkWithinCap(ctx, groupID, []int64{repoID}, linkHeld); err != nil {
 		return 0, err
 	}
 	return repoID, nil
@@ -159,7 +163,17 @@ func (s *PostgresStore) AddReposToGroup(ctx context.Context, userID int, groupID
 		return out, fmt.Errorf("look up admin flag: %w", err)
 	}
 
+	// Classify every URL first, decide the repository allocation once for
+	// the whole paste (v0.29.89, summary/53: all or nothing — the user
+	// decides what to drop), then write.
+	type item struct {
+		url     string
+		repoID  int64
+		tracked bool
+	}
+	var items []item
 	var unknown []string
+	var trackedIDs []int64
 	seen := make(map[string]bool, len(repoURLs))
 	for _, raw := range repoURLs {
 		repoURL := strings.TrimSpace(raw)
@@ -179,80 +193,96 @@ func (s *PostgresStore) AddReposToGroup(ctx context.Context, userID int, groupID
 				return out, err
 			}
 		}
+		items = append(items, item{url: repoURL, repoID: repoID, tracked: tracked})
 		switch {
 		case tracked:
-			// Known repo: instant link, zero collection load added. Only a
-			// link this call inserted counts: a repository already in the
-			// group changed no one's scope, and the API drops its whole
-			// token cache on Linked > 0 (PR #218 review C2).
-			inserted, err := s.AddRepoToGroupByID(ctx, groupID, repoID)
+			trackedIDs = append(trackedIDs, repoID)
+		case !isAdmin:
+			unknown = append(unknown, repoURL)
+		}
+	}
+	if !isAdmin {
+		// One transaction under the owner's lock decides the whole paste
+		// and writes it, or nothing (Copilot review 5479554271: an unlocked
+		// precheck then one transaction per link let a concurrent add turn
+		// a refused paste into a partial one). Small batches auto-approve
+		// when the operator opted in; otherwise the items wait for an
+		// administrator.
+		autoApprove := len(unknown) > 0 && autoApproveLimit > 0 && len(unknown) <= autoApproveLimit
+		status := "pending"
+		if autoApprove {
+			status = "approved"
+		}
+		linked, reqID, err := s.addPasteWithinCap(ctx, userID, groupID, trackedIDs, unknown, status)
+		if err != nil {
+			return out, err
+		}
+		// Only a link this call inserted counts: a repository already in
+		// the group changed no one's scope, and the API drops its whole
+		// token cache on Linked > 0 (PR #218 review C2).
+		out.Linked = linked
+		if len(unknown) == 0 {
+			return out, nil
+		}
+		out.RequestID = reqID
+		if !autoApprove {
+			out.Pending = len(unknown)
+			return out, nil
+		}
+		return s.processAutoApproved(ctx, out, userID, groupID, reqID, len(unknown))
+	}
+	for _, it := range items {
+		if it.tracked {
+			// Known repo: instant link, zero collection load added.
+			inserted, err := s.AddRepoToGroupByID(ctx, groupID, it.repoID)
 			if err != nil {
 				return out, err
 			}
 			if inserted {
 				out.Linked++
 			}
-		case isAdmin:
-			if _, err := s.ensureRepoCollectedInGroup(ctx, groupID, repoURL); err != nil {
-				return out, err
-			}
-			out.Enqueued++
-		default:
-			unknown = append(unknown, repoURL)
+			continue
 		}
-	}
-
-	if len(unknown) == 0 {
-		return out, nil
-	}
-
-	// Non-admin with genuinely new content: auto-approve small batches
-	// when the operator opted in, otherwise park on a pending request.
-	if autoApproveLimit > 0 && len(unknown) <= autoApproveLimit {
-		reqID, err := s.createAddRequest(ctx, userID, groupID, "repos", "", unknown, "approved")
-		if err != nil {
+		if _, err := s.ensureRepoCollectedInGroup(ctx, groupID, it.url); err != nil {
 			return out, err
 		}
-		out.RequestID = reqID
-		// The request is committed as approved and no admin will see it,
-		// so its processing must not stop with the caller's request context
-		// (a client disconnect used to leave its items unprocessed for good;
-		// round-14 review), and a failed item is final for it: the pass marks
-		// it processed-with-error and goes on, and the add reports the count
-		// (round-23 review: a retryable failure left it and every later item
-		// unprocessed for good).
-		// detached cannot be cancelled — not by the request, not by a stop —
-		// so the pass's failure below is never a shutdown and needs no
-		// context.Canceled arm (the shutdown-classification ratchet's
-		// producer rule).
-		detached := context.WithoutCancel(ctx)
-		processed, failed, err := s.processAddRequest(detached, reqID, true)
-		out.Enqueued += processed
-		out.Failed = failed
-		if err != nil {
-			// Logged HERE, the layer that detached the pass (SR-18; NET-6
-			// review r8 F1): its failure can never be the caller's request
-			// ending, but the caller logs through httpserver.LogFailure,
-			// which is Debug once nginx or http_timeout_seconds has ended
-			// the request — and an approved request with unprocessed items
-			// is listed for no admin and re-run by nothing (old problem O17
-			// in the operator's to-do list).
-			s.logger.Warn("auto-approved add request: processing failed — its unprocessed items are not retried automatically; the user can add those repositories again",
-				"request_id", reqID, "user_id", userID, "group_id", groupID, "processed", processed, "failed", failed, "error", err)
-			return out, fmt.Errorf("add request %d: %w", reqID, err)
-		}
-		if failed > 0 {
-			return out, fmt.Errorf("add request %d: %d of %d %w", reqID, failed, len(unknown), ErrAddItemsFailed)
-		}
-		return out, nil
+		out.Enqueued++
 	}
+	return out, nil
+}
 
-	reqID, err := s.createAddRequest(ctx, userID, groupID, "repos", "", unknown, "pending")
+// processAutoApproved runs an auto-approved add request's items.
+func (s *PostgresStore) processAutoApproved(ctx context.Context, out AddOutcome, userID int, groupID, reqID int64, items int) (AddOutcome, error) {
+	// The request is committed as approved and no admin will see it,
+	// so its processing must not stop with the caller's request context
+	// (a client disconnect used to leave its items unprocessed for good;
+	// round-14 review), and a failed item is final for it: the pass marks
+	// it processed-with-error and goes on, and the add reports the count
+	// (round-23 review: a retryable failure left it and every later item
+	// unprocessed for good).
+	// detached cannot be cancelled — not by the request, not by a stop —
+	// so the pass's failure below is never a shutdown and needs no
+	// context.Canceled arm (the shutdown-classification ratchet's
+	// producer rule).
+	detached := context.WithoutCancel(ctx)
+	processed, failed, err := s.processAddRequest(detached, reqID, true)
+	out.Enqueued += processed
+	out.Failed = failed
 	if err != nil {
-		return out, err
+		// Logged HERE, the layer that detached the pass (SR-18; NET-6
+		// review r8 F1): its failure can never be the caller's request
+		// ending, but the caller logs through httpserver.LogFailure,
+		// which is Debug once nginx or http_timeout_seconds has ended
+		// the request — and an approved request with unprocessed items
+		// is listed for no admin and re-run by nothing (old problem O17
+		// in the operator's to-do list).
+		s.logger.Warn("auto-approved add request: processing failed — its unprocessed items are not retried automatically; the user can add those repositories again",
+			"request_id", reqID, "user_id", userID, "group_id", groupID, "processed", processed, "failed", failed, "error", err)
+		return out, fmt.Errorf("add request %d: %w", reqID, err)
 	}
-	out.RequestID = reqID
-	out.Pending = len(unknown)
+	if failed > 0 {
+		return out, fmt.Errorf("add request %d: %d of %d %w", reqID, failed, items, ErrAddItemsFailed)
+	}
 	return out, nil
 }
 
@@ -260,11 +290,30 @@ func (s *PostgresStore) AddReposToGroup(ctx context.Context, userID int, groupID
 // transaction. status is 'pending' for the normal flow or 'approved'
 // for the auto-approve audit path (decided_by = 0, decided_at = NOW()).
 func (s *PostgresStore) createAddRequest(ctx context.Context, userID int, groupID int64, kind, orgURL string, urls []string, status string) (int64, error) {
+	// Each repository item holds a place in the account's allocation from
+	// here until the approval pass links it; decided under the per-owner
+	// lock (v0.29.89; AddReposToGroup writes its pastes through
+	// addPasteWithinCap, which decides the same way). The
+	// allocation is read before the transaction begins (no pool read inside
+	// it: review round 1 R2-2).
+	var quota capacity.EffectiveQuota
+	var alloc capacity.Allocation
+	if kind == "repos" && len(urls) > 0 {
+		var err error
+		if quota, alloc, err = s.reposAllocation(ctx, userID); err != nil {
+			return 0, err
+		}
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback(ctx)
+	if kind == "repos" {
+		if err := s.holdRepoPlaces(ctx, tx, userID, urls, quota, alloc); err != nil {
+			return 0, err
+		}
+	}
 	requestID, err := insertAddRequest(ctx, tx, userID, groupID, kind, orgURL, urls, status)
 	if err != nil {
 		return 0, err

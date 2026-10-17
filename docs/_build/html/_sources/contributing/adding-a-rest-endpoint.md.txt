@@ -24,7 +24,7 @@ The server uses the standard-library ServeMux pattern matching Go added in 1.22 
 
 ## Existing endpoints
 
-The API has grown to ~95 registered routes — the authoritative, tripwire-enforced reference is [`docs/guide/api.md`](../guide/api.md) (every registered route must appear there AND carry a smoke recipe in `internal/api/endpoint_smoke_test.go`, or the build fails). Skim `internal/api/server.go`'s route registrations for the code-side list.
+The authoritative reference is the OpenAPI document [`docs/api/openapi.yaml`](../api/openapi.yaml), rendered as the [API reference](../api/reference.rst) and written to the [API design conventions](../api/conventions.md). `scripts/openapi_routes_test.go` fails the build when a registered route is missing from it (or the spec names a route nobody serves), and when an operation's parameters, access or implied refusals disagree with its handler. Every route must also appear in the narrative guide [`docs/guide/api.md`](../guide/api.md) and carry a smoke recipe in `internal/api/endpoint_smoke_test.go`. Skim `internal/api/server.go`'s route registrations for the code-side list.
 
 ## Walkthrough: add `GET /api/v1/repos/{repoID}/contributors`
 
@@ -212,7 +212,7 @@ Iterate until green.
 
 ### Step 6 — bump version, document
 
-Bump `internal/db/version.go`. Put the release-note entry in your PR description. Update `docs/guide/api.md` with the new endpoint signature and response shape.
+Bump `internal/db/version.go`. Put the release-note entry in your PR description. Add the operation to `docs/api/openapi.yaml` (parameters, body, responses and access, derived from the handler, following `docs/api/conventions.md`), and describe what it means in `docs/guide/api.md`.
 
 ## Patterns to follow
 

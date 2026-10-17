@@ -47,7 +47,7 @@ func TestEnrichThinContributorsAccumulatesBeforeFlush(t *testing.T) {
 	src := mustReadEnrichSource(t)
 	body := extractEnrichFunc(src, "EnrichThinContributors")
 	if body == "" {
-		t.Skip("EnrichThinContributors not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): EnrichThinContributors not yet refactored")
 	}
 	// Expect a slice accumulator declared somewhere in the body. We accept
 	// either `[]model.Contributor` or `[]*model.Contributor`.

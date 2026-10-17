@@ -44,14 +44,16 @@ import (
 // stood here matched the word "Setpgid" anywhere in the file, comments
 // included.
 func TestSubprocessGroupKillIsTheSharedHelper(t *testing.T) {
-	for _, site := range []struct{ file, fn, call string }{
-		{"internal/collector/scancode_worker.go", "func (w *ScancodeWorker) prepareClone(", "groupKilled(cloneCmd)"},
-		{"internal/collector/scancode_worker.go", "func (w *ScancodeWorker) executeScan(", "groupKilled(cmd)"},
-		{"internal/collector/scancode_preflight.go", "func (w *ScancodeWorker) probeScancodeHealth(", "groupKilled(cmd)"},
-		{"internal/collector/scorecard.go", "func invokeScorecard(", "groupKilled(cmd)"},
+	// spawn is how the site gets its command: exec.CommandContext, or (the
+	// scancode clone since 0.29.93, H-3) the guarded builder scancodeCloneCmd.
+	for _, site := range []struct{ file, fn, call, spawn string }{
+		{"internal/collector/scancode_worker.go", "func (w *ScancodeWorker) prepareClone(", "groupKilled(cloneCmd)", "scancodeCloneCmd("},
+		{"internal/collector/scancode_worker.go", "func (w *ScancodeWorker) executeScan(", "groupKilled(cmd)", "exec.CommandContext("},
+		{"internal/collector/scancode_preflight.go", "func (w *ScancodeWorker) probeScancodeHealth(", "groupKilled(cmd)", "exec.CommandContext("},
+		{"internal/collector/scorecard.go", "func invokeScorecard(", "groupKilled(cmd)", "exec.CommandContext("},
 	} {
 		body := srctest.StripGoComments(srctest.FuncBody(t, srctest.Read(t, site.file), site.fn))
-		if !strings.Contains(body, "exec.CommandContext(") {
+		if !strings.Contains(body, site.spawn) {
 			t.Fatalf("%s %s no longer spawns a subprocess — move this pin to where it went", site.file, site.fn)
 		}
 		if !strings.Contains(body, site.call) {

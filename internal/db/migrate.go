@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/capacity"
+	"github.com/aveloxis/aveloxis/internal/safego"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-
-	"github.com/aveloxis/aveloxis/internal/safego"
 )
 
 //go:embed schema.sql
@@ -779,11 +779,22 @@ func migrateStage3ScancodeDistribution(ctx context.Context, pg *PostgresStore, l
 	addCommitDailyCompleteColumn(ctx, pg, logger, errs)
 	// v0.29.82: session tokens hashed at rest, existing rows once.
 	addSessionTokenHashedColumn(ctx, pg, logger, errs)
-	// v0.29.82: the API-token defaults' one row (operator decision
-	// 2026-10-08: 5,000 calls per hour, 30 days). Never overwrites an edit.
+	// v0.29.89 (summary/53): the capacity settings row (the contact
+	// address) and one row per quota with its shipped value and
+	// mode; never overwrites a row an administrator saved. It runs before
+	// the API-token settings seed: it moves an edited 0.29.82–0.29.88 hourly
+	// default into its quota row (once, ledgered) and keeps the old column
+	// as the rollback mirror.
+	seedCapacitySettings(ctx, pg, logger, errs)
+	// v0.29.82: the API-token defaults' one row — since 0.29.89 only the
+	// lifetime (30 days); the allowances are quotas. Never overwrites an edit.
 	execMigrationStep(ctx, pg, logger, errs, "v0.29.82 seed api_token_settings",
-		fmt.Sprintf(`INSERT INTO aveloxis_ops.api_token_settings (id, default_rate_limit_per_hour, default_lifetime_days)
-		VALUES (1, %d, %d) ON CONFLICT (id) DO NOTHING`, DefaultAPITokenRateLimitPerHour, DefaultAPITokenLifetimeDays))
+		fmt.Sprintf(`INSERT INTO aveloxis_ops.api_token_settings (id, default_lifetime_days)
+		VALUES (1, %d) ON CONFLICT (id) DO NOTHING`, DefaultAPITokenLifetimeDays))
+	// v0.29.89: each API token gets a daily allowance (its own value, like
+	// the hour; the default comes from the token_requests_per_day quota).
+	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.api_tokens", "rate_limit_per_day",
+		fmt.Sprintf("INT NOT NULL DEFAULT %d CHECK (rate_limit_per_day > 0)", capacity.Shipped[capacity.QuotaTokenRequestsPerDay].Allowed))
 	// v0.29.69 (worklist 69): the metadata backfill's attempt stamp (see
 	// schema.sql). NULL on existing rows = never answered = still a candidate.
 	// No index: the candidate query pages the repos PK and this is one more
@@ -3061,6 +3072,77 @@ func checkBlockersFrom(ctx context.Context, pg *PostgresStore, logger *slog.Logg
 	}
 }
 
+// seedCapacitySettings inserts the capacity settings row once (the
+// contact address; the sign-up quota's secret is per UTC day, in
+// signup_key_secrets) and each quota's row with its shipped value and mode. The API-token hour
+// keeps a value an administrator saved in 0.29.82–0.29.88 (the API tokens
+// page's default, api_token_settings.updated_by set); otherwise it takes
+// the new shipped 1,000 (operator 2026-10-10: 5,000 was too high).
+func seedCapacitySettings(ctx context.Context, pg *PostgresStore, logger *slog.Logger, errs *[]error) {
+	err := retryOnDeadlock(ctx, logger, "v0.29.89 seed capacity", func() error {
+		if _, err := pg.pool.Exec(ctx, `
+			INSERT INTO aveloxis_ops.capacity_settings (id, contact_email)
+			VALUES (1, $1) ON CONFLICT (id) DO NOTHING`, DefaultCapacityContactEmail); err != nil {
+			return err
+		}
+		for _, name := range capacity.QuotaNames() {
+			q := capacity.Shipped[name]
+			if _, err := pg.pool.Exec(ctx, `
+				INSERT INTO aveloxis_ops.capacity_quotas (name, allowed, mode) VALUES ($1, $2, $3)
+				ON CONFLICT (name) DO NOTHING`, name, q.Allowed, string(q.Mode)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		logger.Error("schema migration error", "step", "v0.29.89 seed capacity", "error", err)
+		*errs = append(*errs, fmt.Errorf("seed capacity: %w", err))
+		return
+	}
+	// An API-token hourly default an administrator saved in 0.29.82-0.29.88
+	// moves into its quota row, once (ledgered: a later migrate must never
+	// overwrite a Capacity-page edit). Only onto a quota row nobody has
+	// saved (L10 r2 F1: a pre-release 0.29.89 moved the value without a
+	// ledger entry, and its row must not be reset from the re-added column).
+	// Not the old shipped 5,000 (L10 r2 F2): 0.29.82-0.29.88 saved both
+	// columns on any edit, so a lifetime-only edit stored 5,000 with
+	// updated_by set; the operator lowered the default to 1,000 because
+	// 5,000 was too high, and a deliberate 5,000 cannot be told apart (the
+	// deploy note says to set it again on the Capacity page). The old
+	// column stays as the rollback mirror (writeCapacityQuotasTx keeps it
+	// current).
+	// A pre-release 0.29.89 kept one sign-up secret beside the keys it made
+	// (ASVS review I1: any database reader could invert them); the daily
+	// secret replaces it, and the old one is removed. Its NOT NULL address
+	// key becomes clearable, and the sealed envelope is added.
+	execMigrationStep(ctx, pg, logger, errs, "v0.29.89 remove the single sign-up secret",
+		`ALTER TABLE aveloxis_ops.capacity_settings DROP COLUMN IF EXISTS address_key_secret`)
+	execMigrationStep(ctx, pg, logger, errs, "v0.29.89 make the sign-up address key clearable",
+		`ALTER TABLE aveloxis_ops.account_signups ALTER COLUMN address_key DROP NOT NULL`)
+	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.account_signups", "address_sealed", "BYTEA")
+	// A database a pre-release 0.29.89 migrated has user_capacity without
+	// the repo_links_per_day override (SR-8: CREATE TABLE IF NOT EXISTS is a
+	// no-op there).
+	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.user_capacity", "links_per_day",
+		"INT CHECK (links_per_day > 0)")
+	// A database a pre-release 0.29.89 migrated lost the column (that build
+	// dropped it); put it back before the move reads it.
+	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.api_token_settings", "default_rate_limit_per_hour",
+		"INT NOT NULL DEFAULT 1000 CHECK (default_rate_limit_per_hour > 0)")
+	runOnceStep(ctx, pg, logger, errs, "v0.29.89 move the API-token hourly default into the token_requests_per_hour quota", `
+		UPDATE aveloxis_ops.capacity_quotas q SET allowed = s.default_rate_limit_per_hour,
+		       updated_by = s.updated_by, updated_at = s.updated_at
+		FROM aveloxis_ops.api_token_settings s
+		WHERE q.name = 'token_requests_per_hour' AND q.updated_by IS NULL
+		  AND s.id = 1 AND s.updated_by IS NOT NULL AND s.default_rate_limit_per_hour <> 5000`)
+	// The mirror follows the stored quota on every migrate (idempotent).
+	execMigrationStep(ctx, pg, logger, errs, "v0.29.89 sync the API-token hourly default rollback mirror", `
+		UPDATE aveloxis_ops.api_token_settings s SET default_rate_limit_per_hour = q.allowed
+		FROM aveloxis_ops.capacity_quotas q
+		WHERE s.id = 1 AND q.name = 'token_requests_per_hour' AND s.default_rate_limit_per_hour IS DISTINCT FROM q.allowed`)
+}
+
 // execMigrationStep runs a schema-changing SQL statement, logging the
 // step at INFO before and recording any error in the collector. Used
 // by RunMigrations for ALTER TABLE / CREATE INDEX / etc. statements
@@ -3664,17 +3746,15 @@ func setToolVersionDefaults(ctx context.Context, pg *PostgresStore, logger *slog
 // ON CONFLICT clause on commit inserts, so re-collection runs created
 // duplicate (repo_id, cmt_commit_hash, cmt_filename) rows.
 func deduplicateCommits(ctx context.Context, pg *PostgresStore, logger *slog.Logger) {
-	// Check if the unique index already exists — if so, dedup was already done.
-	var exists bool
-	if err := pg.pool.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM pg_indexes
-			WHERE schemaname = 'aveloxis_data' AND indexname = 'idx_commits_repo_hash_file'
-		)`).Scan(&exists); err != nil {
+	// A VALID unique index means dedup was already done. An INVALID one (an
+	// interrupted CONCURRENTLY build) is not done: it falls through, and the
+	// build below drops and rebuilds it (H-2).
+	valid, err := validIndexExists(ctx, pg, "aveloxis_data", "idx_commits_repo_hash_file")
+	if err != nil {
 		logger.Warn("commit-dedup gate: index probe failed — skipping dedup this run", "error", err)
 		return
 	}
-	if exists {
+	if valid {
 		return // already cleaned up
 	}
 
@@ -3709,33 +3789,42 @@ func deduplicateCommits(ctx context.Context, pg *PostgresStore, logger *slog.Log
 		logger.Info("deduplicated commits", "rows_removed", tag.RowsAffected())
 	}
 
-	// Create the unique index now that duplicates are gone. v0.20.1
-	// uses CONCURRENTLY so the index build doesn't ShareLock the
-	// commits table while the scheduler is running. deduplicateCommits
-	// itself is warn-only (this isn't through the err-collector), so
-	// keep that behavior here too.
-	// ErrNoRows = the index doesn't exist at all — nothing to drop.
-	var existsInvalid bool
-	if err := pg.pool.QueryRow(ctx, `
-		SELECT NOT i.indisvalid
+	// Create the unique index now that duplicates are gone, through the one
+	// CONCURRENTLY builder (it drops an INVALID leftover first). v0.20.1
+	// uses CONCURRENTLY so the build doesn't ShareLock the commits table
+	// while the scheduler runs. deduplicateCommits is warn-only (not
+	// through the err-collector), so a failure is logged and retried by
+	// the next migrate.
+	var errs []error
+	execCreateIndexConcurrently(ctx, pg, logger, &errs,
+		"aveloxis_data", "idx_commits_repo_hash_file",
+		`CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_commits_repo_hash_file
+		 ON aveloxis_data.commits (repo_id, cmt_commit_hash, cmt_filename)`)
+	for _, e := range errs {
+		logger.Warn("failed to create commits unique index (warn-only — retried next migrate)", "error", e)
+	}
+}
+
+// validIndexExists reports whether schema.name exists AND is valid. pg_indexes
+// also lists an INVALID index — the leftover of an interrupted CREATE INDEX
+// CONCURRENTLY — so a dedup gate that asked pg_indexes took a broken index as
+// done and never rebuilt it (H-2). Only "no such index" (no rows) is false
+// without an error; any other probe failure is the caller's error (SR-5).
+func validIndexExists(ctx context.Context, pg *PostgresStore, schema, name string) (bool, error) {
+	var valid bool
+	err := pg.pool.QueryRow(ctx, `
+		SELECT i.indisvalid
 		FROM pg_index i
 		JOIN pg_class c ON c.oid = i.indexrelid
 		JOIN pg_namespace n ON n.oid = c.relnamespace
-		WHERE n.nspname = 'aveloxis_data' AND c.relname = 'idx_commits_repo_hash_file'`).Scan(&existsInvalid); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		logger.Warn("invalid-index probe failed for idx_commits_repo_hash_file", "error", err)
+		WHERE n.nspname = $1 AND c.relname = $2`, schema, name).Scan(&valid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
 	}
-	if existsInvalid {
-		logger.Warn("dropping invalid idx_commits_repo_hash_file from prior interrupted CONCURRENT build")
-		if _, err := pg.pool.Exec(ctx, `DROP INDEX IF EXISTS aveloxis_data.idx_commits_repo_hash_file`); err != nil {
-			logger.Warn("dropping invalid idx_commits_repo_hash_file failed", "error", err)
-		}
-	}
-	_, err := pg.pool.Exec(ctx, `
-		CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_commits_repo_hash_file
-		ON aveloxis_data.commits (repo_id, cmt_commit_hash, cmt_filename)`)
 	if err != nil {
-		logger.Warn("failed to create commits unique index", "error", err)
+		return false, err
 	}
+	return valid, nil
 }
 
 // ensureRepoGitCaseInsensitiveUnique creates the UNIQUE partial index
@@ -4425,14 +4514,13 @@ func cleanupBadTimestamps(ctx context.Context, pg *PostgresStore, logger *slog.L
 // with residual duplicate groups get a WARN naming the recount query
 // instead of a failed migration.
 func ensureRepoLaborNaturalKeyUnique(ctx context.Context, pg *PostgresStore, logger *slog.Logger) {
-	var exists bool
-	if err := pg.pool.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM pg_indexes
-		 WHERE schemaname='aveloxis_data' AND indexname='uq_repo_labor_natural_key')`).Scan(&exists); err != nil {
+	// Only a VALID index is done; an INVALID leftover is rebuilt below (H-2).
+	valid, err := validIndexExists(ctx, pg, "aveloxis_data", "uq_repo_labor_natural_key")
+	if err != nil {
 		logger.Warn("repo_labor unique: existence check failed — skipping", "error", err)
 		return
 	}
-	if exists {
+	if valid {
 		return
 	}
 	var dupGroups int

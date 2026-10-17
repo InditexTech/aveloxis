@@ -24,6 +24,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
@@ -186,4 +188,65 @@ func truncate(s string, n int) string {
 	}
 	q := strconv.Quote(s)
 	return q[1 : len(q)-1]
+}
+
+// ClientIP is the request's client address: the peer, or — only when the
+// peer IS trustedProxy (canonical form, compared byte for byte) — the
+// RIGHTMOST X-Forwarded-For entry, the one that proxy appended (entries to
+// its left are the client's own claims). The api's per-IP limit and the
+// web's sign-up quota both read it (one rule, SR-17; v0.29.89).
+func ClientIP(r *http.Request, trustedProxy string) net.IP {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	peer := net.ParseIP(host)
+	if trustedProxy == "" || host != trustedProxy {
+		return peer
+	}
+	// Every header line, joined: a proxy that appends a separate line (not
+	// a comma) must not leave a client-supplied first line deciding.
+	xff := strings.Join(r.Header.Values("X-Forwarded-For"), ",")
+	if strings.TrimSpace(xff) == "" {
+		return peer
+	}
+	parts := strings.Split(xff, ",")
+	if ip := net.ParseIP(strings.TrimSpace(parts[len(parts)-1])); ip != nil {
+		return ip
+	}
+	return peer
+}
+
+// MissingTrustedProxyDetector logs, once per process, that a proxy is in
+// front of this process but its trusted-proxy key is empty: a loopback
+// peer, or one the caller exempts, sent X-Forwarded-For. Every client then
+// looks like the proxy (ClientIP believes no header). One detector for the
+// api (api.trusted_proxy: the per-IP limits and require_auth skip an
+// exempt peer) and the web (web.trusted_proxy: the sign-up quota);
+// v0.29.91, lens L18. Observation only (SR-7): it never changes the
+// request or the decision. The zero value is ready to use.
+type MissingTrustedProxyDetector struct {
+	once sync.Once
+}
+
+// Observe checks one request: key is the aveloxis.json key to set (e.g.
+// "api.trusted_proxy") and trustedProxy its value; exempt, when not nil,
+// also counts an exempt peer as the proxy; effect is what this process
+// gets wrong meanwhile.
+func (d *MissingTrustedProxyDetector) Observe(logger *slog.Logger, r *http.Request, key, trustedProxy string, exempt func(net.IP) bool, effect string) {
+	if d == nil || logger == nil || trustedProxy != "" || len(r.Header.Values("X-Forwarded-For")) == 0 {
+		return
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !(ip.IsLoopback() || (exempt != nil && exempt(ip))) {
+		return
+	}
+	d.once.Do(func() {
+		logger.Warn(key+" is empty but a request from a loopback or exempt peer carried X-Forwarded-For: a proxy is in front, and every client looks like the proxy — set "+key+" to the proxy's address (127.0.0.1 for nginx on the same host) and restart",
+			"peer", host, "effect", effect)
+	})
 }

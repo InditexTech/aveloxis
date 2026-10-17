@@ -166,7 +166,3 @@ func TestHeartbeatJobUpdatesLockedAt(t *testing.T) {
 		t.Error("HeartbeatJob must verify locked_by matches to avoid updating other workers' locks")
 	}
 }
-
-func TestQueueIntegration(t *testing.T) {
-	t.Skip("requires live PostgreSQL — set AVELOXIS_TEST_DB to run")
-}

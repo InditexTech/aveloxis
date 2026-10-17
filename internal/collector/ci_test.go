@@ -20,7 +20,7 @@ func TestCIWorkflowsExist(t *testing.T) {
 	// Find the repo root by walking up from the test directory.
 	root := srctest.Root(t)
 	if root == "" {
-		t.Skip("could not find repo root")
+		t.Fatal("source structure changed (a skip would hide it): could not find repo root")
 	}
 
 	required := map[string]string{
@@ -44,7 +44,7 @@ func TestCIWorkflowsExist(t *testing.T) {
 func TestDockerfileExists(t *testing.T) {
 	root := srctest.Root(t)
 	if root == "" {
-		t.Skip("could not find repo root")
+		t.Fatal("source structure changed (a skip would hide it): could not find repo root")
 	}
 	path := filepath.Join(root, "Dockerfile")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -56,7 +56,7 @@ func TestDockerfileExists(t *testing.T) {
 func TestCIBadgesInREADME(t *testing.T) {
 	root := srctest.Root(t)
 	if root == "" {
-		t.Skip("could not find repo root")
+		t.Fatal("source structure changed (a skip would hide it): could not find repo root")
 	}
 	data, err := os.ReadFile(filepath.Join(root, "README.md"))
 	if err != nil {

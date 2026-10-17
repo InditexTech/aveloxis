@@ -37,6 +37,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 )
@@ -57,9 +58,10 @@ type authInfo struct {
 	IsAdmin bool
 	Scope   map[int64]bool // nil when IsAdmin (unscoped)
 	// APITokenID is set for an operator-issued API token (0 for a session),
-	// with its hourly allowance.
+	// with its hourly and daily allowances.
 	APITokenID       int64
 	RateLimitPerHour int
+	RateLimitPerDay  int
 }
 
 // resolution is a request's one token lookup (identify), read by the rate
@@ -100,8 +102,8 @@ func (a *authenticator) identify(rl *rateLimiter, next http.Handler) http.Handle
 			switch {
 			case cached && info.APITokenID == 0:
 				res.info = info
-			case cached && rl != nil && rl.tokenSpent(info.APITokenID, info.RateLimitPerHour):
-				// Its hour is spent: the limiter answers 429 with no store
+			case cached && rl != nil && rl.tokenSpent(info):
+				// An enforced quota is spent: the limiter answers 429 with no store
 				// lookup (ASVS review G4); a revoked token is rechecked when
 				// its window opens again.
 				res.info = info
@@ -224,7 +226,7 @@ func (a *authenticator) resolveToken(ctx context.Context, token string) (authInf
 		if err != nil {
 			return authInfo{}, fmt.Errorf("validate API token: %w", err)
 		}
-		info = authInfo{UserID: id.UserID, APITokenID: id.TokenID, RateLimitPerHour: id.RateLimitPerHour}
+		info = authInfo{UserID: id.UserID, APITokenID: id.TokenID, RateLimitPerHour: id.RateLimitPerHour, RateLimitPerDay: id.RateLimitPerDay}
 	} else {
 		userID, err := a.store.ValidateSessionToken(ctx, token)
 		if errors.Is(err, db.ErrInvalidSessionToken) {
@@ -456,6 +458,14 @@ func (s *Server) authorizeRepo(w http.ResponseWriter, r *http.Request, repoID in
 	if info.Scope[repoID] {
 		return true
 	}
+	// Already decided for this repository on this request by a wrapper
+	// (servePageCached): the request's scope still lacks it, so deciding
+	// again would reserve a second auto-add slot — at the last slot, a 429
+	// for a request that did add the repository (v0.29.91 whole-PR
+	// follow-up). The mark names one repository id.
+	if id, ok := r.Context().Value(repoAuthorizedKey{}).(int64); ok && id == repoID {
+		return true
+	}
 	// An API token reads only its owner's groups: refused, never
 	// auto-added, with the way to add it (operator decision 2026-10-09).
 	if info.APITokenID != 0 {
@@ -469,9 +479,9 @@ func (s *Server) authorizeRepo(w http.ResponseWriter, r *http.Request, repoID in
 		var slot autoAddSlot // the window a refund goes back to
 		if s.autoAdds != nil {
 			var ok bool
-			var retry int
-			if slot, ok, retry = s.autoAdds.reserve(info.UserID); !ok {
-				s.refuseAutoAdd(w, info, retry)
+			var refused *capacity.Exceeded
+			if slot, ok, refused = s.autoAdds.reserve(info.UserID); !ok {
+				s.refuseAutoAdd(w, info, refused)
 				return false
 			}
 		}
@@ -496,6 +506,10 @@ func (s *Server) authorizeRepo(w http.ResponseWriter, r *http.Request, repoID in
 			return true
 		case errors.Is(err, db.ErrSharedRepoNotFound):
 			// Nonexistent repo id — fall through to the 403.
+		case s.refuseCapacity(w, info, err):
+			// The account's repository allocation is full (v0.29.89): the
+			// capacity body says so and how to make room.
+			return false
 		default:
 			httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "shared-with-me auto-add failed — refusing access (fail closed)",
 				"user_id", info.UserID, "repo_id", repoID, "error", err)
@@ -511,4 +525,16 @@ func (s *Server) authorizeRepo(w http.ResponseWriter, r *http.Request, repoID in
 		"hint":    "add this repository to one of your groups to request access",
 	})
 	return false
+}
+
+// repoAuthorizedKey marks a request whose repository authorization a
+// wrapper already decided (servePageCached): the repository id it was
+// decided for.
+type repoAuthorizedKey struct{}
+
+// withRepoAuthorized returns r marked as authorized for repoID. The mark
+// lives in this request's context only (it never outlives the request) and
+// names one repository: authorizeRepo honours it for that id alone.
+func withRepoAuthorized(r *http.Request, repoID int64) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), repoAuthorizedKey{}, repoID))
 }

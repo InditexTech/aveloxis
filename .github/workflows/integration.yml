@@ -105,8 +105,26 @@ jobs:
       # found this way: an explicit repo_group_id = 1 that collided with the
       # Default group's sequence). A failure prints `-test.shuffle N`;
       # rerun with that seed to reproduce.
-      - name: Run full suite with integration tier enabled
-        run: go test -race -count=1 -shuffle=on ./...
+      # The skip census (2026-10-13): the same run, counted — a test that
+      # SKIPS without a reviewed environment reason (scripts/
+      # skip_census_baseline.txt) fails the job, so a refactor can never turn
+      # a test silently off. It exits non-zero on any test failure too.
+      - name: Run full suite with integration tier enabled (skip census)
+        env:
+          SKIP_CENSUS_GOFLAGS: -race -shuffle=on
+          SKIP_CENSUS_OUT: ${{ runner.temp }}/skip-census
+        run: scripts/skip-census.sh
+
+      # The census prints each failed test's output and its package's
+      # shuffle seed; the whole `go test -json` stream and stderr are kept
+      # here for anything the print bounded (Copilot review 5559632343).
+      - name: Keep the skip census's raw output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skip-census
+          path: ${{ runner.temp }}/skip-census
+          if-no-files-found: ignore
 
       # v0.27.43: smoke-test the data-verify command end to end (build →
       # connect → probe → report) on every PR. The base database is

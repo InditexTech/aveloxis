@@ -49,7 +49,7 @@ func TestGetContributorsNeedingSearchExcludesNoreply(t *testing.T) {
 	src := mustReadStoreSource(t, "contributor_search_resolve.go")
 	body := extractBatchFunc(src, "GetContributorsNeedingSearch")
 	if body == "" {
-		t.Skip("GetContributorsNeedingSearch not yet defined")
+		t.Fatal("source structure changed (a skip would hide it): GetContributorsNeedingSearch not yet defined")
 	}
 	if !strings.Contains(body, "noreply") {
 		t.Error("GetContributorsNeedingSearch must filter out noreply email addresses — they're " +
@@ -76,7 +76,7 @@ func TestLinkContributorToGitHubUserDoesNotChangeCntrbIdOrLogin(t *testing.T) {
 	src := mustReadStoreSource(t, "contributor_search_resolve.go")
 	body := extractBatchFunc(src, "LinkContributorToGitHubUser")
 	if body == "" {
-		t.Skip("LinkContributorToGitHubUser not yet defined")
+		t.Fatal("source structure changed (a skip would hide it): LinkContributorToGitHubUser not yet defined")
 	}
 
 	// Extract just the SQL strings so doc comments mentioning the
@@ -112,7 +112,7 @@ func TestLinkContributorToGitHubUserStampsAttempted(t *testing.T) {
 	src := mustReadStoreSource(t, "contributor_search_resolve.go")
 	body := extractBatchFunc(src, "LinkContributorToGitHubUser")
 	if body == "" {
-		t.Skip("LinkContributorToGitHubUser not yet defined")
+		t.Fatal("source structure changed (a skip would hide it): LinkContributorToGitHubUser not yet defined")
 	}
 	if !strings.Contains(body, "cntrb_last_search_attempted_at") {
 		t.Error("LinkContributorToGitHubUser must SET cntrb_last_search_attempted_at = NOW() so the row is " +

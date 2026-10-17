@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CI/CD Pipelines &mdash; Aveloxis 0.29.88 documentation</title>
+  <title>CI/CD Pipelines &mdash; Aveloxis 0.29.96 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=7f7018be"></script>
+      <script src="../_static/documentation_options.js?v=57ddef21"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -80,6 +80,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#monitor-dashboard-v0-23-0">Monitor (dashboard, v0.23.0)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#mail-gmail-smtp-optional">Mail (Gmail SMTP, optional)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#logging">Logging</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../getting-started/configuration.html#capacity-fair-use-quotas-v0-29-89">Capacity (fair-use quotas, v0.29.89)</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="../getting-started/configuration.html#api-key-sources">API key sources</a></li>
@@ -203,6 +204,12 @@
 <li class="toctree-l2"><a class="reference internal" href="commands.html#aveloxis-api"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">api</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="commands.html#aveloxis-scancode-worker"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">scancode-worker</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="commands.html#aveloxis-test-mail"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">test-mail</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="commands.html#aveloxis-signup-escrow"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">signup-escrow</span></code></a><ul>
+<li class="toctree-l3"><a class="reference internal" href="commands.html#aveloxis-signup-escrow-keygen"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">signup-escrow</span> <span class="pre">keygen</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="commands.html#aveloxis-signup-escrow-export"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">signup-escrow</span> <span class="pre">export</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="commands.html#aveloxis-signup-escrow-open"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">signup-escrow</span> <span class="pre">open</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="commands.html#aveloxis-collect"><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">collect</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="commands.html#id3">Flags</a></li>
 <li class="toctree-l3"><a class="reference internal" href="commands.html#id4">Examples</a></li>
@@ -331,6 +338,7 @@
 <li class="toctree-l3"><a class="reference internal" href="api.html#repository-statistics">Repository Statistics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#forge-id-changes-admin-v0-29-63">Forge-ID changes (admin, v0.29.63)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#api-tokens-admin-v0-29-82">API tokens (admin, v0.29.82)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="api.html#capacity-admin-v0-29-89">Capacity (admin, v0.29.89)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#batch-statistics">Batch Statistics</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#time-series">Time Series</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#dependency-licenses">Dependency Licenses</a></li>
@@ -603,6 +611,15 @@
 <li class="toctree-l2"><a class="reference internal" href="scaling.html#next-steps">Next steps</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="signup-escrow.html">Sign-up address escrow</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="signup-escrow.html#what-is-kept-and-for-how-long">What is kept, and for how long</a></li>
+<li class="toctree-l2"><a class="reference internal" href="signup-escrow.html#set-it-up-once">Set it up (once)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="signup-escrow.html#open-an-envelope-when-you-are-required-to">Open an envelope when you are required to</a></li>
+<li class="toctree-l2"><a class="reference internal" href="signup-escrow.html#change-the-key-or-lose-it">Change the key, or lose it</a></li>
+<li class="toctree-l2"><a class="reference internal" href="signup-escrow.html#what-an-envelope-does-and-does-not-show">What an envelope does and does not show</a></li>
+<li class="toctree-l2"><a class="reference internal" href="signup-escrow.html#what-this-does-not-cover">What this does not cover</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="troubleshooting.html">Troubleshooting</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#commits-not-collected-but-issues-and-pull-requests-are-collected">Commits not collected, but Issues and Pull Requests are collected</a></li>
 <li class="toctree-l2"><a class="reference internal" href="troubleshooting.html#monitor-dashboard-renders-slowly-on-a-large-fleet">Monitor dashboard renders slowly on a large fleet</a></li>
@@ -690,6 +707,51 @@
 </ul>
 </li>
 </ul>
+<p class="caption" role="heading"><span class="caption-text">REST API</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../api/index.html#a-first-call">A first call</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../api/conventions.html">API design conventions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#fundamentals">Fundamentals</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#naming">Naming</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#documentation">Documentation</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#access">Access</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#errors">Errors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#rate-limits-and-quotas">Rate limits and quotas</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#caching-and-validators">Caching and validators</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#times-and-windows">Times and windows</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#compatibility">Compatibility</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/conventions.html#what-the-tests-check">What the tests check</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../api/reference.html">API reference</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#service">Service</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#repositories">Repositories</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#vulnerabilities">Vulnerabilities</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#contributors">Contributors</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#comparison">Comparison</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#supply-chain">Supply chain</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#account">Account</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#home">Home</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#groups">Groups</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#collections">Collections</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-users-and-groups">Admin users and groups</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-add-requests">Admin add requests</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-monitor">Admin monitor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-collections">Admin collections</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-api-tokens">Admin API tokens</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-capacity">Admin capacity</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#admin-forge-id-changes">Admin forge-ID changes</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#augur-catalog">Augur catalog</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#augur-metrics">Augur metrics</a></li>
+<li class="toctree-l4"><a class="reference internal" href="../api/reference.html#shared-responses">Shared responses</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
 <p class="caption" role="heading"><span class="caption-text">Architecture</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../architecture/overview.html">Architecture Overview</a><ul>
@@ -697,7 +759,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../architecture/overview.html#four-schemas">Four schemas</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../architecture/overview.html#aveloxis-data-103-tables-22-materialized-views"><code class="docutils literal notranslate"><span class="pre">aveloxis_data</span></code> (103 tables + 22 materialized views)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../architecture/overview.html#aveloxis-scan-4-tables"><code class="docutils literal notranslate"><span class="pre">aveloxis_scan</span></code> (4 tables)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../architecture/overview.html#aveloxis-ops-44-tables"><code class="docutils literal notranslate"><span class="pre">aveloxis_ops</span></code> (44 tables)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../architecture/overview.html#aveloxis-ops-51-tables"><code class="docutils literal notranslate"><span class="pre">aveloxis_ops</span></code> (51 tables)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../architecture/overview.html#aveloxis-augur-data-6-views"><code class="docutils literal notranslate"><span class="pre">aveloxis_augur_data</span></code> (6 views)</a></li>
 </ul>
 </li>
@@ -1315,6 +1377,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../contributing/review-lenses.html#l15-the-forge-s-cache-and-session-semantics">L15 — The forge’s cache and session semantics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/review-lenses.html#l16-widening-a-tripwire-is-a-contract-change">L16 — Widening a tripwire is a contract change</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/review-lenses.html#l17-what-the-pr-193-rounds-kept-finding-the-four-blind-spots">L17 — What the PR #193 rounds kept finding (the four blind spots)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing/review-lenses.html#l18-consolidate-before-you-add">L18 — Consolidate before you add</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/review-lenses.html#running-the-pass">Running the pass</a></li>
 </ul>
 </li>
@@ -1872,24 +1935,26 @@ of wall-clock; cheap insurance.</p>
 <h3>Running the gate<a class="headerlink" href="#running-the-gate" title="Link to this heading"></a></h3>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># From the contributor&#39;s working branch, with the schema change</span>
 <span class="c1"># checked out locally:</span>
-aveloxis<span class="w"> </span>data-test<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--released-tag<span class="w"> </span><span class="m">0</span>.22.6<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--repo<span class="w"> </span>https://github.com/augurlabs/augur
+aveloxis<span class="w"> </span>data-test<span class="w"> </span>--released-tag<span class="w"> </span>origin/main
 </pre></div>
 </div>
 <p>The harness:</p>
 <ol class="arabic simple">
-<li><p>Builds binaries from the released tag (via <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">worktree</span></code>) and
-the current working tree.</p></li>
+<li><p>Builds binaries from the given ref — a release tag or <code class="docutils literal notranslate"><span class="pre">origin/main</span></code>
+(via <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">worktree</span></code>) — and the current working tree.</p></li>
 <li><p>Provisions two scratch PostgreSQL databases.</p></li>
-<li><p>Collects <code class="docutils literal notranslate"><span class="pre">augurlabs/augur</span></code> into each.</p></li>
+<li><p>Collects the same repositories into each — by default the standing
+set: <code class="docutils literal notranslate"><span class="pre">backstage/backstage</span></code>, <code class="docutils literal notranslate"><span class="pre">MISP/MISP</span></code> and <code class="docutils literal notranslate"><span class="pre">sunpy/sunpy</span></code>.</p></li>
 <li><p>Diffs row counts table-by-table.</p></li>
 <li><p>Writes a markdown report to <code class="docutils literal notranslate"><span class="pre">&lt;work-dir&gt;/report.md</span></code>.</p></li>
 <li><p>Exits 0 if all rows PASS or FLAG; exits 1 on any FAIL.</p></li>
 </ol>
-<p>The canonical test repo is <code class="docutils literal notranslate"><span class="pre">augurlabs/augur</span></code> — moderate size (a few
-thousand issues, a few thousand PRs, lots of commits) that exercises
-every collection path without taking hours.</p>
+<p>The standing set pairs one large, busy repository (<code class="docutils literal notranslate"><span class="pre">backstage/backstage</span></code>:
+review-comment volume, the page-size step-down, long histories) with two
+active mid-size ones (<code class="docutils literal notranslate"><span class="pre">MISP/MISP</span></code>, <code class="docutils literal notranslate"><span class="pre">sunpy/sunpy</span></code>) whose Python and
+JavaScript dependency trees exercise the analysis phases. Collections are
+full and sequential, so a run takes hours — most of it on backstage. Pass
+<code class="docutils literal notranslate"><span class="pre">--repo</span></code> (repeatable) to collect other repositories instead.</p>
 </section>
 <section id="interpreting-results">
 <h3>Interpreting results<a class="headerlink" href="#interpreting-results" title="Link to this heading"></a></h3>
@@ -1912,8 +1977,8 @@ job:</p>
 <span class="w">  </span><span class="nt">if</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">contains(github.event.pull_request.labels.*.name, &#39;schema-change&#39;)</span>
 <span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
 <span class="w">    </span><span class="no">aveloxis data-test \</span>
-<span class="w">      </span><span class="no">--released-tag $LAST_RELEASED \</span>
-<span class="w">      </span><span class="no">--repo https://github.com/augurlabs/augur \</span>
+<span class="w">      </span><span class="no">--released-tag &quot;$LAST_RELEASED&quot; \</span>
+<span class="w">      </span><span class="no">--repo https://github.com/sunpy/sunpy \</span>
 <span class="w">      </span><span class="no">--work-dir /tmp/aveloxis-data-test-${{ github.run_id }}</span>
 <span class="w">  </span><span class="c1"># Exit code 1 on FAIL → fails the workflow.</span>
 
@@ -1928,9 +1993,13 @@ job:</p>
 <p>This requires the CI runner to have:</p>
 <ul class="simple">
 <li><p>Access to a PostgreSQL server with CREATEDB privilege.</p></li>
-<li><p>API keys pre-seeded into a primary <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.api_keys</span></code> table
+<li><p>API keys pre-seeded into a primary <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.worker_oauth</span></code> table
 on that server.</p></li>
-<li><p>Enough wall-clock budget for the ~1-hour cycle.</p></li>
+<li><p>Enough wall-clock budget. The standing set takes most of a day
+(backstage alone takes hours per side), well past a hosted runner’s
+job limit, so a CI job should pass <code class="docutils literal notranslate"><span class="pre">--repo</span></code> with one mid-size
+repository, as the example above does, and leave the standing set to
+the operator-run check.</p></li>
 </ul>
 <p>For projects without those, the harness still works as an
 operator-invoked local check before pushing the PR. The CI job is a

@@ -27,7 +27,3 @@ func TestStagingWriterCount(t *testing.T) {
 		t.Errorf("initial Count() = %d, want 0", w.Count())
 	}
 }
-
-func TestStagingIntegration(t *testing.T) {
-	t.Skip("requires live PostgreSQL — set AVELOXIS_TEST_DB to run")
-}

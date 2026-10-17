@@ -8,3 +8,7 @@ sphinx-rtd-theme==3.1.0
 myst-parser==5.1.0
 Pygments==2.20.0
 snowballstemmer==3.0.1
+# The API reference renders docs/api/openapi.yaml at build time (no network,
+# no JavaScript). httpdomain is pinned too: it writes the reference's markup.
+sphinxcontrib-openapi==0.9.0
+sphinxcontrib-httpdomain==2.0.0

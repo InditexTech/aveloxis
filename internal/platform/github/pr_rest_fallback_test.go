@@ -81,7 +81,7 @@ func TestFetchPRBatchRESTFallbackGatedOnSize1(t *testing.T) {
 	// throw us off.
 	subdivIdx := strings.Index(body, "func (c *Client) fetchPRBatchWithSubdivide(")
 	if subdivIdx < 0 {
-		t.Skip("fetchPRBatchWithSubdivide not yet defined")
+		t.Fatal("source structure changed (a skip would hide it): fetchPRBatchWithSubdivide not yet defined")
 	}
 	fnTail := body[subdivIdx:]
 	endRel := strings.Index(fnTail[1:], "\nfunc ")
@@ -92,7 +92,7 @@ func TestFetchPRBatchRESTFallbackGatedOnSize1(t *testing.T) {
 
 	callIdx := strings.Index(fnBody, "c.fetchPRBatchOneREST(")
 	if callIdx < 0 {
-		t.Skip("fetchPRBatchOneREST not yet called from fetchPRBatchWithSubdivide; helper-presence test covers this")
+		t.Fatal("source structure changed (a skip would hide it): fetchPRBatchOneREST not yet called from fetchPRBatchWithSubdivide; helper-presence test covers this")
 	}
 	guardIdx := strings.Index(fnBody, "if len(numbers) <= 1")
 	if guardIdx < 0 || guardIdx >= callIdx {
@@ -109,7 +109,7 @@ func TestFetchPRBatchRESTFallbackFetchesAllChildren(t *testing.T) {
 
 	idx := strings.Index(body, "func (c *Client) fetchPRBatchOneREST(")
 	if idx < 0 {
-		t.Skip("fetchPRBatchOneREST not yet defined")
+		t.Fatal("source structure changed (a skip would hide it): fetchPRBatchOneREST not yet defined")
 	}
 	fnTail := body[idx:]
 	endRel := strings.Index(fnTail[1:], "\nfunc ")

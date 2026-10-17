@@ -49,7 +49,7 @@ func TestHandleQueueParsesPaginationParams(t *testing.T) {
 	src := mustReadMonitorSource(t)
 	body := extractMonitorFn(src, "handleQueue")
 	if body == "" {
-		t.Skip("handleQueue not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): handleQueue not yet refactored")
 	}
 
 	if !strings.Contains(body, "parsePageParams") {
@@ -66,7 +66,7 @@ func TestHandleQueueReturnsTotalCount(t *testing.T) {
 	src := mustReadMonitorSource(t)
 	body := extractMonitorFn(src, "handleQueue")
 	if body == "" {
-		t.Skip("handleQueue not yet refactored")
+		t.Fatal("source structure changed (a skip would hide it): handleQueue not yet refactored")
 	}
 
 	// We accept `total`, `total_repos`, or any field that surfaces the

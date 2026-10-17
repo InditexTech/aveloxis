@@ -28,7 +28,7 @@ func TestCatalogSoftDeletedClaimsMatchSQL(t *testing.T) {
 	if !strings.Contains(string(catalog), "Soft-deleted") {
 		// The claim was removed from the catalog — the pin's premise is
 		// gone; whoever removes it should also revisit this test.
-		t.Skip("catalog no longer claims soft-deleted exclusion")
+		t.Fatal("source structure changed (a skip would hide it): catalog no longer claims soft-deleted exclusion")
 	}
 	// The claimed filter must exist in BOTH people metrics.
 	s := string(sqlSrc)

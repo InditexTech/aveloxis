@@ -49,7 +49,15 @@ guide/dedicated-scancode-host
 guide/ci-cd
 guide/data-test
 guide/scaling
+guide/signup-escrow
 guide/troubleshooting
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: REST API
+
+api/index
 ```
 
 ```{toctree}

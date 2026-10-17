@@ -17,9 +17,13 @@ func TestDeployAckLifecycle(t *testing.T) {
 	store, ctx := emConnect(t)
 	t.Cleanup(store.Close)
 	const ver = "0.0.0-avdeploytest"
+	const repoGit = "https://github.com/_avdeployack/collected"
 	cleanup := func() {
 		cleanupExecRetry(context.Background(), store,
 			`DELETE FROM aveloxis_ops.deploy_ack WHERE tool_version = $1`, ver)
+		cleanupExecRetry(context.Background(), store,
+			`DELETE FROM aveloxis_ops.collection_queue WHERE repo_id IN (SELECT repo_id FROM aveloxis_data.repos WHERE repo_git = $1)`, repoGit)
+		cleanupExecRetry(context.Background(), store, `DELETE FROM aveloxis_data.repos WHERE repo_git = $1`, repoGit)
 	}
 	cleanup()
 	t.Cleanup(cleanup)
@@ -38,13 +42,21 @@ func TestDeployAckLifecycle(t *testing.T) {
 		t.Fatalf("re-record: %v", err)
 	}
 
-	// FleetHasCollectedData reflects last_collected (round 19); the scratch DB may have none, so
-	// this is true here (the fresh-install false path is covered by the
+	// FleetHasCollectedData reflects last_collected (round 19). The test
+	// seeds one collected queue row instead of hoping the database has one
+	// (it skipped on every fresh per-package database until 0.29.93's
+	// no-silent-skip rule; the fresh-install false path is covered by the
 	// missing-table branch, unit-tested via the fake gate).
+	var repoID int64
+	if err := store.pool.QueryRow(ctx, `INSERT INTO aveloxis_data.repos (repo_git, repo_owner, repo_name, platform_id)
+		VALUES ($1, '_avdeployack', 'collected', 1) RETURNING repo_id`, repoGit).Scan(&repoID); err != nil {
+		t.Fatal(err)
+	}
+	mustExecRetry(ctx, t, store, `INSERT INTO aveloxis_ops.collection_queue (repo_id, last_collected) VALUES ($1, NOW())`, repoID)
 	if ok, err := store.FleetHasCollectedData(ctx); err != nil {
 		t.Fatalf("FleetHasCollectedData: %v", err)
 	} else if !ok {
-		t.Skip("scratch DB has no collected rows (no last_collected) — nothing to assert")
+		t.Fatal("FleetHasCollectedData = false with a collected queue row present")
 	}
 }
 

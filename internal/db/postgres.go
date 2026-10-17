@@ -15,12 +15,13 @@ import (
 	"sync"
 	"time"
 
+	"filippo.io/age"
+	"github.com/aveloxis/aveloxis/internal/capacity"
+	"github.com/aveloxis/aveloxis/internal/model"
+	"github.com/aveloxis/aveloxis/internal/platform"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/aveloxis/aveloxis/internal/model"
-	"github.com/aveloxis/aveloxis/internal/platform"
 )
 
 // PostgresStore implements Store using pgx connection pool.
@@ -33,6 +34,34 @@ type PostgresStore struct {
 	migrateNoWait    bool        // whether to fail fast on advisory-lock contention (--no-wait on migrate)
 	migrateFastPath  bool        // F13: skip RunMigrations entirely when the stamp matches (serve startup only)
 	allowSecondServe bool        // serve may start beside another aveloxis-serve (see SetAllowSecondServe)
+
+	// v0.29.89 (summary/53): this process's aveloxis.json capacity words,
+	// and the once-a-day notifier for shadow allocation decisions.
+	capacity     capacityConfig
+	capacityOnce sync.Once
+	capacityNote *capacity.Notifier
+	// signupEscrow seals each new account's address (v0.29.89; set by the
+	// web at start, SetSignupEscrowRecipient); nil seals nothing.
+	signupEscrow age.Recipient
+	// allocationDecided is a test seam: nil in production; a test sets it to
+	// hold concurrent adds at the decision point (linkWithinCap).
+	allocationDecided func()
+	// capacityClock is a test seam for the additions decision's day: nil in
+	// production (time.Now).
+	capacityClock func() time.Time
+	// linkPolicyRead is a test seam: nil in production; a test sets it to
+	// fail the policy read linkWithinCap makes (v0.29.91: linkHeld reads
+	// none).
+	linkPolicyRead func() error
+	// apiTokenSettingsWrite is a test seam: nil in production; a test sets
+	// it to fail SetAPITokenSettings after its quota writes and before the
+	// lifetime write (Copilot review 5485402444: the defaults are saved
+	// together or not at all).
+	apiTokenSettingsWrite func() error
+	// capacityQuotaWritten is a test seam: nil in production; a test sets
+	// it to park a transaction after a named quota row is written, so two
+	// saves can be interleaved on purpose (L10 round 3 F1: lock order).
+	capacityQuotaWritten func(name string)
 
 	// backendPIDs are the server-side PIDs of THIS process's pool
 	// connections (v0.28.18), maintained by the pool's AfterConnect /
@@ -816,18 +845,14 @@ func (s *PostgresStore) FindRepoByURL(ctx context.Context, gitURL string) (int64
 	// zero-valued model.Repo.
 	gitURL = model.NormalizeRepoGitURL(gitURL)
 	var id int64
-	err := s.pool.QueryRow(ctx, `
-		SELECT repo_id FROM aveloxis_data.repos
-		WHERE repo_git = $1
-		   OR (LOWER(repo_git) = LOWER($1) AND platform_id IN (1, 2))
-		ORDER BY (repo_git = $1) DESC, repo_id
-		LIMIT 1`, gitURL,
-	).Scan(&id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, nil
-		}
+	// The one match (resolvedRepoIDSQL), shared with the capacity SQL that
+	// decides what an add item will link (v0.29.91 review round 2, SR-17).
+	var found *int64
+	if err := s.pool.QueryRow(ctx, `SELECT `+resolvedRepoIDSQL("$1::text"), gitURL).Scan(&found); err != nil {
 		return 0, err
+	}
+	if found != nil {
+		id = *found
 	}
 	return id, nil
 }

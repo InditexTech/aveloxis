@@ -75,7 +75,7 @@ func TestInstallScancodeInjectionIsNonFatal(t *testing.T) {
 	// regardless).
 	helperStart := strings.Index(code, "func injectTypecodeLibmagic")
 	if helperStart < 0 {
-		t.Skip("helper not yet implemented — covered by TestInstallScancodeInjectionHelperExists")
+		t.Fatal("source structure changed (a skip would hide it): helper not yet implemented — covered by TestInstallScancodeInjectionHelperExists")
 	}
 	// Look at the call site INSIDE installScancode: it must NOT use the
 	// error return value in a way that would abort the install.

@@ -32,7 +32,12 @@
 //     uses only anonymous $$ blocks (migrate.go's DO blocks);
 //   - the SET-LHS anchor inherits the flagship's documented assumption
 //     that WHERE predicates join with AND (never commas), so `, col =`
-//     cannot false-match a predicate.
+//     cannot false-match a predicate;
+//   - a MERGE INTO statement is found by FindWrites (v0.29.94), but
+//     WritesColumn sees only its WHEN MATCHED THEN UPDATE SET arm; a
+//     WHEN NOT MATCHED THEN INSERT (col) list is a write it cannot see.
+//     The corpus has no MERGE today; the first one extends the matcher
+//     in the same change, with its table's policy test as the proof.
 package sqlscan
 
 import (
@@ -130,12 +135,14 @@ func splitStatements(sql string) []string {
 	return append(out, sql[start:])
 }
 
-// FindWrites returns the statements that INSERT INTO or UPDATE the
-// given schema-qualified table (e.g. "aveloxis_data.repos" — the
-// qualification is required; unlike the old internal/db helper this
-// engine serves aveloxis_ops tables too).
+// FindWrites returns the statements that INSERT INTO, UPDATE (also
+// UPDATE ONLY) or MERGE INTO the given schema-qualified table (e.g.
+// "aveloxis_data.repos" — the qualification is required; unlike the old
+// internal/db helper this engine serves aveloxis_ops tables too). The
+// ONLY and MERGE spellings were added in v0.29.94 (L10 round 2 F2): a
+// writer spelled that way escaped every write-policy pin.
 func FindWrites(stmts []Stmt, table string) []Stmt {
-	re := regexp.MustCompile(`(?i)(INSERT\s+INTO|UPDATE)\s+` + regexp.QuoteMeta(table) + `\b`)
+	re := regexp.MustCompile(`(?i)(INSERT\s+INTO|UPDATE(?:\s+ONLY)?|MERGE\s+INTO)\s+` + regexp.QuoteMeta(table) + `\b`)
 	var out []Stmt
 	for _, s := range stmts {
 		if re.MatchString(s.SQL) {

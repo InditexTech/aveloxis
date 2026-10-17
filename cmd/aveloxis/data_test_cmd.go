@@ -24,14 +24,64 @@ import (
 	"github.com/aveloxis/aveloxis/internal/platform"
 )
 
+// dataTestDefaultRepos is the standing repository set the data test
+// collects when no --repo is given (operator decision 2026-10-13:
+// augurlabs/augur had grown too quiet to exercise recent collection paths).
+// backstage/backstage is large and busy (the large-repository paths:
+// review-comment volume, page-size step-down); MISP/MISP and sunpy/sunpy
+// are active mid-size projects with Python and JavaScript dependency trees.
+var dataTestDefaultRepos = []string{
+	"https://github.com/backstage/backstage",
+	"https://github.com/MISP/MISP",
+	"https://github.com/sunpy/sunpy",
+}
+
+// dataTestReposFile records, in the work dir, the repositories a run collected.
+const dataTestReposFile = "repos.txt"
+
+// dataTestRunRepos decides the repositories of a run. A collecting run uses
+// effectiveDataTestRepos and records the list in workDir; a --diff-only run
+// uses --repo when given, else the list the collecting run recorded, and
+// refuses rather than guess when there is none.
+func dataTestRunRepos(workDir string, flagRepos []string, diffOnly bool) ([]string, error) {
+	path := filepath.Join(workDir, dataTestReposFile)
+	if diffOnly {
+		if len(flagRepos) > 0 {
+			return flagRepos, nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("--diff-only without --repo needs %s from the collecting run (%w); pass --repo for each repository the kept databases hold", path, err)
+		}
+		repos := strings.Fields(string(b))
+		if len(repos) == 0 {
+			return nil, fmt.Errorf("%s is empty; pass --repo for each repository the kept databases hold", path)
+		}
+		return repos, nil
+	}
+	repos := effectiveDataTestRepos(flagRepos)
+	if err := os.WriteFile(path, []byte(strings.Join(repos, "\n")+"\n"), 0o644); err != nil {
+		return nil, fmt.Errorf("record the run's repositories: %w", err)
+	}
+	return repos, nil
+}
+
+// effectiveDataTestRepos is the set a run collects: the --repo values when
+// any were given, else a copy of dataTestDefaultRepos.
+func effectiveDataTestRepos(flagRepos []string) []string {
+	if len(flagRepos) > 0 {
+		return flagRepos
+	}
+	return append([]string(nil), dataTestDefaultRepos...)
+}
+
 // dataTestCmd is the v0.22.8 operator-driven shadow-database
 // verification harness. Builds two binaries (released tag + local
 // working tree), provisions two scratch DBs, collects the same
 // repo into each, and reports row-count differences.
 //
-// First use case: validate v0.22.7 against v0.22.6 using
-// augurlabs/augur as the test repo (lots of issues, PRs, commits).
-// Documented in CLAUDE.md under v0.22.8.
+// The standing repository set is dataTestDefaultRepos (used when no
+// --repo is given; augurlabs/augur until 2026-10-13).
 //
 // The conventional scratch DB names are aveloxis_released and
 // aveloxis_new — chosen by the operator so harness output is
@@ -48,43 +98,48 @@ func dataTestCmd(cfgPath *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "data-test",
 		Short: "Compare local schema against a tagged release via shadow DB collection",
-		Long: `Builds binaries from the local working tree AND a GitHub-tagged release,
-provisions two scratch PostgreSQL databases (aveloxis_released and
-aveloxis_new), collects the given repo into each, and diffs row
-counts table-by-table.
+		Long: fmt.Sprintf(`Builds binaries from the local working tree AND a GitHub-tagged release,
+provisions two scratch PostgreSQL databases (%s and
+%s), collects the same repositories into each, and diffs row
+counts table-by-table. Without --repo it collects the standing set:
+backstage/backstage, MISP/MISP and sunpy/sunpy.
 
 Use after a schema change to verify that the new schema accepts
 all data the previous release accepted. Catches regressions where
 new FKs, constraints, or DDL would reject INSERTs that previously
 succeeded.
 
-The full cycle takes ~1 hour for a moderate repo like
-augurlabs/augur: ~30s binary builds, a few seconds DB setup,
-~30 min per collection, ~10s diff. Subprocess output streams live
-so the operator sees collection progress.
+Each repository is collected in full, once per side, one side after the
+other. A mid-size repository takes tens of minutes per side; a large
+one such as backstage/backstage takes hours, so a run of the standing
+set can take most of a day. Subprocess output streams live so the
+operator sees collection progress.
 
 Exit code 0 = all PASS or FLAG-only. Exit code 1 = at least one
-FAIL (row loss / regression detected).`,
+FAIL (row loss / regression detected).`, dataTestSides[dataTestReleased].dbname, dataTestSides[dataTestNew].dbname),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-			if releasedTag == "" || len(repoURLs) == 0 {
-				return fmt.Errorf("both --released-tag and --repo are required")
+			if releasedTag == "" {
+				return fmt.Errorf("--released-tag is required")
 			}
 
 			primaryCfg := loadConfig(*cfgPath, logger)
-			if workDir == "" {
-				workDir = filepath.Join(os.TempDir(),
-					fmt.Sprintf("aveloxis-data-test-%s", time.Now().UTC().Format("20060102T150405Z")))
+			var err error
+			if workDir, err = resolveDataTestWorkDir(workDir); err != nil {
+				return err
 			}
-			if err := os.MkdirAll(workDir, 0o755); err != nil {
-				return fmt.Errorf("create work dir: %w", err)
+			// The repositories a run collects are recorded in its work dir,
+			// so a later --diff-only report names what the kept databases
+			// actually hold, not the standing set (review of the default set).
+			if repoURLs, err = dataTestRunRepos(workDir, repoURLs, diffOnly); err != nil {
+				return err
 			}
 			logger.Info("data-test starting", "work_dir", workDir,
 				"released_tag", releasedTag, "repos", strings.Join(repoURLs, ", "),
-				"scratch_db_released", "aveloxis_released",
-				"scratch_db_new", "aveloxis_new")
+				"scratch_db_released", dataTestSides[dataTestReleased].dbname,
+				"scratch_db_new", dataTestSides[dataTestNew].dbname)
 
 			// v0.27.129: --diff-only re-runs ONLY the diff + report
 			// against scratch DBs a prior --keep-dbs run left behind —
@@ -126,44 +181,35 @@ FAIL (row loss / regression detected).`,
 
 			// Phase 2: provision both scratch DBs (sequential — the
 			// admin connection is short-lived, no concurrency benefit).
-			if err := provisionScratchDB(ctx, logger, primaryCfg, "aveloxis_released"); err != nil {
-				return fmt.Errorf("provisionScratchDB(aveloxis_released): %w", err)
-			}
-			if err := provisionScratchDB(ctx, logger, primaryCfg, "aveloxis_new"); err != nil {
-				return fmt.Errorf("provisionScratchDB(aveloxis_new): %w", err)
+			for _, side := range dataTestSides {
+				if err := provisionScratchDB(ctx, logger, primaryCfg, side.dbname); err != nil {
+					return fmt.Errorf("provisionScratchDB(%s): %w", side.dbname, err)
+				}
 			}
 
 			// Phase 3: per-side setup + collection (sequential — both
 			// sides share the same API key pool, parallel runs would
 			// double API budget and produce flaky timings).
-			releasedCfgPath := filepath.Join(workDir, "config-released.json")
-			newCfgPath := filepath.Join(workDir, "config-new.json")
-			if err := generateScratchConfig(primaryCfg, "aveloxis_released", releasedCfgPath); err != nil {
-				return fmt.Errorf("generateScratchConfig(released): %w", err)
+			cfgPaths, err := writeScratchConfigs(primaryCfg, workDir)
+			if err != nil {
+				return err
 			}
-			if err := generateScratchConfig(primaryCfg, "aveloxis_new", newCfgPath); err != nil {
-				return fmt.Errorf("generateScratchConfig(new): %w", err)
-			}
+			binaries := [len(dataTestSides)]string{dataTestReleased: releasedBin, dataTestNew: localBin}
 
-			for _, side := range []struct {
-				name, binary, cfg string
-			}{
-				{"released", releasedBin, releasedCfgPath},
-				{"new", localBin, newCfgPath},
-			} {
-				logger.Info("running side", "side", side.name, "binary", side.binary)
-				if err := runMigrate(ctx, logger, side.name, side.binary, side.cfg); err != nil {
+			for i, side := range dataTestSides {
+				binary, cfg := binaries[i], cfgPaths[i]
+				logger.Info("running side", "side", side.name, "binary", binary)
+				if err := runMigrate(ctx, logger, side.name, binary, cfg); err != nil {
 					return fmt.Errorf("runMigrate(%s): %w", side.name, err)
 				}
-				scratchDBName := "aveloxis_" + side.name
-				if err := copyAPIKeys(ctx, logger, primaryCfg, scratchDBName); err != nil {
+				if err := copyAPIKeys(ctx, logger, primaryCfg, side.dbname); err != nil {
 					return fmt.Errorf("copyAPIKeys(%s): %w", side.name, err)
 				}
 				for _, repoURL := range repoURLs {
-					if err := dtRunAddRepo(ctx, logger, side.name, side.binary, side.cfg, repoURL); err != nil {
+					if err := dtRunAddRepo(ctx, logger, side.name, binary, cfg, repoURL); err != nil {
 						return fmt.Errorf("dtRunAddRepo(%s): %w", side.name, err)
 					}
-					if err := dtRunCollect(ctx, logger, side.name, side.binary, side.cfg, repoURL); err != nil {
+					if err := dtRunCollect(ctx, logger, side.name, binary, cfg, repoURL); err != nil {
 						return fmt.Errorf("dtRunCollect(%s): %w", side.name, err)
 					}
 				}
@@ -197,7 +243,7 @@ FAIL (row loss / regression detected).`,
 				}
 			} else {
 				logger.Info("keeping scratch DBs per --keep-dbs",
-					"aveloxis_released", "kept", "aveloxis_new", "kept")
+					dataTestSides[dataTestReleased].dbname, "kept", dataTestSides[dataTestNew].dbname, "kept")
 			}
 
 			if report.HasFailures() {
@@ -210,10 +256,10 @@ FAIL (row loss / regression detected).`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&releasedTag, "released-tag", "", "git tag of the released aveloxis version (e.g., 0.22.6) — REQUIRED")
-	cmd.Flags().StringArrayVar(&repoURLs, "repo", nil, "git URL of a test repo to collect; repeatable — every named repo is collected into BOTH sides (at least one REQUIRED)")
-	cmd.Flags().BoolVar(&keepDBs, "keep-dbs", false, "retain aveloxis_released and aveloxis_new after the run (default: drop them)")
-	cmd.Flags().StringVar(&workDir, "work-dir", "", "path for binaries, logs, and report (default: a fresh /tmp/aveloxis-data-test-<ts>)")
+	cmd.Flags().StringVar(&releasedTag, "released-tag", "", "git ref to compare against: a release tag (e.g., v0.22.6), origin/main or a commit — REQUIRED")
+	cmd.Flags().StringArrayVar(&repoURLs, "repo", nil, "git URL of a test repo to collect; repeatable — every named repo is collected into BOTH sides (default: the standing set — backstage/backstage, MISP/MISP, sunpy/sunpy)")
+	cmd.Flags().BoolVar(&keepDBs, "keep-dbs", false, fmt.Sprintf("retain %s and %s after the run (default: drop them)", dataTestSides[dataTestReleased].dbname, dataTestSides[dataTestNew].dbname))
+	cmd.Flags().StringVar(&workDir, "work-dir", "", "path for binaries, logs, report, and each side's bare clones (default: a fresh aveloxis-data-test-<ts> under the system temp dir)")
 	cmd.Flags().BoolVar(&diffOnly, "diff-only", false, "skip build/provision/collect and re-run only the diff + report against scratch DBs kept by a prior --keep-dbs run")
 	return cmd
 }
@@ -293,10 +339,88 @@ func provisionScratchDB(ctx context.Context, logger *slog.Logger, cfg *config.Co
 	return nil
 }
 
-// generateScratchConfig reads the primary aveloxis.json, swaps the
-// database.dbname to the scratch name, and writes the result to
-// outputPath. The two scratch configs differ only in dbname.
-func generateScratchConfig(primary *config.Config, dbname, outputPath string) error {
+// resolveDataTestWorkDir is the one place the work dir is decided:
+// the operator's --work-dir or a fresh folder under the temp dir, made
+// ABSOLUTE and created. v0.29.95: every per-run path is derived from
+// it — the released build runs with its cwd in the worktree, so a
+// relative `-o <work-dir>/bin/...` landed under the worktree and the
+// later exec could not find it, and the collect subprocesses read
+// repo_clone_dir from the written config without any cwd of their own.
+func resolveDataTestWorkDir(workDir string) (string, error) {
+	if workDir == "" {
+		workDir = filepath.Join(os.TempDir(),
+			fmt.Sprintf("aveloxis-data-test-%s", time.Now().UTC().Format("20060102T150405Z")))
+	}
+	abs, err := filepath.Abs(workDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve work dir %q: %w", workDir, err)
+	}
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		return "", fmt.Errorf("create work dir: %w", err)
+	}
+	return abs, nil
+}
+
+// dataTestCloneDir is the folder one side's collect clones into:
+// <work-dir>/clones-<side>. One per side, never the operator's own
+// repo_clone_dir (see generateScratchConfig). workDir is absolute
+// (resolveDataTestWorkDir).
+func dataTestCloneDir(workDir, side string) string {
+	return filepath.Join(workDir, "clones-"+side)
+}
+
+// dataTestSide is one side of the comparison: its tag in the output
+// and the scratch database it collects into.
+type dataTestSide struct{ name, dbname string }
+
+// dataTestSides is the two sides in run order, indexed by
+// dataTestReleased and dataTestNew. It is the ONE spelling of the side
+// names and the scratch database names (v0.29.95, L10 round 2 F3):
+// provisioning, the written configs, the per-side run, the diff, the
+// report and the cleanup all read it. TestDataTestSidesAreTheOneSpelling
+// pins that no other site spells a scratch database name.
+var dataTestSides = [2]dataTestSide{
+	dataTestReleased: {name: "released", dbname: "aveloxis_released"},
+	dataTestNew:      {name: "new", dbname: "aveloxis_new"},
+}
+
+const (
+	dataTestReleased = 0
+	dataTestNew      = 1
+)
+
+// writeScratchConfigs writes config-<side>.json under workDir for each
+// side, with that side's scratch database and its own clone dir, and
+// returns the paths indexed like dataTestSides. It is the ONLY caller of
+// generateScratchConfig: the command cannot write a side's config
+// without the side's clone dir (TestDataTestCmdWritesConfigsThroughTheOwner
+// pins the one call site; TestWriteScratchConfigsGivesEachSideItsOwnCloneDir
+// reads what it writes).
+func writeScratchConfigs(primary *config.Config, workDir string) ([len(dataTestSides)]string, error) {
+	var paths [len(dataTestSides)]string
+	for i, side := range dataTestSides {
+		paths[i] = filepath.Join(workDir, "config-"+side.name+".json")
+		if err := generateScratchConfig(primary, side.dbname, dataTestCloneDir(workDir, side.name), paths[i]); err != nil {
+			return paths, fmt.Errorf("generateScratchConfig(%s): %w", side.name, err)
+		}
+	}
+	return paths, nil
+}
+
+// generateScratchConfig copies the operator's loaded config, swaps
+// database.dbname to the scratch name and collection.repo_clone_dir to
+// this side's cloneDir, and writes the result to outputPath. The two
+// scratch configs differ only in those two fields.
+//
+// v0.29.95: the clone dir used to be left as the operator's. A bare
+// clone lands at <repo_clone_dir>/repo_<id> with the id assigned by
+// the database the binary talks to, so the scratch sides (fresh ids 1,
+// 2, 3) overwrote the operator's local deployment's repo_1..3 and each
+// other (2026-10-14: backstage replaced apache/tomcat). Every field of
+// the copied config that names shared disk is rewritten per side; the
+// scancode clone dir is not one (per-scan temp folders, and the
+// one-shot collect runs no scancode worker).
+func generateScratchConfig(primary *config.Config, dbname, cloneDir, outputPath string) error {
 	// Deep-copy via JSON round-trip so we don't mutate the operator's
 	// loaded config object.
 	raw, err := json.Marshal(primary)
@@ -308,6 +432,7 @@ func generateScratchConfig(primary *config.Config, dbname, outputPath string) er
 		return err
 	}
 	scratch.Database.DBName = dbname
+	scratch.Collection.RepoCloneDir = cloneDir
 	out, err := json.MarshalIndent(scratch, "", "  ")
 	if err != nil {
 		return err
@@ -477,8 +602,9 @@ func dtRunAddRepo(ctx context.Context, logger *slog.Logger, side, binary, cfgPat
 // before its child events. FK constraints are exercised against
 // fully-populated parent tables, exposing any real regression.
 //
-// Trade-off: a full collection takes longer than incremental
-// (~30-45 min on augurlabs/augur vs ~20-25 min incremental). The
+// Trade-off: a full collection takes markedly longer than incremental
+// (hours rather than minutes on backstage/backstage, the largest
+// repository of the standing set). The
 // signal quality is worth it; the whole point of the harness is to
 // surface FK / data-loss regressions.
 func dtRunCollect(ctx context.Context, logger *slog.Logger, side, binary, cfgPath, repoURL string) error {
@@ -492,24 +618,21 @@ func dtRunCollect(ctx context.Context, logger *slog.Logger, side, binary, cfgPat
 // row-count diff plus the v0.26.1 column-fill diff over the aveloxis
 // schemas.
 func runRowCountDiff(ctx context.Context, logger *slog.Logger, cfg *config.Config) (*db.RowCountDiffReport, *db.ColumnFillDiffReport, error) {
-	releasedCfg := cfg.Database
-	releasedCfg.DBName = "aveloxis_released"
-	releasedPool, err := pgxpool.New(ctx, releasedCfg.ConnectionString())
-	if err != nil {
-		return nil, nil, fmt.Errorf("connect aveloxis_released: %w", err)
+	var pools [len(dataTestSides)]*pgxpool.Pool
+	for i, side := range dataTestSides {
+		sideCfg := cfg.Database
+		sideCfg.DBName = side.dbname
+		pool, err := pgxpool.New(ctx, sideCfg.ConnectionString())
+		if err != nil {
+			return nil, nil, fmt.Errorf("connect %s: %w", side.dbname, err)
+		}
+		defer pool.Close()
+		pools[i] = pool
 	}
-	defer releasedPool.Close()
-
-	newCfg := cfg.Database
-	newCfg.DBName = "aveloxis_new"
-	newPool, err := pgxpool.New(ctx, newCfg.ConnectionString())
-	if err != nil {
-		return nil, nil, fmt.Errorf("connect aveloxis_new: %w", err)
-	}
-	defer newPool.Close()
+	releasedPool, newPool := pools[dataTestReleased], pools[dataTestNew]
 
 	logger.Info("running row-count diff",
-		"released_db", "aveloxis_released", "new_db", "aveloxis_new")
+		"released_db", dataTestSides[dataTestReleased].dbname, "new_db", dataTestSides[dataTestNew].dbname)
 	rowReport, err := db.RowCountDiff(ctx, releasedPool, newPool, nil)
 	if err != nil {
 		return nil, nil, err
@@ -527,8 +650,8 @@ func runRowCountDiff(ctx context.Context, logger *slog.Logger, cfg *config.Confi
 func writeReport(path string, report *db.RowCountDiffReport, colReport *db.ColumnFillDiffReport, releasedTag, repoURL string) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# aveloxis data-test report\n\n")
-	fmt.Fprintf(&b, "- **Released tag**: %s (in `aveloxis_released`)\n", releasedTag)
-	fmt.Fprintf(&b, "- **Local version**: working tree (in `aveloxis_new`)\n")
+	fmt.Fprintf(&b, "- **Released tag**: %s (in `%s`)\n", releasedTag, dataTestSides[dataTestReleased].dbname)
+	fmt.Fprintf(&b, "- **Local version**: working tree (in `%s`)\n", dataTestSides[dataTestNew].dbname)
 	fmt.Fprintf(&b, "- **Test repo**: %s\n", repoURL)
 	fmt.Fprintf(&b, "- **Schemas**: %s\n", strings.Join(report.Schemas, ", "))
 	fmt.Fprintf(&b, "- **Generated**: %s\n\n", time.Now().UTC().Format(time.RFC3339))
@@ -664,11 +787,11 @@ func cleanupScratchDBs(ctx context.Context, logger *slog.Logger, cfg *config.Con
 		return fmt.Errorf("connect to postgres for cleanup: %w", err)
 	}
 	defer pool.Close()
-	for _, dbname := range []string{"aveloxis_released", "aveloxis_new"} {
-		if _, err := pool.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %q`, dbname)); err != nil {
-			return fmt.Errorf("drop %s: %w", dbname, err)
+	for _, side := range dataTestSides {
+		if _, err := pool.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %q`, side.dbname)); err != nil {
+			return fmt.Errorf("drop %s: %w", side.dbname, err)
 		}
-		logger.Info("dropped scratch DB", "dbname", dbname)
+		logger.Info("dropped scratch DB", "dbname", side.dbname)
 	}
 	return nil
 }

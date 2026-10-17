@@ -74,7 +74,7 @@ func TestRunSearchResolveCallsSearchAndLink(t *testing.T) {
 	src := mustReadSchedulerSource(t)
 	idx := strings.Index(src, "func (s *Scheduler) runSearchResolve(")
 	if idx < 0 {
-		t.Skip("runSearchResolve not yet defined")
+		t.Fatal("source structure changed (a skip would hide it): runSearchResolve not yet defined")
 	}
 	body := src[idx:]
 	if end := strings.Index(body[1:], "\nfunc "); end > 0 {

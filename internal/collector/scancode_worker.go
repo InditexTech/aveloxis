@@ -701,6 +701,20 @@ func (w *ScancodeWorker) runOne(ctx context.Context, job db.ScancodeJob) {
 	w.finishScan(ctx, job, ex)
 }
 
+// scancodeCloneCmd builds the worker's shallow clone with the guards the
+// facade clone has (H-3): validateGitURL refuses file://, option injection
+// and scheme-less URLs before git sees them, and gitCloneEnv sets
+// GIT_LFS_SKIP_SMUDGE=1 (LFS budgets, v0.21.4) and GIT_TERMINAL_PROMPT=0 (a
+// background process must never wait on a credential prompt).
+func scancodeCloneCmd(ctx context.Context, repoGit, dir string) (*exec.Cmd, error) {
+	if err := validateGitURL(repoGit); err != nil {
+		return nil, fmt.Errorf("unsafe git URL rejected: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "--", repoGit, dir)
+	cmd.Env = gitCloneEnv()
+	return cmd, nil
+}
+
 // prepareClone creates the temp dir and shallow-clones the repo into
 // it. Returns false (with the failure recorded) when either step
 // fails.
@@ -737,8 +751,13 @@ func (w *ScancodeWorker) prepareClone(ctx context.Context, job db.ScancodeJob, t
 	// for 6+ hours on a clone that never returned.
 	cloneCtx, cloneCancel := context.WithTimeout(ctx, scancodeCloneTimeout)
 	defer cloneCancel()
-	cloneCmd := exec.CommandContext(cloneCtx, "git", "clone", "--depth", "1", "--", job.RepoGit, tempDir)
-	cloneCmd.Env = append(os.Environ(), "GIT_LFS_SKIP_SMUDGE=1")
+	cloneCmd, err := scancodeCloneCmd(cloneCtx, job.RepoGit, tempDir)
+	if err != nil {
+		w.logger.Warn("scancode runOne: unsafe git URL refused — not cloned",
+			"repo_id", job.RepoID, "owner", job.RepoOwner, "repo", job.RepoName, "error", err)
+		w.recordFailureBestEffort(ctx, job.RepoID)
+		return false
+	}
 	// v0.23.3: process-group cleanup — the git subprocess and its
 	// grandchildren (git-lfs, git-remote-https, the smudge-filter
 	// pre-check) die together on ctx cancel, and Wait() is bounded.

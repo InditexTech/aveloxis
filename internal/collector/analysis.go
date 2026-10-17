@@ -290,7 +290,13 @@ func (ac *AnalysisCollector) scanDependencies(ctx context.Context, repoID int64,
 		if errors.Is(err, context.Canceled) {
 			return err
 		}
-		ac.logger.Warn("failed to clear old dependencies", "repo_id", repoID, "error", err)
+		// H-4: abort the pass. repo_dependencies has no unique arbiter, so
+		// inserting on top of an un-cleared snapshot duplicates every row
+		// (the libyear rotation aborts the same way since v0.27.17). The
+		// next cycle retries with a fresh clear.
+		ac.logger.Error("failed to clear old dependencies — skipping the dependency scan this cycle",
+			"repo_id", repoID, "error", err)
+		return fmt.Errorf("clear previous dependency snapshot: %w", err)
 	}
 
 	depCounts := make(map[string]map[string]int) // language -> dep_name -> count

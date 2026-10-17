@@ -183,24 +183,26 @@ of wall-clock; cheap insurance.
 ```bash
 # From the contributor's working branch, with the schema change
 # checked out locally:
-aveloxis data-test \
-  --released-tag 0.22.6 \
-  --repo https://github.com/augurlabs/augur
+aveloxis data-test --released-tag origin/main
 ```
 
 The harness:
 
-1. Builds binaries from the released tag (via `git worktree`) and
-   the current working tree.
+1. Builds binaries from the given ref — a release tag or `origin/main`
+   (via `git worktree`) — and the current working tree.
 2. Provisions two scratch PostgreSQL databases.
-3. Collects `augurlabs/augur` into each.
+3. Collects the same repositories into each — by default the standing
+   set: `backstage/backstage`, `MISP/MISP` and `sunpy/sunpy`.
 4. Diffs row counts table-by-table.
 5. Writes a markdown report to `<work-dir>/report.md`.
 6. Exits 0 if all rows PASS or FLAG; exits 1 on any FAIL.
 
-The canonical test repo is `augurlabs/augur` — moderate size (a few
-thousand issues, a few thousand PRs, lots of commits) that exercises
-every collection path without taking hours.
+The standing set pairs one large, busy repository (`backstage/backstage`:
+review-comment volume, the page-size step-down, long histories) with two
+active mid-size ones (`MISP/MISP`, `sunpy/sunpy`) whose Python and
+JavaScript dependency trees exercise the analysis phases. Collections are
+full and sequential, so a run takes hours — most of it on backstage. Pass
+`--repo` (repeatable) to collect other repositories instead.
 
 ### Interpreting results
 
@@ -224,8 +226,8 @@ job:
   if: contains(github.event.pull_request.labels.*.name, 'schema-change')
   run: |
     aveloxis data-test \
-      --released-tag $LAST_RELEASED \
-      --repo https://github.com/augurlabs/augur \
+      --released-tag "$LAST_RELEASED" \
+      --repo https://github.com/sunpy/sunpy \
       --work-dir /tmp/aveloxis-data-test-${{ github.run_id }}
   # Exit code 1 on FAIL → fails the workflow.
 
@@ -240,9 +242,13 @@ job:
 This requires the CI runner to have:
 
 - Access to a PostgreSQL server with CREATEDB privilege.
-- API keys pre-seeded into a primary `aveloxis_ops.api_keys` table
+- API keys pre-seeded into a primary `aveloxis_ops.worker_oauth` table
   on that server.
-- Enough wall-clock budget for the ~1-hour cycle.
+- Enough wall-clock budget. The standing set takes most of a day
+  (backstage alone takes hours per side), well past a hosted runner's
+  job limit, so a CI job should pass `--repo` with one mid-size
+  repository, as the example above does, and leave the standing set to
+  the operator-run check.
 
 For projects without those, the harness still works as an
 operator-invoked local check before pushing the PR. The CI job is a

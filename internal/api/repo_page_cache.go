@@ -544,6 +544,11 @@ func (s *Server) servePageCached(pol pagePolicy, h http.HandlerFunc, w http.Resp
 	if !s.authorizeRepo(w, r, repoID) {
 		return
 	}
+	// Decided: the handler's own authorizeRepo (every path below runs h
+	// with authed) must not decide — and auto-add — again. A new variable,
+	// not a reassignment of r: r stays the request whose context the
+	// failure logging classifies (only a value is added here).
+	authed := withRepoAuthorized(r, repoID)
 	// The Shared-with-Me auto-add answers this caller with a one-time
 	// header: that response must never be stored for anyone else.
 	perCaller := w.Header().Get(sharedWithMeHeader) != ""
@@ -558,7 +563,7 @@ func (s *Server) servePageCached(pol pagePolicy, h http.HandlerFunc, w http.Resp
 		// No state, no validator: answer live, untagged (SR-5). An
 		// unknown repository is the handler's own 404/empty answer.
 		setNoStoreHeaders(w.Header())
-		h(w, r)
+		h(w, authed)
 		return
 	}
 	// A re-warm replay carries the state its pass read; if the repository
@@ -578,7 +583,7 @@ func (s *Server) servePageCached(pol pagePolicy, h http.HandlerFunc, w http.Resp
 	}
 	params, listed := pageParams[r.Pattern]
 	if !listed {
-		h(w, r) // a route without a parameter list is never keyed (untagged, no-store)
+		h(w, authed) // a route without a parameter list is never keyed (untagged, no-store)
 		return
 	}
 	query := canonicalQuery(r, params)
@@ -612,7 +617,7 @@ func (s *Server) servePageCached(pol pagePolicy, h http.HandlerFunc, w http.Resp
 	if query != "" {
 		uri += "?" + query
 	}
-	res, e := s.runOnce(c, key, r, h, func(res pageResult, cost time.Duration) *pageEntry {
+	res, e := s.runOnce(c, key, authed, h, func(res pageResult, cost time.Duration) *pageEntry {
 		e := &pageEntry{key: key, repoID: repoID, uri: uri, fingerprint: st.Fingerprint(),
 			body: res.body, contentType: res.contentType, disposition: res.disposition,
 			computed: c.now(), cost: cost, enriched: pol.enriched, keptWhenOff: pol.keptWhenOff}

@@ -54,7 +54,7 @@ func TestLoadFoundationCoreReposUseAndAlias(t *testing.T) {
 func TestLoadFoundationCoreReposCmdFlags(t *testing.T) {
 	data, err := os.ReadFile("import_foundations.go")
 	if err != nil {
-		t.Skip("import_foundations.go not yet created")
+		t.Fatal("source structure changed (a skip would hide it): import_foundations.go not yet created")
 	}
 	src := string(data)
 	for _, flag := range []string{"dry-run", "cncf-only", "apache-only", "priority"} {

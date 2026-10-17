@@ -30,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 )
@@ -308,9 +309,9 @@ func (s *Server) resolveEntityRepos(w http.ResponseWriter, r *http.Request, e en
 			var slot autoAddSlot // the window a refund goes back to
 			if s.autoAdds != nil {
 				var ok bool
-				var retry int
-				if slot, ok, retry = s.autoAdds.reserve(info.UserID); !ok {
-					s.refuseAutoAdd(w, info, retry)
+				var refused *capacity.Exceeded
+				if slot, ok, refused = s.autoAdds.reserve(info.UserID); !ok {
+					s.refuseAutoAdd(w, info, refused)
 					return nil, "", false
 				}
 			}
@@ -318,18 +319,21 @@ func (s *Server) resolveEntityRepos(w http.ResponseWriter, r *http.Request, e en
 			// link failed; it comes back when nothing was (an already-linked
 			// repository behind a stale cached scope or a concurrent
 			// request: Copilot review 5472987053 on PR #228).
+			// One store call, one decision of the quotas for the whole
+			// entity: an organization links all its new repositories or
+			// none (v0.29.91, whole-PR review: item by item it was partial
+			// on a refusal and cost ~11 round trips a repository).
 			linkedAny := false
 			gid, err := s.store.FindOrCreateComparisonsGroup(r.Context(), info.UserID)
 			if err == nil {
-				for _, id := range collected {
-					var linked bool
-					if linked, err = s.store.AddRepoToGroupByID(r.Context(), gid, id); err != nil {
-						break
-					}
-					linkedAny = linkedAny || linked
-				}
+				var n int
+				n, err = s.store.AddRepoIDsToGroup(r.Context(), gid, collected)
+				linkedAny = n > 0
 			}
 			s.settleAutoAdd(info.UserID, slot, linkedAny, err)
+			if s.refuseCapacity(w, info, err) {
+				return nil, "", false
+			}
 			if err != nil {
 				s.serverError(w, r, "resolveEntityRepos", err)
 				return nil, "", false
