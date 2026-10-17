@@ -168,33 +168,93 @@ var ErrInvalidCapacitySettings = errors.New("invalid capacity settings")
 // SetCapacityQuota saves one quota's value and mode (the Capacity page).
 // Only a quota whose config word is WEB may be changed.
 func (s *PostgresStore) SetCapacityQuota(ctx context.Context, name string, allowed int, mode capacity.Mode, by int) error {
-	if _, ok := capacity.Shipped[name]; !ok || allowed <= 0 || s.CapacitySource(name) != capacity.SourceWeb {
-		return ErrInvalidCapacitySettings
-	}
-	if _, err := capacity.ParseMode(string(mode)); err != nil {
-		return ErrInvalidCapacitySettings
+	if err := s.validateCapacityQuota(name, allowed, mode); err != nil {
+		return err
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("save capacity quota: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO aveloxis_ops.capacity_quotas (name, allowed, mode, updated_at, updated_by)
-		VALUES ($1, $2, $3, NOW(), $4)
-		ON CONFLICT (name) DO UPDATE SET allowed = EXCLUDED.allowed, mode = EXCLUDED.mode,
-		    updated_at = NOW(), updated_by = EXCLUDED.updated_by`, name, allowed, string(mode), nullIfZero(by)); err != nil {
-		return fmt.Errorf("save capacity quota: %w", err)
-	}
-	// The rollback mirror (v0.29.89): a 0.29.82-0.29.88 binary reads its
-	// API-token default from api_token_settings.
-	if name == capacity.QuotaTokenRequestsPerHour {
-		if _, err := tx.Exec(ctx, `UPDATE aveloxis_ops.api_token_settings SET default_rate_limit_per_hour = $1 WHERE id = 1`, allowed); err != nil {
-			return fmt.Errorf("save capacity quota: rollback mirror: %w", err)
-		}
+	if err := s.writeCapacityQuotasTx(ctx, tx, []quotaWrite{{name: name, allowed: allowed, mode: mode}}, by); err != nil {
+		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("save capacity quota: %w", err)
+	}
+	return nil
+}
+
+// validateCapacityQuota is the one admission rule for a quota write: a
+// shipped quota, a positive value, a known mode, and a config word of WEB.
+// It reads only this process's config (no pool read), so the writer can
+// run it inside a transaction.
+func (s *PostgresStore) validateCapacityQuota(name string, allowed int, mode capacity.Mode) error {
+	if _, ok := capacity.Shipped[name]; !ok || allowed <= 0 || s.CapacitySource(name) != capacity.SourceWeb {
+		return ErrInvalidCapacitySettings
+	}
+	if _, err := capacity.ParseMode(string(mode)); err != nil {
+		return ErrInvalidCapacitySettings
+	}
+	return nil
+}
+
+// quotaWrite is one capacity_quotas row to save.
+type quotaWrite struct {
+	name    string
+	allowed int
+	mode    capacity.Mode
+}
+
+// writeCapacityQuotasTx is the ONE writer of capacity_quotas: the upserts
+// and the rollback mirror inside the caller's transaction. SetCapacityQuota
+// wraps it for one quota; SetAPITokenSettings writes its two quotas and
+// the lifetime through it in one transaction (Copilot review 5485402444:
+// separate commits left a mix the administrator never submitted).
+//
+// The admission rule runs HERE (SR-18): every write is validated before
+// any is made, so a caller cannot land an unknown or a config-owned quota
+// by skipping it (the callers' earlier call is the refuse-before-Begin
+// fast path).
+//
+// Lock order (L10 round 3 F1): the quota rows are written in NAME order
+// and api_token_settings — the mirror here, the lifetime in
+// SetAPITokenSettings — only after the last quota row. Every transaction
+// that touches these rows takes them in that one order, so two
+// administrators saving at once wait on each other at most once and never
+// in a cycle (40P01). Writing the mirror between two quota rows did
+// deadlock a hour+day save against a day-only save.
+func (s *PostgresStore) writeCapacityQuotasTx(ctx context.Context, tx pgx.Tx, writes []quotaWrite, by int) error {
+	for _, w := range writes {
+		if err := s.validateCapacityQuota(w.name, w.allowed, w.mode); err != nil {
+			return err
+		}
+	}
+	ordered := append([]quotaWrite(nil), writes...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].name < ordered[j].name })
+	mirrorHour := 0
+	for _, w := range ordered {
+		if _, err := tx.Exec(ctx, `
+		INSERT INTO aveloxis_ops.capacity_quotas (name, allowed, mode, updated_at, updated_by)
+		VALUES ($1, $2, $3, NOW(), $4)
+		ON CONFLICT (name) DO UPDATE SET allowed = EXCLUDED.allowed, mode = EXCLUDED.mode,
+		    updated_at = NOW(), updated_by = EXCLUDED.updated_by`, w.name, w.allowed, string(w.mode), nullIfZero(by)); err != nil {
+			return fmt.Errorf("save capacity quota: %w", err)
+		}
+		if w.name == capacity.QuotaTokenRequestsPerHour {
+			mirrorHour = w.allowed
+		}
+		if s.capacityQuotaWritten != nil {
+			s.capacityQuotaWritten(w.name)
+		}
+	}
+	// The rollback mirror (v0.29.89): a 0.29.82-0.29.88 binary reads its
+	// API-token default from api_token_settings. Last, after every quota
+	// row (the lock order above).
+	if mirrorHour > 0 {
+		if _, err := tx.Exec(ctx, `UPDATE aveloxis_ops.api_token_settings SET default_rate_limit_per_hour = $1 WHERE id = 1`, mirrorHour); err != nil {
+			return fmt.Errorf("save capacity quota: rollback mirror: %w", err)
+		}
 	}
 	return nil
 }

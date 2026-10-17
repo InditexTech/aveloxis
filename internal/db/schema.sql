@@ -2702,7 +2702,7 @@ CREATE TABLE IF NOT EXISTS aveloxis_ops.api_token_settings (
     id                          SMALLINT PRIMARY KEY CHECK (id = 1),
     -- v0.29.89: the value lives in capacity_quotas (token_requests_per_hour);
     -- this column is a mirror kept for a rollback to 0.29.82-0.29.88, whose
-    -- migrate writes it (SetCapacityQuota keeps it current). Drop it only in
+    -- migrate writes it (writeCapacityQuotasTx keeps it current). Drop it only in
     -- a release no host can roll back below 0.29.89 from.
     default_rate_limit_per_hour INT NOT NULL DEFAULT 1000 CHECK (default_rate_limit_per_hour > 0),
     default_lifetime_days       INT NOT NULL CHECK (default_lifetime_days > 0),

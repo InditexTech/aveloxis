@@ -14,7 +14,7 @@ import (
 // migrate?"): a rollback runs the OLDER binary's migrate, which writes
 // api_token_settings.default_rate_limit_per_hour and cannot be taught to
 // re-add it. So this release keeps the column and mirrors the token hour
-// into it (SetCapacityQuota, the one writer): a rollback needs no command.
+// into it (writeCapacityQuotasTx, the one writer, under SetCapacityQuota and SetAPITokenSettings): a rollback needs no command.
 // The one-time move of an administrator's value into the quota is
 // ledgered, so a later migrate never overwrites a Capacity-page edit.
 func TestTokenHourDefaultIsMirroredForRollback(t *testing.T) {

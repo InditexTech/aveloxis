@@ -92,10 +92,13 @@ func TestFindWritesFiltersByTable(t *testing.T) {
 		{File: "b.go", SQL: "SELECT repo_name FROM aveloxis_data.repos"},
 		// prefix trap: repos vs repo_info — \b must not cross the underscore
 		{File: "c.go", SQL: "UPDATE aveloxis_data.repos_extra SET x = 1"},
+		// v0.29.94: the ONLY and MERGE spellings are writes too
+		{File: "d.go", SQL: "UPDATE ONLY aveloxis_data.repos SET repo_name = $1"},
+		{File: "d.go", SQL: "MERGE INTO aveloxis_data.repos r USING s ON r.repo_id = s.repo_id WHEN MATCHED THEN UPDATE SET repo_name = s.repo_name"},
 	}
 	got := FindWrites(stmts, "aveloxis_data.repos")
-	if len(got) != 2 {
-		t.Fatalf("want the 2 repos write statements, got %d: %#v", len(got), got)
+	if len(got) != 4 {
+		t.Fatalf("want the 4 repos write statements (INSERT, UPDATE, UPDATE ONLY, MERGE INTO), got %d: %#v", len(got), got)
 	}
 	for _, s := range got {
 		if strings.Contains(s.SQL, "SELECT") || strings.Contains(s.SQL, "repo_info") || strings.Contains(s.SQL, "repos_extra") {

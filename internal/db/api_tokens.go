@@ -153,10 +153,7 @@ func (s *PostgresStore) CreateAPIToken(ctx context.Context, g APITokenGrant) (st
 		return "", APIToken{}, fmt.Errorf("API token entropy: %w", err)
 	}
 	raw := APITokenPrefix + hex.EncodeToString(buf)
-	var createdBy *int
-	if g.CreatedBy > 0 {
-		createdBy = &g.CreatedBy
-	}
+	createdBy := nullIfZero(g.CreatedBy)
 	t := APIToken{UserID: g.UserID, Label: label, RateLimitPerHour: g.RateLimitPerHour, RateLimitPerDay: g.RateLimitPerDay}
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO aveloxis_ops.api_tokens (token_hash, user_id, label, created_by, expires_at, rate_limit_per_hour, rate_limit_per_day)
@@ -244,10 +241,7 @@ func (s *PostgresStore) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 // RevokeAPIToken revokes a token. Revoking a revoked token is a no-op; an
 // unknown id is ErrAPITokenNotFound.
 func (s *PostgresStore) RevokeAPIToken(ctx context.Context, tokenID int64, revokedBy int) error {
-	var by *int
-	if revokedBy > 0 {
-		by = &revokedBy
-	}
+	by := nullIfZero(revokedBy)
 	var exists bool
 	err := s.pool.QueryRow(ctx, `
 		WITH upd AS (
@@ -311,7 +305,7 @@ func (s *PostgresStore) SetAPITokenSettings(ctx context.Context, st APITokenSett
 	}
 	// Every change is checked before any is saved (review round 1: a
 	// config-owned day refused after the hour was already saved).
-	changes := map[string]int{}
+	var changes []quotaWrite
 	for _, name := range []string{capacity.QuotaTokenRequestsPerHour, capacity.QuotaTokenRequestsPerDay} {
 		v := st.DefaultRateLimitPerHour
 		if name == capacity.QuotaTokenRequestsPerDay {
@@ -324,24 +318,40 @@ func (s *PostgresStore) SetAPITokenSettings(ctx context.Context, st APITokenSett
 		if !q.Editable {
 			return fmt.Errorf("%s is set in aveloxis.json (%s); change it there: %w", name, q.Source, ErrInvalidCapacitySettings)
 		}
-		changes[name] = v
+		if err := s.validateCapacityQuota(name, v, q.Mode); err != nil {
+			return err
+		}
+		changes = append(changes, quotaWrite{name: name, allowed: v, mode: q.Mode})
 	}
-	for name, v := range changes {
-		if err := s.SetCapacityQuota(ctx, name, v, quotas[name].Mode, updatedBy); err != nil {
+	// One transaction saves the quotas and the lifetime, or nothing
+	// (Copilot review 5485402444: each quota committed on its own, so a
+	// failure on the second write or the lifetime left a mix the
+	// administrator never submitted). The reads above stay before Begin
+	// (review round 1 R2-2). The writer orders the rows and writes the
+	// mirror last; the lifetime row below comes after it, which keeps the
+	// one lock order every writer of these rows takes (L10 round 3 F1).
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("save API token settings: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := s.writeCapacityQuotasTx(ctx, tx, changes, updatedBy); err != nil {
+		return err
+	}
+	if s.apiTokenSettingsWrite != nil {
+		if err := s.apiTokenSettingsWrite(); err != nil {
 			return err
 		}
 	}
-	var by *int
-	if updatedBy > 0 {
-		by = &updatedBy
-	}
-	_, err = s.pool.Exec(ctx, `
+	if _, err := tx.Exec(ctx, `
 		INSERT INTO aveloxis_ops.api_token_settings (id, default_lifetime_days, updated_at, updated_by)
 		VALUES (1, $1, NOW(), $2)
 		ON CONFLICT (id) DO UPDATE SET default_lifetime_days = EXCLUDED.default_lifetime_days,
 		    updated_at = NOW(), updated_by = EXCLUDED.updated_by`,
-		st.DefaultLifetimeDays, by)
-	if err != nil {
+		st.DefaultLifetimeDays, nullIfZero(updatedBy)); err != nil {
+		return fmt.Errorf("save API token settings: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("save API token settings: %w", err)
 	}
 	return nil

@@ -3110,7 +3110,7 @@ func seedCapacitySettings(ctx context.Context, pg *PostgresStore, logger *slog.L
 	// updated_by set; the operator lowered the default to 1,000 because
 	// 5,000 was too high, and a deliberate 5,000 cannot be told apart (the
 	// deploy note says to set it again on the Capacity page). The old
-	// column stays as the rollback mirror (SetCapacityQuota keeps it
+	// column stays as the rollback mirror (writeCapacityQuotasTx keeps it
 	// current).
 	// A pre-release 0.29.89 kept one sign-up secret beside the keys it made
 	// (ASVS review I1: any database reader could invert them); the daily

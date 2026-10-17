@@ -53,6 +53,15 @@ type PostgresStore struct {
 	// fail the policy read linkWithinCap makes (v0.29.91: linkHeld reads
 	// none).
 	linkPolicyRead func() error
+	// apiTokenSettingsWrite is a test seam: nil in production; a test sets
+	// it to fail SetAPITokenSettings after its quota writes and before the
+	// lifetime write (Copilot review 5485402444: the defaults are saved
+	// together or not at all).
+	apiTokenSettingsWrite func() error
+	// capacityQuotaWritten is a test seam: nil in production; a test sets
+	// it to park a transaction after a named quota row is written, so two
+	// saves can be interleaved on purpose (L10 round 3 F1: lock order).
+	capacityQuotaWritten func(name string)
 
 	// backendPIDs are the server-side PIDs of THIS process's pool
 	// connections (v0.28.18), maintained by the pool's AfterConnect /

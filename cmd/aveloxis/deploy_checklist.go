@@ -580,6 +580,10 @@ var deployChecklists = map[string][]deployStep{
 	// URL-checked, a failed dependency clear aborts the pass, prioritize and
 	// recollect never create a repos row, the welcome email, missing error
 	// logs. No schema change.
+	// v0.29.94 (2026-10-17, branch rate-limit-hci): Copilot round on PR
+	// #229 — the API-token defaults (both allowances and the lifetime) are
+	// saved in one transaction, or not at all. No schema change.
+	"0.29.94": v02994DeployChecklist,
 	"0.29.93": v02993DeployChecklist,
 	"0.29.92": v02992DeployChecklist,
 	"0.29.91": v02991DeployChecklist,
@@ -610,6 +614,19 @@ var deployChecklists = map[string][]deployStep{
 // ALTER): repository answers are cached until the repository changes; it
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
+
+// v02994DeployChecklist is 0.29.93's ladder with a note on the start step.
+var v02994DeployChecklist = func() []deployStep {
+	prev := v02993DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.94: no schema change. Saving the API-token defaults on the admin page (the hourly and daily allowances and the lifetime) is now one transaction: before, each allowance was committed on its own, so a failure part-way left a mix the administrator never submitted. A fleet already running 0.29.93 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.93's notes below in the same one migrate. " + out[i].desc
+		}
+	}
+	return out
+}()
 
 // v02993DeployChecklist is 0.29.92's ladder with a note on the start step.
 var v02993DeployChecklist = func() []deployStep {
