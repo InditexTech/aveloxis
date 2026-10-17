@@ -586,6 +586,11 @@ var deployChecklists = map[string][]deployStep{
 	// v0.29.95 (2026-10-17, branch rate-limit-hci): `aveloxis data-test`
 	// clones each side under its work dir instead of the operator's
 	// repo_clone_dir. Operator tooling only; no schema change.
+	// v0.29.96 (2026-10-17, branch rate-limit-hci): Copilot round
+	// 5559632343 on PR #229 — the organization reconcile's warning names
+	// the quota that refused; the skip census prints failed tests' output
+	// and CI keeps it. No schema change.
+	"0.29.96": v02996DeployChecklist,
 	"0.29.95": v02995DeployChecklist,
 	"0.29.94": v02994DeployChecklist,
 	"0.29.93": v02993DeployChecklist,
@@ -618,6 +623,19 @@ var deployChecklists = map[string][]deployStep{
 // ALTER): repository answers are cached until the repository changes; it
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
+
+// v02996DeployChecklist is 0.29.95's ladder with a note on the start step.
+var v02996DeployChecklist = func() []deployStep {
+	prev := v02995DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.96: no schema change. The WARN 'organization repositories not linked' now names the quota that refused (quota=repos_per_account or repo_links_per_day) with a `used` field instead of calling every refusal the repository quota; a log filter on its old text ('the account's repository quota is reached') or on `reach=` must follow. A fleet already running 0.29.95 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.95's notes below in the same one migrate. " + out[i].desc
+		}
+	}
+	return out
+}()
 
 // v02995DeployChecklist is 0.29.94's ladder with a note on the start step.
 var v02995DeployChecklist = func() []deployStep {

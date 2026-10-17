@@ -83,9 +83,15 @@ func (s *PostgresStore) ReconcileOrgRepoLinks(ctx context.Context) (int64, error
 		n, err := s.linkWithinCap(ctx, pairs[start].Group, ids, linkOrgFill)
 		total += int64(n)
 		if ex, capped := capacity.AsExceeded(err); capped {
-			if s.capacityNotifier().Due("org-reconcile|" + ex.Subject.ID) {
-				s.logger.Warn("organization repositories not linked: the account's repository quota is reached",
-					"group_id", pairs[start].Group, "user_id", ex.Subject.ID, "reach", ex.Used, "allowed", ex.Allowed, "new_repositories_wanted", ex.Wanted)
+			// Either quota refuses through this path: repos_per_account,
+			// or repo_links_per_day for an auto-approved registration
+			// (v0.29.91). The line names which (Copilot review 5559632343:
+			// it said "repository quota" and logged today's additions as
+			// "reach"), once a day per account AND quota.
+			if s.capacityNotifier().Due("org-reconcile|" + ex.Quota + "|" + ex.Subject.ID) {
+				s.logger.Warn("organization repositories not linked: a quota of the account is reached",
+					"group_id", pairs[start].Group, "user_id", ex.Subject.ID, "quota", ex.Quota,
+					"used", ex.Used, "allowed", ex.Allowed, "new_repositories_wanted", ex.Wanted)
 			}
 		} else if err != nil {
 			return total, err

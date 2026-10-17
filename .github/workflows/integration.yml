@@ -112,7 +112,19 @@ jobs:
       - name: Run full suite with integration tier enabled (skip census)
         env:
           SKIP_CENSUS_GOFLAGS: -race -shuffle=on
+          SKIP_CENSUS_OUT: ${{ runner.temp }}/skip-census
         run: scripts/skip-census.sh
+
+      # The census prints each failed test's output and its package's
+      # shuffle seed; the whole `go test -json` stream and stderr are kept
+      # here for anything the print bounded (Copilot review 5559632343).
+      - name: Keep the skip census's raw output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skip-census
+          path: ${{ runner.temp }}/skip-census
+          if-no-files-found: ignore
 
       # v0.27.43: smoke-test the data-verify command end to end (build →
       # connect → probe → report) on every PR. The base database is

@@ -23,15 +23,45 @@ fi
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BASELINE="$ROOT/scripts/skip_census_baseline.txt"
-OUT="$(mktemp -d)"
+# SKIP_CENSUS_OUT: where the raw output stays (CI uploads it as an artifact
+# on failure); unset, a temp folder that is removed unless the run failed.
 keep_out=0
+if [ -n "${SKIP_CENSUS_OUT:-}" ]; then
+	OUT="$SKIP_CENSUS_OUT"
+	mkdir -p "$OUT" || exit 2
+	keep_out=1
+else
+	OUT="$(mktemp -d)"
+fi
 trap '[ "$keep_out" -eq 1 ] || rm -rf "$OUT"' EXIT
 
+# output_text prints the text of `go test -json` output events, unescaped.
+output_text() {
+	sed -E 's/.*"Output":"(.*)"}$/\1/; s/\\n$//; s/\\t/	/g; s/\\"/"/g; s/\\\\/\\/g'
+}
+
 cd "$ROOT" || exit 2
-# SKIP_CENSUS_GOFLAGS: extra go test flags (CI passes -race -shuffle=on).
-# shellcheck disable=SC2086
-go test ${SKIP_CENSUS_GOFLAGS:-} ./... -count=1 -json > "$OUT/suite.json" 2> "$OUT/stderr.txt"
-suite_status=$?
+if [ -n "${SKIP_CENSUS_SUITE_JSON:-}" ]; then
+	# A recorded suite (the report's own test): no go test run; the suite
+	# "failed" when the recording holds a fail event.
+	cp "$SKIP_CENSUS_SUITE_JSON" "$OUT/suite.json" || exit 2
+	: > "$OUT/stderr.txt"
+	suite_status=0
+	grep -q '"Action":"fail"' "$OUT/suite.json" && suite_status=1
+else
+	# The suite runs this script's own tests; a test of this script reads a
+	# recording (above) and must never reach here (2026-10-17: a test
+	# without the seam forked the suite inside itself until it was killed).
+	if [ -n "${SKIP_CENSUS_NESTED:-}" ]; then
+		echo "skip-census: refusing to run the suite inside its own suite" >&2
+		exit 2
+	fi
+	export SKIP_CENSUS_NESTED=1
+	# SKIP_CENSUS_GOFLAGS: extra go test flags (CI passes -race -shuffle=on).
+	# shellcheck disable=SC2086
+	go test ${SKIP_CENSUS_GOFLAGS:-} ./... -count=1 -json > "$OUT/suite.json" 2> "$OUT/stderr.txt"
+	suite_status=$?
+fi
 
 # One line per skipped test: "<package> <Test>" (the module path trimmed).
 grep '"Action":"skip"' "$OUT/suite.json" | grep '"Test":"' |
@@ -65,12 +95,32 @@ if [ "$suite_status" -ne 0 ]; then
 		sed -E 's/.*"Package":"([^"]*)".*"Test":"([^"]*)".*/  test    \1 \2/' | sort -u | head -40
 	grep -E '"Action":"fail"' "$OUT/suite.json" | grep -v '"Test":"' |
 		sed -E 's/.*"Package":"([^"]*)".*/  package \1 (build, TestMain or timeout — see below)/' | sort -u
+	# Each failed package's own output (its `-test.shuffle N` seed — rerun
+	# with it to reproduce an order dependency — and anything outside a
+	# test: a panic in TestMain, the FAIL line), then each failed test's
+	# output: the assertion messages, panic and race traces (Copilot review
+	# 5559632343: names alone, with the JSON in a discarded runner, left
+	# nothing to diagnose). The last 200 lines of a test; the whole stream
+	# is in suite.json.
+	grep '"Action":"fail"' "$OUT/suite.json" | grep -v '"Test":"' |
+		sed -E 's/.*"Package":"([^"]*)".*/\1/' | sort -u |
+		while IFS= read -r pkg; do
+			echo "  --- $pkg ---"
+			grep -F "\"Package\":\"$pkg\"" "$OUT/suite.json" | grep '"Action":"output"' | grep -v '"Test":"' |
+				output_text | sed 's/^/  /'
+			grep -F "\"Package\":\"$pkg\"" "$OUT/suite.json" | grep '"Action":"fail"' | grep '"Test":"' |
+				sed -E 's/.*"Test":"([^"]*)".*/\1/' | sort -u |
+				while IFS= read -r test; do
+					echo "  --- $pkg $test ---"
+					grep -F "\"Package\":\"$pkg\"" "$OUT/suite.json" | grep -F "\"Test\":\"$test\"" | grep '"Action":"output"' |
+						output_text | tail -200 | sed 's/^/  /'
+				done
+		done
 	# Build errors arrive as "build-output" events in the JSON stream (and
 	# older toolchains print them on stderr): show both.
 	if grep -q '"Action":"build-output"' "$OUT/suite.json"; then
 		echo "  --- build output ---"
-		grep '"Action":"build-output"' "$OUT/suite.json" |
-			sed -E 's/.*"Output":"(.*)"}$/\1/; s/\\n$//; s/\\t/	/g; s/\\"/"/g' | head -40 | sed 's/^/  /'
+		grep '"Action":"build-output"' "$OUT/suite.json" | output_text | head -40 | sed 's/^/  /'
 	fi
 	if [ -s "$OUT/stderr.txt" ]; then
 		echo "  --- go test stderr ---"
