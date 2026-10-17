@@ -4,9 +4,17 @@
 package main
 
 import (
+	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/config"
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // v0.22.8 introduces `aveloxis data-test` — an operator-driven
@@ -242,6 +250,226 @@ func TestDataTestHasDiffOnlyMode(t *testing.T) {
 	for _, needle := range []string{"TablesOnlyInReleased", "TablesOnlyInNew", "AddedColumns", "REMOVED"} {
 		if !strings.Contains(s, needle) {
 			t.Errorf("writeReport must render the v0.27.129 schema-shape drift (%q)", needle)
+		}
+	}
+}
+
+// v0.29.95: the scratch configs copied the operator's aveloxis.json and
+// changed only the database name, so both sides cloned into the
+// operator's own repo_clone_dir (~/aveloxis-repos/repo_<id>). The id is
+// the row id in the SCRATCH database, so the first repository of the
+// run (backstage, 2026-10-14) overwrote repo_1 of the operator's local
+// deployment (apache/tomcat), and the second side re-cloned over the
+// first. Every location field of the copied config that names shared
+// disk must be rewritten per side, as the database name already was.
+//
+// Behavioral: call the one owner and read what it wrote.
+func TestWriteScratchConfigsGivesEachSideItsOwnCloneDir(t *testing.T) {
+	workDir := t.TempDir()
+	primary := &config.Config{}
+	primary.Database.DBName = "aveloxis"
+	primary.Collection.RepoCloneDir = "/operators/real/clones"
+
+	paths, err := writeScratchConfigs(primary, workDir)
+	if err != nil {
+		t.Fatalf("writeScratchConfigs: %v", err)
+	}
+	if primary.Collection.RepoCloneDir != "/operators/real/clones" || primary.Database.DBName != "aveloxis" {
+		t.Error("writeScratchConfigs mutated the operator's loaded config")
+	}
+	if dataTestSides[dataTestReleased].name != "released" || dataTestSides[dataTestNew].name != "new" {
+		t.Fatalf("dataTestSides = %v: the released side must be index dataTestReleased and the new side dataTestNew (the binaries are picked by those indexes)", dataTestSides)
+	}
+
+	var dirs []string
+	for i, side := range dataTestSides {
+		if want := filepath.Join(workDir, "config-"+side.name+".json"); paths[i] != want {
+			t.Errorf("%s config path = %q, want %q", side.name, paths[i], want)
+		}
+		raw, err := os.ReadFile(paths[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cfg config.Config
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			t.Fatalf("config-%s.json is not a config: %v", side.name, err)
+		}
+		if cfg.Database.DBName != side.dbname {
+			t.Errorf("config-%s.json dbname = %q, want %q", side.name, cfg.Database.DBName, side.dbname)
+		}
+		dir := cfg.Collection.RepoCloneDir
+		if dir == primary.Collection.RepoCloneDir {
+			t.Errorf("config-%s.json keeps the operator's repo_clone_dir %q: the scratch collect would clone over the operator's repo_<id> folders", side.name, dir)
+		}
+		if !filepath.IsAbs(dir) {
+			t.Errorf("config-%s.json repo_clone_dir = %q, want an absolute path (the collect subprocess must not depend on the harness's cwd)", side.name, dir)
+		}
+		if rel, err := filepath.Rel(workDir, dir); err != nil || strings.HasPrefix(rel, "..") {
+			t.Errorf("config-%s.json repo_clone_dir = %q, want a folder under the work dir %q", side.name, dir, workDir)
+		}
+		dirs = append(dirs, dir)
+	}
+	if len(dirs) == 2 && dirs[0] == dirs[1] {
+		t.Errorf("both sides share repo_clone_dir %q: the new side would re-clone over the released side's bare clones", dirs[0])
+	}
+	if dataTestSides[0].dbname == dataTestSides[1].dbname {
+		t.Errorf("both sides collect into %q", dataTestSides[0].dbname)
+	}
+}
+
+// The work dir is resolved once, absolute and created, whatever the
+// operator typed (round 1 F4: a relative --work-dir reached the
+// released build's -o with its cwd in the worktree; round 2 F2: the
+// token pin on filepath.Abs did not require the result to be used).
+func TestResolveDataTestWorkDirIsAbsoluteAndCreated(t *testing.T) {
+	base := t.TempDir()
+	t.Chdir(base)
+	// The "" arm creates a folder under os.TempDir(); point that at a
+	// per-test folder so a concurrent run (another test process, a real
+	// data-test started in the same second) never shares or loses it.
+	t.Setenv("TMPDIR", t.TempDir())
+
+	got, err := resolveDataTestWorkDir("work-rel")
+	if err != nil {
+		t.Fatalf("resolveDataTestWorkDir(relative): %v", err)
+	}
+	if !filepath.IsAbs(got) || filepath.Base(got) != "work-rel" {
+		t.Errorf("resolveDataTestWorkDir(\"work-rel\") = %q, want an absolute path ending in work-rel", got)
+	}
+	if st, err := os.Stat(filepath.Join(base, "work-rel")); err != nil || !st.IsDir() {
+		t.Errorf("resolveDataTestWorkDir must create the folder under the cwd: %v", err)
+	}
+	if st, err := os.Stat(got); err != nil || !st.IsDir() {
+		t.Errorf("the returned path %q is not a folder: %v", got, err)
+	}
+
+	def, err := resolveDataTestWorkDir("")
+	if err != nil {
+		t.Fatalf("resolveDataTestWorkDir(\"\"): %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(def) })
+	if !filepath.IsAbs(def) || !strings.HasPrefix(filepath.Base(def), "aveloxis-data-test-") {
+		t.Errorf("resolveDataTestWorkDir(\"\") = %q, want an absolute fresh aveloxis-data-test-<ts> folder", def)
+	}
+	if st, err := os.Stat(def); err != nil || !st.IsDir() {
+		t.Errorf("the default work dir %q was not created: %v", def, err)
+	}
+}
+
+// The command must take its work dir from resolveDataTestWorkDir and
+// its configs from writeScratchConfigs, and generateScratchConfig must
+// have exactly one call site in the package, inside writeScratchConfigs.
+// Read comment-stripped: a comment cannot satisfy it; a second helper
+// that rewrites the configs (round 2 F1's mutant) or a command that
+// bypasses the owner (round 1 F1's) adds a call site and fails it.
+func TestDataTestCmdWritesConfigsThroughTheOwner(t *testing.T) {
+	src := srctest.StripGoComments(srctest.Read(t, "cmd/aveloxis/data_test_cmd.go"))
+	body := srctest.FuncBody(t, src, "func dataTestCmd(")
+	if !strings.Contains(body, "workDir, err = resolveDataTestWorkDir(workDir)") {
+		t.Error("data-test must take its work dir from `workDir, err = resolveDataTestWorkDir(workDir)` (absolute, created, once)")
+	}
+	for _, banned := range []string{"filepath.Abs(", "os.MkdirAll(workDir"} {
+		if strings.Contains(body, banned) {
+			t.Errorf("data-test must not call %s itself: resolveDataTestWorkDir owns the work dir", banned)
+		}
+	}
+	if !strings.Contains(body, "writeScratchConfigs(primaryCfg, workDir)") {
+		t.Error("data-test must write both scratch configs with writeScratchConfigs(primaryCfg, workDir)")
+	}
+	for _, pair := range []string{"dataTestReleased: releasedBin", "dataTestNew: localBin"} {
+		if !strings.Contains(body, pair) {
+			t.Errorf("data-test must pair the binaries with the sides as %q: swapped, the released binary collects the new side and every regression reads as FLAG and every addition as FAIL", pair)
+		}
+	}
+	owner := srctest.FuncBody(t, src, "func writeScratchConfigs(")
+	if !strings.Contains(owner, "generateScratchConfig(") || !strings.Contains(owner, "dataTestCloneDir(workDir, side.name)") {
+		t.Error("writeScratchConfigs must call generateScratchConfig with dataTestCloneDir(workDir, side.name) for each side")
+	}
+
+	// One USE of the identifier in the whole package (go/ast over every
+	// declaration, so neither a comment nor an error string counts, and
+	// a function value `gen := generateScratchConfig` — round 3 F1's
+	// mutant — counts as a use), and it is a direct call in the owner.
+	var uses []string
+	for name, file := range srctest.PackageFiles(t, "cmd/aveloxis", 40) {
+		uses = append(uses, usesOf(t, name, file, "generateScratchConfig")...)
+	}
+	if len(uses) != 1 || uses[0] != "cmd/aveloxis/data_test_cmd.go:writeScratchConfigs" {
+		t.Errorf("generateScratchConfig is used at %v, want exactly [cmd/aveloxis/data_test_cmd.go:writeScratchConfigs] (a direct call): another caller, or a function value, can write a config without the side's clone dir", uses)
+	}
+}
+
+// usesOf returns "<file>:<enclosing decl>" for every identifier use of
+// the named package-level function in one Go source file, its own
+// declaration excluded; a use that is not the callee of a call
+// expression is suffixed "(ref)".
+func usesOf(t *testing.T, name, src, fn string) []string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, name, src, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", name, err)
+	}
+	var out []string
+	for _, d := range f.Decls {
+		where := name + ":"
+		var skip *ast.Ident
+		switch decl := d.(type) {
+		case *ast.FuncDecl:
+			where += decl.Name.Name
+			if decl.Name.Name == fn {
+				skip = decl.Name
+			}
+		case *ast.GenDecl:
+			where += "(package-level " + decl.Tok.String() + ")"
+		}
+		callees := map[*ast.Ident]bool{}
+		ast.Inspect(d, func(n ast.Node) bool {
+			if call, ok := n.(*ast.CallExpr); ok {
+				if id, ok := call.Fun.(*ast.Ident); ok {
+					callees[id] = true
+				}
+			}
+			return true
+		})
+		ast.Inspect(d, func(n ast.Node) bool {
+			id, ok := n.(*ast.Ident)
+			if !ok || id.Name != fn || id == skip {
+				return true
+			}
+			if callees[id] {
+				out = append(out, where)
+			} else {
+				out = append(out, where+"(ref)")
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// dataTestSides is the one spelling of the scratch database names
+// (round 2 F3): a rename there must not leave a site provisioning,
+// connecting to or dropping a database under the old name.
+func TestDataTestSidesAreTheOneSpelling(t *testing.T) {
+	src := srctest.StripGoComments(srctest.Read(t, "cmd/aveloxis/data_test_cmd.go"))
+	table := src[strings.Index(src, "var dataTestSides"):]
+	table = table[:strings.Index(table, "\n}\n")]
+	for _, side := range dataTestSides {
+		quoted := `"` + side.dbname + `"`
+		if !strings.Contains(table, quoted) {
+			t.Fatalf("dataTestSides must spell %s as a quoted literal", quoted)
+		}
+		// The BARE name: a raw-string SQL spelling, a longer help text
+		// or a Long paragraph naming the database is a second spelling
+		// too (round 3 F3) — operator-facing text reads the table.
+		if n := strings.Count(src, side.dbname); n != 1 {
+			t.Errorf("%s appears %d times in comment-stripped data_test_cmd.go, want once (the table); every other site, including help and Long text, reads dataTestSides", side.dbname, n)
+		}
+	}
+	for _, derivation := range []string{`"aveloxis_" +`, `"aveloxis_"+`, `aveloxis_%`} {
+		if strings.Contains(src, derivation) {
+			t.Errorf("a scratch database name is derived with %s; read dataTestSides[i].dbname instead", derivation)
 		}
 	}
 }

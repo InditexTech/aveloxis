@@ -73,7 +73,13 @@ FLAGGED table.
   The harness always passes `--full` to `aveloxis collect` so both
   scratch DBs receive complete data with all parent records present.
   This is essential — see "Why full collection" below.
-- ~5 GB of free disk space for the two scratch databases.
+- Free disk space for two scratch databases (each the size the
+  repositories' collected data takes in your primary database), two
+  bare clones of every repository under the work dir (each side
+  clones for itself), and one full working-tree clone at a time under
+  `aveloxis-analysis` in the system temp dir (`$TMPDIR`, or `/tmp`)
+  while the analysis phase runs. With the
+  standing set, backstage dominates all three.
 
 ## Running the harness
 
@@ -101,8 +107,10 @@ Optional flags:
 - `--keep-dbs` — retain `aveloxis_released` and `aveloxis_new` after
   the run. Default is to drop them. Pass this when you want to inspect
   a FAILing table directly via `psql` after the report is written.
-- `--work-dir PATH` — where to put binaries, logs, and the report.
-  Default is a fresh `/tmp/aveloxis-data-test-<UTC-timestamp>`.
+- `--work-dir PATH` — where to put binaries, logs, the report, and
+  each side's bare clones (`clones-released/`, `clones-new/`).
+  Default is a fresh `aveloxis-data-test-<UTC-timestamp>` under the
+  system temp dir (`$TMPDIR`, or `/tmp`).
 
 ## Interpreting the report
 
@@ -198,8 +206,20 @@ Useful to know if a phase fails partway through.
    `aveloxis_released` and `aveloxis_new`. Failures here usually
    mean missing CREATEDB privilege — fix at the database server.
 3. **Generate scratch configs.** JSON-edit the operator's
-   `aveloxis.json` to swap `database.dbname`, write to work-dir.
-   This phase doesn't typically fail.
+   `aveloxis.json` to swap `database.dbname` and point
+   `collection.repo_clone_dir` at `<work-dir>/clones-released` or
+   `<work-dir>/clones-new`, write to work-dir. Each side clones into
+   its own folder: a clone is stored by the repository's row id in
+   the database the binary talks to, so a shared folder would have
+   the two scratch sides, and any deployment on the same host,
+   overwriting each other's `repo_<id>` (before v0.29.95 they did).
+   The bare clones stay under the work dir after the run (the full
+   git history of each repository, twice). When the report has been
+   read, `git worktree remove --force <work-dir>/released-src` from
+   the aveloxis checkout first (the work dir also holds that
+   registered worktree; deleting it by hand leaves a stale entry
+   until `git worktree prune`), then remove the work dir. This phase
+   doesn't typically fail.
 4. **Per-side collection** (sequential — both sides share the API key
    pool):
    - `migrate --skip-views` to bring the scratch DB to the binary's

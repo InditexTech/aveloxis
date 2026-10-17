@@ -583,6 +583,10 @@ var deployChecklists = map[string][]deployStep{
 	// v0.29.94 (2026-10-17, branch rate-limit-hci): Copilot round on PR
 	// #229 — the API-token defaults (both allowances and the lifetime) are
 	// saved in one transaction, or not at all. No schema change.
+	// v0.29.95 (2026-10-17, branch rate-limit-hci): `aveloxis data-test`
+	// clones each side under its work dir instead of the operator's
+	// repo_clone_dir. Operator tooling only; no schema change.
+	"0.29.95": v02995DeployChecklist,
 	"0.29.94": v02994DeployChecklist,
 	"0.29.93": v02993DeployChecklist,
 	"0.29.92": v02992DeployChecklist,
@@ -614,6 +618,19 @@ var deployChecklists = map[string][]deployStep{
 // ALTER): repository answers are cached until the repository changes; it
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
+
+// v02995DeployChecklist is 0.29.94's ladder with a note on the start step.
+var v02995DeployChecklist = func() []deployStep {
+	prev := v02994DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.95: no schema change and nothing new for the running services. `aveloxis data-test` now clones each side's repositories under its own work dir (<work-dir>/clones-released and clones-new) instead of the deployment's repo_clone_dir, where a scratch run overwrote the local deployment's repo_<id> folders. A fleet already running 0.29.94 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.94's notes below in the same one migrate. " + out[i].desc
+		}
+	}
+	return out
+}()
 
 // v02994DeployChecklist is 0.29.93's ladder with a note on the start step.
 var v02994DeployChecklist = func() []deployStep {

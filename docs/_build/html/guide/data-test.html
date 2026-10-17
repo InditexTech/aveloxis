@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Schema-change verification with aveloxis data-test &mdash; Aveloxis 0.29.94 documentation</title>
+  <title>Schema-change verification with aveloxis data-test &mdash; Aveloxis 0.29.95 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=c45de152"></script>
+      <script src="../_static/documentation_options.js?v=6025654b"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -1840,7 +1840,13 @@ so a run of the whole set can take most of a day.
 The harness always passes <code class="docutils literal notranslate"><span class="pre">--full</span></code> to <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">collect</span></code> so both
 scratch DBs receive complete data with all parent records present.
 This is essential — see “Why full collection” below.</p></li>
-<li><p>~5 GB of free disk space for the two scratch databases.</p></li>
+<li><p>Free disk space for two scratch databases (each the size the
+repositories’ collected data takes in your primary database), two
+bare clones of every repository under the work dir (each side
+clones for itself), and one full working-tree clone at a time under
+<code class="docutils literal notranslate"><span class="pre">aveloxis-analysis</span></code> in the system temp dir (<code class="docutils literal notranslate"><span class="pre">$TMPDIR</span></code>, or <code class="docutils literal notranslate"><span class="pre">/tmp</span></code>)
+while the analysis phase runs. With the
+standing set, backstage dominates all three.</p></li>
 </ul>
 </section>
 <section id="running-the-harness">
@@ -1870,8 +1876,10 @@ phases.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--keep-dbs</span></code> — retain <code class="docutils literal notranslate"><span class="pre">aveloxis_released</span></code> and <code class="docutils literal notranslate"><span class="pre">aveloxis_new</span></code> after
 the run. Default is to drop them. Pass this when you want to inspect
 a FAILing table directly via <code class="docutils literal notranslate"><span class="pre">psql</span></code> after the report is written.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--work-dir</span> <span class="pre">PATH</span></code> — where to put binaries, logs, and the report.
-Default is a fresh <code class="docutils literal notranslate"><span class="pre">/tmp/aveloxis-data-test-&lt;UTC-timestamp&gt;</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--work-dir</span> <span class="pre">PATH</span></code> — where to put binaries, logs, the report, and
+each side’s bare clones (<code class="docutils literal notranslate"><span class="pre">clones-released/</span></code>, <code class="docutils literal notranslate"><span class="pre">clones-new/</span></code>).
+Default is a fresh <code class="docutils literal notranslate"><span class="pre">aveloxis-data-test-&lt;UTC-timestamp&gt;</span></code> under the
+system temp dir (<code class="docutils literal notranslate"><span class="pre">$TMPDIR</span></code>, or <code class="docutils literal notranslate"><span class="pre">/tmp</span></code>).</p></li>
 </ul>
 </section>
 <section id="interpreting-the-report">
@@ -1966,8 +1974,20 @@ host’s <code class="docutils literal notranslate"><span class="pre">postgres</
 <code class="docutils literal notranslate"><span class="pre">aveloxis_released</span></code> and <code class="docutils literal notranslate"><span class="pre">aveloxis_new</span></code>. Failures here usually
 mean missing CREATEDB privilege — fix at the database server.</p></li>
 <li><p><strong>Generate scratch configs.</strong> JSON-edit the operator’s
-<code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> to swap <code class="docutils literal notranslate"><span class="pre">database.dbname</span></code>, write to work-dir.
-This phase doesn’t typically fail.</p></li>
+<code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> to swap <code class="docutils literal notranslate"><span class="pre">database.dbname</span></code> and point
+<code class="docutils literal notranslate"><span class="pre">collection.repo_clone_dir</span></code> at <code class="docutils literal notranslate"><span class="pre">&lt;work-dir&gt;/clones-released</span></code> or
+<code class="docutils literal notranslate"><span class="pre">&lt;work-dir&gt;/clones-new</span></code>, write to work-dir. Each side clones into
+its own folder: a clone is stored by the repository’s row id in
+the database the binary talks to, so a shared folder would have
+the two scratch sides, and any deployment on the same host,
+overwriting each other’s <code class="docutils literal notranslate"><span class="pre">repo_&lt;id&gt;</span></code> (before v0.29.95 they did).
+The bare clones stay under the work dir after the run (the full
+git history of each repository, twice). When the report has been
+read, <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">worktree</span> <span class="pre">remove</span> <span class="pre">--force</span> <span class="pre">&lt;work-dir&gt;/released-src</span></code> from
+the aveloxis checkout first (the work dir also holds that
+registered worktree; deleting it by hand leaves a stale entry
+until <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">worktree</span> <span class="pre">prune</span></code>), then remove the work dir. This phase
+doesn’t typically fail.</p></li>
 <li><p><strong>Per-side collection</strong> (sequential — both sides share the API key
 pool):</p>
 <ul class="simple">

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Commands Reference &mdash; Aveloxis 0.29.94 documentation</title>
+  <title>Commands Reference &mdash; Aveloxis 0.29.95 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=c45de152"></script>
+      <script src="../_static/documentation_options.js?v=6025654b"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -2891,8 +2891,11 @@ standing set: <code class="docutils literal notranslate"><span class="pre">backs
 <li><p><code class="docutils literal notranslate"><span class="pre">--keep-dbs</span></code> — retain the scratch DBs after the run. Default is
 to drop them. Pass when you want to inspect a failing table via
 <code class="docutils literal notranslate"><span class="pre">psql</span></code> after the report is written.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--work-dir</span> <span class="pre">PATH</span></code> — where to put binaries, logs, and the report.
-Default is <code class="docutils literal notranslate"><span class="pre">/tmp/aveloxis-data-test-&lt;UTC-timestamp&gt;</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--work-dir</span> <span class="pre">PATH</span></code> — where to put binaries, logs, the report, and
+each side’s bare clones (<code class="docutils literal notranslate"><span class="pre">clones-released/</span></code>, <code class="docutils literal notranslate"><span class="pre">clones-new/</span></code>; never
+the deployment’s <code class="docutils literal notranslate"><span class="pre">repo_clone_dir</span></code>). Default is a fresh
+<code class="docutils literal notranslate"><span class="pre">aveloxis-data-test-&lt;UTC-timestamp&gt;</span></code> under the system temp dir
+(<code class="docutils literal notranslate"><span class="pre">$TMPDIR</span></code>, or <code class="docutils literal notranslate"><span class="pre">/tmp</span></code>).</p></li>
 </ul>
 </section>
 <section id="id10">

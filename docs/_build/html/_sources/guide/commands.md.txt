@@ -972,8 +972,11 @@ See the full guide: [Schema-change verification](data-test.md).
 - `--keep-dbs` — retain the scratch DBs after the run. Default is
   to drop them. Pass when you want to inspect a failing table via
   `psql` after the report is written.
-- `--work-dir PATH` — where to put binaries, logs, and the report.
-  Default is `/tmp/aveloxis-data-test-<UTC-timestamp>`.
+- `--work-dir PATH` — where to put binaries, logs, the report, and
+  each side's bare clones (`clones-released/`, `clones-new/`; never
+  the deployment's `repo_clone_dir`). Default is a fresh
+  `aveloxis-data-test-<UTC-timestamp>` under the system temp dir
+  (`$TMPDIR`, or `/tmp`).
 
 ### Behavior
 
