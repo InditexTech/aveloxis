@@ -54,7 +54,7 @@ func (s *Server) repoFromPath(w http.ResponseWriter, r *http.Request) (int64, bo
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return 0, false
 	}
-	if marked, ok := r.Context().Value(repoAuthorizedKey{}).(int64); !ok || marked != repoID {
+	if marked, ok := repoAuthorizedFor(r); !ok || marked != repoID {
 		if s.repoStates == nil {
 			s.serverError(w, r, "repoFromPath", errors.New("no repository state reader: the server was built without a store"))
 			return 0, false

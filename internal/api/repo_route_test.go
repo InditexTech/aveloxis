@@ -93,8 +93,8 @@ func TestRepoFromPathDecidesInOrder(t *testing.T) {
 			if ok || w.Code != c.wantCode || !strings.Contains(w.Body.String(), c.wantBody) {
 				t.Fatalf("admitted = %v, wrote %d %q; want refused with %d containing %q", ok, w.Code, w.Body.String(), c.wantCode, c.wantBody)
 			}
-			if w.Code != 400 && w.Header().Get("Cache-Control") == "" {
-				t.Errorf("a %d about this repository and caller must be marked no-store", w.Code)
+			if (w.Code == 403 || w.Code == 404) && !strings.Contains(w.Header().Get("Cache-Control"), "no-store") {
+				t.Errorf("a %d about this caller or this path is marked %q; want no-store", w.Code, w.Header().Get("Cache-Control"))
 			}
 		})
 	}
@@ -156,9 +156,8 @@ func TestCachedRouteAnswersNotFoundBeforeScope(t *testing.T) {
 // access another way, each with the reason; every other registered route
 // with a repository id reaches repoFromPath.
 var repoRoutePreludeExceptions = map[string]string{
-	"Server.handleStarRepo":            "requireUser, then the Starred auto-add (its own link rule, never Shared with Me)",
-	"Server.handleUnstarRepo":          "requireUser; unstar needs no scope",
-	"Server.handleStarState":           "requireUser; a per-user flag, not repository data",
+	"Server.handleStarRepo":            "requireUser, then the Starred auto-add on PUT (its own link rule, never Shared with Me); unstar needs no scope",
+	"Server.handleRepoStarState":       "requireUser; a per-user flag, not repository data",
 	"Server.handleGroupRemoveRepo":     "a group route: requireUser, then the group ownership check (N11)",
 	"Server.handleAdminForgeIDAdopt":   "requireAdmin; the adopt answers its own 404 from the change table",
 	"Server.handleAdminPrioritizeRepo": "requireAdmin; the queue row answers its own 404",
