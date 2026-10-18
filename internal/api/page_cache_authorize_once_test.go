@@ -137,9 +137,9 @@ func TestRepoAuthorizedMarkHasOneReviewedSetter(t *testing.T) {
 						if id, ok := m.(*ast.Ident); ok {
 							switch id.Name {
 							case "repoAuthorizedKey":
-								keyUses[name+"|withRepoAuthorized"]++
+								keyUses[srctest.SiteKey(srctest.SiteDir(name), "withRepoAuthorized")]++
 							case "withRepoAuthorized":
-								setterUses[name+"|withRepoAuthorized"]++
+								setterUses[srctest.SiteKey(srctest.SiteDir(name), "withRepoAuthorized")]++
 							}
 						}
 						return true
@@ -157,7 +157,7 @@ func TestRepoAuthorizedMarkHasOneReviewedSetter(t *testing.T) {
 			return true
 		})
 	}
-	wantKey := map[string]int{"internal/api/auth.go": 1, "internal/api/auth.go|withRepoAuthorized": 1}
+	wantKey := map[string]int{"internal/api/auth.go": 1, srctest.SiteKey("internal/api", "withRepoAuthorized"): 1}
 	if len(keyUses) != len(wantKey) {
 		t.Errorf("repoAuthorizedKey uses = %v; want %v (the read in authorizeRepo, the WithValue in withRepoAuthorized)", keyUses, wantKey)
 	}

@@ -97,10 +97,6 @@ func (s *Server) registerMetricRoutes() {
 // Common parameter parsing
 // ============================================================
 
-func parseRepoID(r *http.Request) (int64, error) {
-	return strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-}
-
 func parseGroupID(r *http.Request) (int64, error) {
 	return strconv.ParseInt(r.PathValue("groupID"), 10, 64)
 }

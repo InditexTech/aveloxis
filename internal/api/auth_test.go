@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/aveloxis/aveloxis/internal/srctest"
+
 	"github.com/aveloxis/aveloxis/internal/db"
 )
 
@@ -227,8 +229,9 @@ func TestRepoHandlersEnforceScope(t *testing.T) {
 		}
 	}
 	// The web process must expose the token-mint endpoint.
-	web := mustReadFile(t, "../web/server.go")
-	if !strings.Contains(web, `"/auth/token"`) || !strings.Contains(web, "CreateSessionToken(") {
+	routes := srctest.PackageFunc(t, "internal/web", "func (s *Server) Handler(")
+	mint := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleAuthToken(")
+	if !strings.Contains(routes, `"/auth/token"`) || !strings.Contains(mint, "CreateSessionToken(") {
 		t.Error("web process must expose /auth/token minting DB-backed session tokens for the SPA")
 	}
 }
