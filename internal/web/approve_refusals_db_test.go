@@ -68,7 +68,7 @@ func TestApproveRefusalsAreNotServerErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	var logs strings.Builder
-	s := New(store, config.WebConfig{}, nil, "", slog.New(slog.NewTextHandler(&logs, nil)))
+	s := New(store, config.WebConfig{}, "", slog.New(slog.NewTextHandler(&logs, nil)))
 	s.sessions["admin"] = &Session{UserID: auid, LoginName: admin, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
 	decide := func(id int64, decision string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/admin/add-requests/"+strconv.FormatInt(id, 10)+"/"+decision, nil)

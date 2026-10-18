@@ -296,6 +296,22 @@ func TestEveryEndpointExecutes(t *testing.T) {
 			if strings.Contains(ct, "json") && !json.Valid(raw) {
 				t.Fatalf("response claims JSON but does not parse: %.200s", raw)
 			}
+			// Stage 1b (D6): every 200 JSON body is walked against the
+			// spec's schema — a null where the spec says array fails, at any
+			// depth. A 200 the spec gives no JSON schema is a spec gap.
+			if resp.StatusCode == http.StatusOK && strings.Contains(ct, "json") {
+				schema := specJSONSchema(t, route, http.StatusOK)
+				if schema == nil {
+					t.Fatalf("docs/api/openapi.yaml declares no application/json schema for the 200 of %s", route)
+				}
+				var v any
+				if err := json.Unmarshal(raw, &v); err != nil {
+					t.Fatal(err)
+				}
+				for _, p := range bodyProblems(openAPIDocument(t), "$", v, schema) {
+					t.Error(p)
+				}
+			}
 		})
 	}
 
@@ -379,19 +395,25 @@ func seedSmokeFixture(t *testing.T, ctx context.Context, store *db.PostgresStore
 		fx.owner, fx.repoName, rgID).Scan(&fx.repoID); err != nil {
 		t.Fatal(err)
 	}
-	_, _ = pool.Exec(ctx, `
+	// Stage 1b: a seed that fails fails the test. The issue and pull-request
+	// inserts named columns that do not exist (platform_id, title) and
+	// their errors were discarded, so for the harness's whole life the
+	// data-bearing endpoints ran over a repository with no issue and no
+	// pull request — the premise "exercise their JOINs" was false.
+	for _, q := range []string{`
 		INSERT INTO aveloxis_ops.collection_queue (repo_id, status, priority, due_at)
-		VALUES ($1, 'queued', 100, NOW()) ON CONFLICT (repo_id) DO NOTHING`, fx.repoID)
-	_, _ = pool.Exec(ctx, `
-		INSERT INTO aveloxis_data.issues (repo_id, platform_issue_id, platform_id, title, created_at)
-		VALUES ($1, 1, 1, 'smoke issue', NOW())`, fx.repoID)
-	_, _ = pool.Exec(ctx, `
-		INSERT INTO aveloxis_data.pull_requests (repo_id, platform_pr_id, platform_id, pr_title, created_at)
-		VALUES ($1, 1, 1, 'smoke pr', NOW())`, fx.repoID)
-	_, _ = pool.Exec(ctx, `
+		VALUES ($1, 'queued', 100, NOW()) ON CONFLICT (repo_id) DO NOTHING`, `
+		INSERT INTO aveloxis_data.issues (repo_id, platform_issue_id, issue_number, issue_title, issue_state, created_at, closed_at)
+		VALUES ($1, 1, 1, 'smoke issue', 'closed', NOW() - INTERVAL '2 days', NOW() - INTERVAL '1 day')`, `
+		INSERT INTO aveloxis_data.pull_requests (repo_id, platform_pr_id, pr_number, pr_title, pr_state, created_at, merged_at)
+		VALUES ($1, 1, 1, 'smoke pr', 'closed', NOW() - INTERVAL '2 days', NOW() - INTERVAL '1 day')`, `
 		INSERT INTO aveloxis_data.commits (repo_id, cmt_commit_hash, cmt_filename, cmt_author_name,
 			cmt_author_email, cmt_author_date, cmt_author_timestamp)
-		VALUES ($1, 'smokehash', 'f.go', 'smoke', 's@example.com', NOW()::date::text, NOW())`, fx.repoID)
+		VALUES ($1, 'smokehash', 'f.go', 'smoke', 's@example.com', NOW()::date::text, NOW())`} {
+		if _, err := pool.Exec(ctx, q, fx.repoID); err != nil {
+			t.Fatalf("smoke fixture seed: %v", err)
+		}
+	}
 
 	fx.login = fmt.Sprintf("_avsmoke_%d", suffix)
 	if err := pool.QueryRow(ctx, `
@@ -504,4 +526,85 @@ func smokeFill(fx smokeFixture) *strings.Replacer {
 		"{ecosystem}", "npm",
 		"{name...}", "smoke-package",
 	)
+}
+
+// The behavioral half of TestRepositoryRoutesReachThePrelude (stage 1b
+// review round 1): every route with a repository id in its path answers an
+// id no repository has with a 404 — the prelude's `repo not found` on the
+// data routes and the star routes; the admin and group routes' own 404s.
+// A handler that reaches the prelude but ignores its refusal (writing a
+// body after the 404) fails here, which the reach pin alone cannot see.
+func TestUnknownRepositoryIsNotFoundOnEveryRepositoryRoute(t *testing.T) {
+	dsn := os.Getenv("AVELOXIS_TEST_DB")
+	if dsn == "" {
+		t.Skip("AVELOXIS_TEST_DB not set")
+	}
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store, err := db.NewPostgresStore(ctx, dsn, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(store.Close)
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	fx := seedSmokeFixture(t, ctx, store)
+	srv, err := NewWithOptions(store, logger, Options{ExemptCIDRs: DefaultExemptCIDRs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	var maxID int64
+	if err := store.Pool().QueryRow(ctx, `SELECT COALESCE(MAX(repo_id), 0) FROM aveloxis_data.repos`).Scan(&maxID); err != nil {
+		t.Fatal(err)
+	}
+	unknown := fmt.Sprint(maxID + 1000000)
+	// The routes that decide their own 404 (listed with the prelude's
+	// exceptions in repo_route_test.go) answer 404 with their own text.
+	ownText := map[string]bool{
+		"POST /api/v1/admin/monitor/queue/{repoID}/prioritize": true,
+		"POST /api/v1/admin/forge-id-changes/{repoID}/adopt":   true,
+		"POST /api/v1/groups/{groupID}/repos/{repoID}/remove":  true,
+	}
+	routes := 0
+	for route, r := range smokeRecipes {
+		if !strings.Contains(route, "{repoID}") || strings.HasSuffix(route, "?") {
+			continue
+		}
+		routes++
+		t.Run(route, func(t *testing.T) {
+			method, path, _ := strings.Cut(route, " ")
+			fill := smokeFill(fx)
+			url := ts.URL + fill.Replace(strings.ReplaceAll(path, "{repoID}", unknown))
+			if r.query != "" {
+				url += "?" + fill.Replace(r.query)
+			}
+			var body io.Reader
+			if r.body != "" {
+				body = strings.NewReader(fill.Replace(r.body))
+			}
+			req, err := http.NewRequest(method, url, body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Authorization", "Bearer "+fx.tokens["admin"])
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			raw, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusNotFound {
+				t.Fatalf("unknown repository: status %d, want 404 — body: %.300s", resp.StatusCode, raw)
+			}
+			if !ownText[route] && strings.TrimSpace(string(raw)) != "repo not found" {
+				t.Fatalf("unknown repository: body %q, want exactly the prelude's `repo not found` (a handler that writes after the refusal appends to it)", raw)
+			}
+		})
+	}
+	if routes < 50 {
+		t.Fatalf("only %d routes with {repoID} examined; the recipe scan rotted", routes)
+	}
 }

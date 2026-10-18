@@ -12,17 +12,22 @@
 //
 // Common query parameters:
 //
-//	begin_date (YYYY-MM-DD) — start of date range, default 1 year ago
-//	end_date   (YYYY-MM-DD) — end of date range, default today
+//	begin_date (YYYY-MM-DD) — first day of the window, default a year before today (UTC)
+//	end_date   (YYYY-MM-DD) — last day of the window, inclusive (D4), default today (UTC)
 //	period     (day|week|month|year) — aggregation period, default month
+//
+// A date that does not parse is a 400 (D7); an empty result is [] (D6);
+// an unknown repository is a 404 and one outside an API token's groups a
+// 403 (D5, the prelude repoFromPath). Stage 1b, summary/59 §5b.
 //
 // Excluded: Login endpoints, DEI Badging endpoints (per task spec).
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -101,24 +106,6 @@ func parseGroupID(r *http.Request) (int64, error) {
 	return strconv.ParseInt(r.PathValue("groupID"), 10, 64)
 }
 
-// parseDateRange extracts begin_date and end_date from query params.
-// Defaults: begin = 1 year ago, end = today.
-func parseDateRange(r *http.Request) (begin, end time.Time) {
-	begin = time.Now().AddDate(-1, 0, 0)
-	end = time.Now()
-	if v := r.URL.Query().Get("begin_date"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			begin = t
-		}
-	}
-	if v := r.URL.Query().Get("end_date"); v != "" {
-		if t, err := time.Parse("2006-01-02", v); err == nil {
-			end = t
-		}
-	}
-	return
-}
-
 // parsePeriod extracts the aggregation period from query params.
 // Valid: day, week, month, year. Default: month.
 func parsePeriod(r *http.Request) string {
@@ -131,34 +118,61 @@ func parsePeriod(r *http.Request) string {
 	}
 }
 
-func jsonResponse(w http.ResponseWriter, data any) {
-	// CORS is handled centrally by the v0.27.x middleware chain
-	// (ratelimit.go cors) — per-handler headers here would bypass the
-	// cors_origins allowlist.
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(data)
-}
-
 // ============================================================
 // Utility / Lookup handlers
 // ============================================================
 
+// catalogScope is what the caller may see of the Augur catalog (stage 1b,
+// D1): an API token sees its owner's groups only; a session (which is
+// linked to a repository on view everywhere else), an administrator and a
+// caller without an identity see the fleet, as the search route does.
+func catalogScope(w http.ResponseWriter, r *http.Request) db.RepoScope {
+	info, ok := callerIdentity(w, r)
+	if !ok || info.IsAdmin || info.APITokenID == 0 {
+		return db.RepoScope{All: true}
+	}
+	ids := make([]int64, 0, len(info.Scope))
+	for id := range info.Scope {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return db.RepoScope{IDs: ids}
+}
+
+// catalogLookupRefused answers a by-name lookup's typed failures: 404 for
+// no such repository, the structured 403 (naming the repository) when the
+// name exists only outside the caller's scope (N21), and reports whether
+// it answered. Any other failure is the handler's 500.
+func (s *Server) catalogLookupRefused(w http.ResponseWriter, r *http.Request, err error) bool {
+	var oos *db.RepoOutOfScopeError
+	switch {
+	case errors.Is(err, db.ErrRepoNotFound):
+		refuseRepoNotFound(w)
+	case errors.As(err, &oos):
+		info, _ := callerIdentity(w, r)
+		s.refuseTokenOutOfScope(w, r, info, oos.RepoID)
+	default:
+		return false
+	}
+	return true
+}
+
 func (s *Server) handleRepoGroups(w http.ResponseWriter, r *http.Request) {
-	groups, err := s.store.GetAllRepoGroups(r.Context())
+	groups, err := s.store.ListRepoGroups(r.Context(), catalogScope(w, r))
 	if err != nil {
 		s.serverError(w, r, "handleRepoGroups", err)
 		return
 	}
-	jsonResponse(w, groups)
+	s.writeJSON(w, r, groups)
 }
 
 func (s *Server) handleAllRepos(w http.ResponseWriter, r *http.Request) {
-	repos, err := s.store.GetAllRepos(r.Context())
+	repos, err := s.store.ListRepos(r.Context(), catalogScope(w, r))
 	if err != nil {
 		s.serverError(w, r, "handleAllRepos", err)
 		return
 	}
-	jsonResponse(w, repos)
+	s.writeJSON(w, r, repos)
 }
 
 func (s *Server) handleRepoByID(w http.ResponseWriter, r *http.Request) {
@@ -168,14 +182,14 @@ func (s *Server) handleRepoByID(w http.ResponseWriter, r *http.Request) {
 	}
 	repo, err := s.store.GetRepoByID(r.Context(), repoID)
 	if errors.Is(err, db.ErrRepoNotFound) {
-		http.Error(w, "repo not found", http.StatusNotFound)
+		refuseRepoNotFound(w) // deleted between the prelude and this read
 		return
 	}
 	if err != nil {
 		s.serverError(w, r, "handleRepoByID", err)
 		return
 	}
-	jsonResponse(w, repo)
+	s.writeJSON(w, r, repo)
 }
 
 func (s *Server) handleReposByGroup(w http.ResponseWriter, r *http.Request) {
@@ -184,32 +198,31 @@ func (s *Server) handleReposByGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid repo_group_id", http.StatusBadRequest)
 		return
 	}
-	repos, err := s.store.GetReposByGroup(r.Context(), groupID)
+	repos, err := s.store.GetReposByGroup(r.Context(), groupID, catalogScope(w, r))
 	if err != nil {
 		s.serverError(w, r, "handleReposByGroup", err)
 		return
 	}
-	jsonResponse(w, repos)
+	s.writeJSON(w, r, repos)
 }
 
 func (s *Server) handleRepoByOwnerName(w http.ResponseWriter, r *http.Request) {
 	owner := r.PathValue("owner")
 	name := r.PathValue("repo")
-	repo, err := s.store.GetRepoByOwnerName(r.Context(), owner, name)
-	if errors.Is(err, db.ErrRepoNotFound) {
-		http.Error(w, "repo not found", http.StatusNotFound)
+	repo, err := s.store.GetRepoByOwnerName(r.Context(), owner, name, catalogScope(w, r))
+	if s.catalogLookupRefused(w, r, err) {
 		return
 	}
 	if err != nil {
 		s.serverError(w, r, "handleRepoByOwnerName", err)
 		return
 	}
-	jsonResponse(w, repo)
+	s.writeJSON(w, r, repo)
 }
 
 func (s *Server) handleRepoGroupByName(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("rgName")
-	group, err := s.store.GetRepoGroupByName(r.Context(), name)
+	group, err := s.store.GetRepoGroupByName(r.Context(), name, catalogScope(w, r))
 	if errors.Is(err, db.ErrRepoGroupNotFound) {
 		http.Error(w, "repo group not found", http.StatusNotFound)
 		return
@@ -218,14 +231,17 @@ func (s *Server) handleRepoGroupByName(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleRepoGroupByName", err)
 		return
 	}
-	jsonResponse(w, group)
+	s.writeJSON(w, r, group)
 }
 
 func (s *Server) handleRepoByGroupAndName(w http.ResponseWriter, r *http.Request) {
-	// Look up group first, then find repo with matching name in that group.
+	// The group first (scoped: a group with nothing in scope is not
+	// found), then its repository by name — without regard to letter
+	// case, like the owner/name lookup (stage 1b).
 	rgName := r.PathValue("rgName")
 	repoName := r.PathValue("repoName")
-	group, err := s.store.GetRepoGroupByName(r.Context(), rgName)
+	scope := catalogScope(w, r)
+	group, err := s.store.GetRepoGroupByName(r.Context(), rgName, scope)
 	if errors.Is(err, db.ErrRepoGroupNotFound) {
 		http.Error(w, "repo group not found", http.StatusNotFound)
 		return
@@ -234,18 +250,112 @@ func (s *Server) handleRepoByGroupAndName(w http.ResponseWriter, r *http.Request
 		s.serverError(w, r, "handleRepoByGroupAndName", err)
 		return
 	}
-	repos, err := s.store.GetReposByGroup(r.Context(), group.ID)
+	repo, err := s.store.GetRepoInGroupByName(r.Context(), group.ID, repoName, scope)
+	if s.catalogLookupRefused(w, r, err) {
+		return
+	}
 	if err != nil {
 		s.serverError(w, r, "handleRepoByGroupAndName", err)
 		return
 	}
-	for _, repo := range repos {
-		if repo.Name == repoName {
-			jsonResponse(w, repo)
-			return
-		}
+	s.writeJSON(w, r, repo)
+}
+
+// ============================================================
+// Metric helpers (stage 1b, eval-4 item 3)
+// ============================================================
+
+// metricWindow is what a windowed metric reads from its query: Augur's
+// period, and the half-open [lo, hi) window parseDateRange returns (D4:
+// end_date is inclusive, so hi is the midnight after it; D7: an
+// unparseable date is a 400 before anything is read).
+type metricWindow struct {
+	period string
+	lo, hi time.Time
+}
+
+// serveRepoSeries serves a windowed metric in one order: the prelude
+// (repoFromPath: 400, 404, 403), the window (400 on a bad date), the fetch,
+// nil → [] (D6), one JSON writer. Every metric handler is one call to a
+// serve helper, with inferred type arguments: the openapi reach analysis
+// (scripts/openapi_routes_test.go) follows identifier calls, never
+// f[T](...), so a handler's reachable statuses and query reads stay
+// visible to it.
+func serveRepoSeries[T any](s *Server, w http.ResponseWriter, r *http.Request, name string, fetch func(ctx context.Context, repoID int64, mw metricWindow) ([]T, error)) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
+		return
 	}
-	http.Error(w, "repo not found in group", http.StatusNotFound)
+	lo, hi, err := parseDateRange(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	rows, err := fetch(r.Context(), repoID, metricWindow{period: parsePeriod(r), lo: lo, hi: hi})
+	if err != nil {
+		s.serverError(w, r, name, err)
+		return
+	}
+	if rows == nil {
+		rows = []T{}
+	}
+	s.writeJSON(w, r, rows)
+}
+
+// serveRepoWindow serves a windowed list that is not bucketed (durations,
+// contributor summaries): as serveRepoSeries, without reading period.
+func serveRepoWindow[T any](s *Server, w http.ResponseWriter, r *http.Request, name string, fetch func(ctx context.Context, repoID int64, lo, hi time.Time) ([]T, error)) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
+		return
+	}
+	lo, hi, err := parseDateRange(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	rows, err := fetch(r.Context(), repoID, lo, hi)
+	if err != nil {
+		s.serverError(w, r, name, err)
+		return
+	}
+	if rows == nil {
+		rows = []T{}
+	}
+	s.writeJSON(w, r, rows)
+}
+
+// serveRepoList serves a list metric without a window: the prelude, the
+// fetch, nil → [] (D6), one JSON writer.
+func serveRepoList[T any](s *Server, w http.ResponseWriter, r *http.Request, name string, fetch func(ctx context.Context, repoID int64) ([]T, error)) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
+		return
+	}
+	rows, err := fetch(r.Context(), repoID)
+	if err != nil {
+		s.serverError(w, r, name, err)
+		return
+	}
+	if rows == nil {
+		rows = []T{}
+	}
+	s.writeJSON(w, r, rows)
+}
+
+// serveRepoValue serves a single-value metric (a count, a ratio, a
+// record): the prelude, the fetch, one JSON writer.
+func serveRepoValue[T any](s *Server, w http.ResponseWriter, r *http.Request, name string, fetch func(ctx context.Context, repoID int64) (T, error)) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
+		return
+	}
+	v, err := fetch(r.Context(), repoID)
+	if err != nil {
+		s.serverError(w, r, name, err)
+		return
+	}
+	s.writeJSON(w, r, v)
 }
 
 // ============================================================
@@ -253,145 +363,66 @@ func (s *Server) handleRepoByGroupAndName(w http.ResponseWriter, r *http.Request
 // ============================================================
 
 func (s *Server) handleIssuesNew(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.IssuesNew(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleIssuesNew", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handleIssuesNew", func(ctx context.Context, id int64, mw metricWindow) ([]db.MetricRow, error) {
+		return s.store.IssuesNew(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 func (s *Server) handleIssuesClosed(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.IssuesClosed(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleIssuesClosed", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handleIssuesClosed", func(ctx context.Context, id int64, mw metricWindow) ([]db.MetricRow, error) {
+		return s.store.IssuesClosed(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 func (s *Server) handleIssuesActive(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.IssuesActive(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleIssuesActive", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handleIssuesActive", func(ctx context.Context, id int64, mw metricWindow) ([]db.MetricRow, error) {
+		return s.store.IssuesActive(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 func (s *Server) handleIssueBacklog(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	count, err := s.store.IssueBacklog(r.Context(), repoID)
-	if err != nil {
-		s.serverError(w, r, "handleIssueBacklog", err)
-		return
-	}
-	jsonResponse(w, map[string]int{"issue_backlog": count})
+	serveRepoValue(s, w, r, "handleIssueBacklog", func(ctx context.Context, id int64) (map[string]int, error) {
+		count, err := s.store.IssueBacklog(ctx, id)
+		return map[string]int{"issue_backlog": count}, err
+	})
 }
 
 func (s *Server) handleIssueThroughput(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	throughput, err := s.store.IssueThroughput(r.Context(), repoID)
-	if err != nil {
-		s.serverError(w, r, "handleIssueThroughput", err)
-		return
-	}
-	jsonResponse(w, map[string]float64{"throughput": throughput})
+	serveRepoValue(s, w, r, "handleIssueThroughput", func(ctx context.Context, id int64) (map[string]float64, error) {
+		throughput, err := s.store.IssueThroughput(ctx, id)
+		return map[string]float64{"throughput": throughput}, err
+	})
 }
 
 func (s *Server) handleIssueDuration(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	data, err := s.store.IssueDuration(r.Context(), repoID, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleIssueDuration", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoWindow(s, w, r, "handleIssueDuration", s.store.IssueDuration)
 }
 
 func (s *Server) handleAvgIssueResolution(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	avg, err := s.store.AverageIssueResolutionTime(r.Context(), repoID)
-	if err != nil {
-		s.serverError(w, r, "handleAvgIssueResolution", err)
-		return
-	}
-	jsonResponse(w, map[string]float64{"avg_issue_resolution_days": avg})
+	serveRepoValue(s, w, r, "handleAvgIssueResolution", func(ctx context.Context, id int64) (map[string]float64, error) {
+		avg, err := s.store.AverageIssueResolutionTime(ctx, id)
+		return map[string]float64{"avg_issue_resolution_days": avg}, err
+	})
 }
 
 func (s *Server) handleAbandonedIssues(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	data, err := s.store.AbandonedIssues(r.Context(), repoID)
-	if err != nil {
-		s.serverError(w, r, "handleAbandonedIssues", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoList(s, w, r, "handleAbandonedIssues", s.store.AbandonedIssues)
 }
 
 func (s *Server) handleOpenIssuesCount(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	count, err := s.store.IssueBacklog(r.Context(), repoID)
-	if err != nil {
-		s.serverError(w, r, "handleOpenIssuesCount", err)
-		return
-	}
-	jsonResponse(w, map[string]int{"open_count": count})
+	serveRepoValue(s, w, r, "handleOpenIssuesCount", func(ctx context.Context, id int64) (map[string]int, error) {
+		count, err := s.store.IssueBacklog(ctx, id)
+		return map[string]int{"open_count": count}, err
+	})
 }
 
 func (s *Server) handleClosedIssuesCount(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
 	// v0.27.36: a DB error must be a 500, never {"closed_count": 0}
 	// served as real data (summary/18 Phase 0b).
-	var count int
-	if err := s.store.Pool().QueryRow(r.Context(), `
-		SELECT COUNT(issue_id)
-		FROM aveloxis_data.issues
-		WHERE repo_id = $1 AND issue_state = 'closed' AND pull_request IS NULL`, repoID).Scan(&count); err != nil {
-		s.serverError(w, r, "handleClosedIssuesCount", err)
-		return
-	}
-	jsonResponse(w, map[string]int{"closed_count": count})
+	serveRepoValue(s, w, r, "handleClosedIssuesCount", func(ctx context.Context, id int64) (map[string]int, error) {
+		count, err := s.store.ClosedIssueCount(ctx, id)
+		return map[string]int{"closed_count": count}, err
+	})
 }
 
 // ============================================================
@@ -399,18 +430,9 @@ func (s *Server) handleClosedIssuesCount(w http.ResponseWriter, r *http.Request)
 // ============================================================
 
 func (s *Server) handlePRsNew(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.PRsNew(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handlePRsNew", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handlePRsNew", func(ctx context.Context, id int64, mw metricWindow) ([]db.MetricRow, error) {
+		return s.store.PRsNew(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
@@ -419,47 +441,19 @@ func (s *Server) handleReviews(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleReviewsAccepted(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.ReviewsAccepted(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleReviewsAccepted", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handleReviewsAccepted", func(ctx context.Context, id int64, mw metricWindow) ([]db.MetricRow, error) {
+		return s.store.ReviewsAccepted(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 func (s *Server) handleReviewsDeclined(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.ReviewsDeclined(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleReviewsDeclined", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handleReviewsDeclined", func(ctx context.Context, id int64, mw metricWindow) ([]db.MetricRow, error) {
+		return s.store.ReviewsDeclined(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 func (s *Server) handleReviewDuration(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	data, err := s.store.ReviewDuration(r.Context(), repoID, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleReviewDuration", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoWindow(s, w, r, "handleReviewDuration", s.store.ReviewDuration)
 }
 
 // ============================================================
@@ -467,48 +461,21 @@ func (s *Server) handleReviewDuration(w http.ResponseWriter, r *http.Request) {
 // ============================================================
 
 func (s *Server) handleCommitters(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.Committers(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleCommitters", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handleCommitters", func(ctx context.Context, id int64, mw metricWindow) ([]db.MetricRow, error) {
+		return s.store.Committers(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 func (s *Server) handleCodeChanges(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.CodeChanges(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleCodeChanges", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handleCodeChanges", func(ctx context.Context, id int64, mw metricWindow) ([]db.MetricRow, error) {
+		return s.store.CodeChanges(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 func (s *Server) handleCodeChangesLines(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.CodeChangesLines(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleCodeChangesLines", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handleCodeChangesLines", func(ctx context.Context, id int64, mw metricWindow) ([]db.CodeChangesLinesRow, error) {
+		return s.store.CodeChangesLines(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 // ============================================================
@@ -516,149 +483,81 @@ func (s *Server) handleCodeChangesLines(w http.ResponseWriter, r *http.Request) 
 // ============================================================
 
 func (s *Server) handleContributors(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	data, err := s.store.Contributors(r.Context(), repoID, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleContributors", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoWindow(s, w, r, "handleContributors", s.store.Contributors)
 }
 
 func (s *Server) handleContributorsNew(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.ContributorsNew(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleContributorsNew", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handleContributorsNew", func(ctx context.Context, id int64, mw metricWindow) ([]db.MetricRow, error) {
+		return s.store.ContributorsNew(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 // ============================================================
 // Repo metadata handlers
 // ============================================================
 
+// latestCountOf is the body of the three *-count routes: the latest
+// snapshot's column under key, with the repository's name.
+func (s *Server) latestCountOf(column, key string) func(ctx context.Context, id int64) (map[string]any, error) {
+	return func(ctx context.Context, id int64) (map[string]any, error) {
+		count, name, err := s.store.LatestCount(ctx, id, column)
+		return map[string]any{"repo_name": name, key: count}, err
+	}
+}
+
 func (s *Server) handleStars(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	data, err := s.store.StarsTimeSeries(r.Context(), repoID)
-	if err != nil {
-		s.serverError(w, r, "handleStars", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoList(s, w, r, "handleStars", func(ctx context.Context, id int64) ([]db.MetricRow, error) {
+		return s.store.SnapshotSeries(ctx, id, "star_count")
+	})
 }
 
 func (s *Server) handleStarsCount(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	count, name, err := s.store.LatestCount(r.Context(), repoID, "star_count")
-	if err != nil {
-		s.serverError(w, r, "handleStarsCount", err)
-		return
-	}
-	jsonResponse(w, map[string]any{"repo_name": name, "stars": count})
+	serveRepoValue(s, w, r, "handleStarsCount", s.latestCountOf("star_count", "stars"))
 }
 
 func (s *Server) handleForks(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	data, err := s.store.ForksTimeSeries(r.Context(), repoID)
-	if err != nil {
-		s.serverError(w, r, "handleForks", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoList(s, w, r, "handleForks", func(ctx context.Context, id int64) ([]db.MetricRow, error) {
+		return s.store.SnapshotSeries(ctx, id, "fork_count")
+	})
 }
 
 func (s *Server) handleForkCount(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	count, name, err := s.store.LatestCount(r.Context(), repoID, "fork_count")
-	if err != nil {
-		s.serverError(w, r, "handleForkCount", err)
-		return
-	}
-	jsonResponse(w, map[string]any{"repo_name": name, "forks": count})
+	serveRepoValue(s, w, r, "handleForkCount", s.latestCountOf("fork_count", "forks"))
+}
+
+// watcherRow is /watchers' row: Augur's own key, `watchers`, where the
+// stars and forks series carry `value` (D3, the one exception to D9).
+type watcherRow struct {
+	Date     time.Time `json:"date"`
+	Watchers int       `json:"watchers"`
+	Name     string    `json:"repo_name"`
 }
 
 func (s *Server) handleWatchers(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	// Watchers time series — same pattern as stars/forks but with watchers_count.
-	rows, err := s.store.Pool().Query(r.Context(), `
-		SELECT ri.data_collection_date AS date, ri.watcher_count AS value, r.repo_name
-		FROM aveloxis_data.repo_info ri
-		JOIN aveloxis_data.repos r ON ri.repo_id = r.repo_id
-		WHERE ri.repo_id = $1
-		ORDER BY ri.data_collection_date`, repoID)
-	if err != nil {
-		s.serverError(w, r, "handleWatchers", err)
-		return
-	}
-	defer rows.Close()
-	var result []map[string]any
-	for rows.Next() {
-		var date time.Time
-		var value int
-		var name string
-		if err := rows.Scan(&date, &value, &name); err != nil {
-			s.serverError(w, r, "handleWatchers", err)
-			return
+	// The same snapshot history as stars and forks (stage 1b: this route
+	// read only the latest snapshot, so it had at most one point).
+	serveRepoList(s, w, r, "handleWatchers", func(ctx context.Context, id int64) ([]watcherRow, error) {
+		rows, err := s.store.SnapshotSeries(ctx, id, "watcher_count")
+		if err != nil {
+			return nil, err
 		}
-		result = append(result, map[string]any{"date": date, "watchers": value, "repo_name": name})
-	}
-	if err := rows.Err(); err != nil {
-		s.serverError(w, r, "handleWatchers", err)
-		return
-	}
-	jsonResponse(w, result)
+		out := make([]watcherRow, 0, len(rows))
+		for _, m := range rows {
+			out = append(out, watcherRow{Date: m.Date, Watchers: m.Value, Name: m.Name})
+		}
+		return out, nil
+	})
 }
 
 func (s *Server) handleWatchersCount(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	count, name, err := s.store.LatestCount(r.Context(), repoID, "watcher_count")
-	if err != nil {
-		s.serverError(w, r, "handleWatchersCount", err)
-		return
-	}
-	jsonResponse(w, map[string]any{"repo_name": name, "watchers": count})
+	serveRepoValue(s, w, r, "handleWatchersCount", s.latestCountOf("watcher_count", "watchers"))
 }
 
 func (s *Server) handleLanguages(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	lang, err := s.store.Languages(r.Context(), repoID)
-	if err != nil {
-		s.serverError(w, r, "handleLanguages", err)
-		return
-	}
-	jsonResponse(w, map[string]any{"repo_id": repoID, "primary_language": lang})
+	serveRepoValue(s, w, r, "handleLanguages", func(ctx context.Context, id int64) (map[string]any, error) {
+		lang, err := s.store.Languages(ctx, id)
+		return map[string]any{"repo_id": id, "primary_language": lang}, err
+	})
 }
 
 // ============================================================
@@ -691,7 +590,7 @@ func (s *Server) handleDeps(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleDeps", err)
 		return
 	}
-	jsonResponse(w, data)
+	s.writeJSON(w, r, data)
 }
 
 // ============================================================
@@ -699,18 +598,9 @@ func (s *Server) handleDeps(w http.ResponseWriter, r *http.Request) {
 // ============================================================
 
 func (s *Server) handleRepoMessages(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	begin, end := parseDateRange(r)
-	period := parsePeriod(r)
-	data, err := s.store.RepoMessages(r.Context(), repoID, period, begin, end)
-	if err != nil {
-		s.serverError(w, r, "handleRepoMessages", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoSeries(s, w, r, "handleRepoMessages", func(ctx context.Context, id int64, mw metricWindow) ([]db.MetricRow, error) {
+		return s.store.RepoMessages(ctx, id, mw.period, mw.lo, mw.hi)
+	})
 }
 
 // ============================================================
@@ -718,16 +608,7 @@ func (s *Server) handleRepoMessages(w http.ResponseWriter, r *http.Request) {
 // ============================================================
 
 func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	data, err := s.store.Releases(r.Context(), repoID)
-	if err != nil {
-		s.serverError(w, r, "handleReleases", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoList(s, w, r, "handleReleases", s.store.Releases)
 }
 
 // ============================================================
@@ -735,14 +616,5 @@ func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request) {
 // ============================================================
 
 func (s *Server) handleProjectLanguages(w http.ResponseWriter, r *http.Request) {
-	repoID, ok := s.repoFromPath(w, r)
-	if !ok {
-		return
-	}
-	data, err := s.store.ProjectLanguages(r.Context(), repoID)
-	if err != nil {
-		s.serverError(w, r, "handleProjectLanguages", err)
-		return
-	}
-	jsonResponse(w, data)
+	serveRepoList(s, w, r, "handleProjectLanguages", s.store.ProjectLanguages)
 }

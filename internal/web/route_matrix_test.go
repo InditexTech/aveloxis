@@ -126,7 +126,7 @@ func serve(h http.Handler, r *http.Request) (code int, location string, reached 
 
 func TestRouteMatrixGatesEveryRegisteredRoute(t *testing.T) {
 	s := New(nil, config.WebConfig{Addr: ":0", APIInternalURL: "http://127.0.0.1:1", DevMode: true},
-		nil, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+		"", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	h := s.Handler()
 
 	gated := 0

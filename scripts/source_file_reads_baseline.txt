@@ -134,9 +134,6 @@ cmd/aveloxis/web_gitlab_stamp_wiring_test.go cmd/aveloxis/main.go
 internal/api/aligned_window_defaults_test.go cmd/aveloxis/generate_showcase.go
 internal/api/aligned_window_defaults_test.go internal/api/contributor_elsewhere.go
 internal/api/analytics_test.go internal/api/server.go
-internal/api/auth_test.go internal/api/contributions.go
-internal/api/auth_test.go internal/api/metrics.go
-internal/api/auth_test.go internal/api/server.go
 internal/api/catalog_claims_test.go internal/api/analytics.go
 internal/api/catalog_claims_test.go internal/db/analytics_store.go
 internal/api/compare_autoadd_test.go internal/api/analytics.go
@@ -479,7 +476,6 @@ internal/db/breadth_jitter_test.go internal/db/breadth_store.go
 internal/db/canonical_backfill_test.go internal/db/postgres.go
 internal/db/capacity_day_rule_pin_test.go internal/api/capacity_admin.go
 internal/db/capacity_day_rule_pin_test.go internal/api/capacity_limits.go
-internal/db/capacity_day_rule_pin_test.go internal/api/contributions.go
 internal/db/capacity_day_rule_pin_test.go internal/api/ratelimit.go
 internal/db/capacity_day_rule_pin_test.go internal/db/capacity_admin_store.go
 internal/db/capacity_day_rule_pin_test.go internal/db/capacity_store.go

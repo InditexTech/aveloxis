@@ -8,7 +8,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,7 +26,6 @@ import (
 	"time"
 
 	"github.com/aveloxis/aveloxis/internal/api"
-	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/collector"
 	"github.com/aveloxis/aveloxis/internal/config"
 	"github.com/aveloxis/aveloxis/internal/db"
@@ -668,15 +666,10 @@ func runAddRepo(cfgPath string, repoURLs []string, priority int) error {
 	// add-repo trusts that the operator has already run
 	// `aveloxis migrate` once for this database.
 
-	ghKeys, glKeys, err := loadKeys(ctx, cfg, store, false, logger)
-	if err != nil {
-		return fmt.Errorf("loading API keys: %w", err)
-	}
-
 	refusedURLs := 0
 	for _, repoURL := range repoURLs {
 		// Check if this is an org/group URL instead of a repo URL.
-		if isOrg, host, orgName, plat := isOrgURL(repoURL, cfg.GitHub.GitHubAPIBase()); isOrg {
+		if isOrg, _, orgName, plat := isOrgURL(repoURL, cfg.GitHub.GitHubAPIBase()); isOrg {
 			logger.Info("expanding organization", "org", orgName, "platform", plat)
 
 			// Create a repo_group for this org so the refresh job can re-scan it later.
@@ -700,66 +693,15 @@ func runAddRepo(cfgPath string, repoURLs []string, priority int) error {
 				continue
 			}
 			if err != nil {
-				logger.Warn("failed to create repo group for org", "org", orgName, "error", err)
-			}
-
-			var repos []orgRepo
-			switch plat {
-			case model.PlatformGitHub:
-				// The configured host, not a literal: these are the
-				// deployment's keys, and add-repo on an org is the CLI half
-				// of the same leak the scheduler's clients had (v0.29.57).
-				ghHTTP := platform.NewHTTPClient(cfg.GitHub.GitHubAPIBase(), ghKeys, logger, platform.AuthGitHub)
-				repos, err = listGitHubOrgRepos(ctx, ghHTTP, orgName)
-			case model.PlatformGitLab:
-				// v0.29.11: GitLab keys only ever go to the configured
-				// instance (platform.GitLabAPIBaseForHost). isOrgURL does not
-				// currently classify any URL as a GitLab group, so this arm
-				// is unreachable today; it is guarded like the scheduler's
-				// group refresh so enabling it cannot leak keys.
-				apiBase, ok := platform.GitLabAPIBaseForHost(cfg.GitLab.BaseURL, host)
-				if !ok {
-					err = fmt.Errorf("GitLab group %q is on %s, not the configured GitLab instance (gitlab.base_url %q) — GitLab API keys are only sent to that instance's host", orgName, host, cfg.GitLab.BaseURL)
-					break
-				}
-				glHTTP := platform.NewHTTPClient(apiBase, glKeys, logger, platform.AuthGitLab)
-				repos, err = listGitLabGroupRepos(ctx, glHTTP, orgName)
-			}
-			if err != nil {
-				logger.Error("failed to list org repos", "org", orgName, "error", err)
+				logger.Error("organization not registered", "org", orgName, "error", err)
 				continue
 			}
-			logger.Info("found repos in organization", "org", orgName, "count", len(repos))
-
-			// Bridge legacy repo_groups discovery into modern
-			// aveloxis_ops.user_repos so any user_group tracking this
-			// org (via user_org_requests.org_url) gets every repo
-			// (including forks — listGitHub/GitLab use ?type=all)
-			// linked. Hoisted out of the per-repo loop so the lookup
-			// runs once per scan.
-			userGroupIDs, ugErr := store.GetUserGroupIDsForOrgURL(ctx, repoURL)
-			if ugErr != nil {
-				logger.Warn("failed to look up user_groups for org", "org_url", platform.RedactURLUserinfo(repoURL), "error", ugErr)
-			}
-			for _, r := range repos {
-				addOneRepoWithGroup(ctx, store, logger, r, plat, priority, groupID)
-				if len(userGroupIDs) == 0 {
-					continue
-				}
-				repoID, ferr := store.FindRepoByURL(ctx, r.URL)
-				if ferr != nil || repoID == 0 {
-					continue
-				}
-				for _, gid := range userGroupIDs {
-					if _, err := store.AddOrgRepoToGroupByID(ctx, gid, repoID); err != nil {
-						if _, capped := capacity.AsExceeded(err); capped {
-							continue // the account's repository quota: the store logs it once a day
-						}
-						logger.Warn("failed to link repo into user_repos",
-							"group_id", gid, "repo_id", repoID, "error", err)
-					}
-				}
-			}
+			// Registered only (stage 1 of summary/59, N13: the CLI lists
+			// nothing itself; serve's org refresh enumerates every registered
+			// organization through the one lister on its interval, exactly
+			// as the foundation loaders are picked up). Its repositories
+			// reach the queue then, at the default priority.
+			logger.Info("organization registered — serve lists its repositories on its next org refresh", "org", orgName, "platform", plat, "repo_group_id", groupID)
 			continue
 		}
 
@@ -785,29 +727,6 @@ func runAddRepo(cfgPath string, repoURLs []string, priority int) error {
 	return nil
 }
 
-func addOneRepoWithGroup(ctx context.Context, store *db.PostgresStore, logger *slog.Logger, r orgRepo, plat model.Platform, priority int, groupID int64) {
-	repoID, err := store.UpsertRepo(ctx, &model.Repo{
-		Platform: plat,
-		GitURL:   r.URL,
-		Name:     r.Name,
-		Owner:    r.Owner,
-		GroupID:  groupID,
-		// v0.27.103: the forge numeric ID enables UpsertRepo's
-		// rename-heal (untracked URL + forge-ID hit) and backfills
-		// already-tracked rows via the prefer-nonempty conflict clause.
-		PlatformID: r.ForgeID,
-	})
-	if err != nil {
-		logger.Error("failed to register repo", "url", platform.RedactURLUserinfo(r.URL), "error", err)
-		return
-	}
-	if err := store.EnqueueRepo(ctx, repoID, priority); err != nil {
-		logger.Error("failed to enqueue repo", "url", platform.RedactURLUserinfo(r.URL), "error", err)
-		return
-	}
-	logger.Info("repo added to queue", "url", platform.RedactURLUserinfo(r.URL), "repo_id", repoID, "priority", priority)
-}
-
 func addOneRepo(ctx context.Context, store *db.PostgresStore, logger *slog.Logger, repoURL, owner, name string, plat model.Platform, priority int) {
 	repoID, err := store.UpsertRepo(ctx, &model.Repo{
 		Platform: plat,
@@ -824,101 +743,6 @@ func addOneRepo(ctx context.Context, store *db.PostgresStore, logger *slog.Logge
 		return
 	}
 	logger.Info("repo added to queue", "url", platform.RedactURLUserinfo(repoURL), "repo_id", repoID, "priority", priority)
-}
-
-type orgRepo struct {
-	URL   string
-	Owner string
-	Name  string
-	// ForgeID is the forge's numeric repository ID from the listing
-	// JSON (v0.27.103 — this path was the one org-scan site the
-	// v0.27.102 rename-dedup fix missed). UpsertRepo dedups on it.
-	ForgeID string
-}
-
-// listGitHubOrgRepos calls GET /orgs/{org}/repos to list all public repos.
-func listGitHubOrgRepos(ctx context.Context, http *platform.HTTPClient, org string) ([]orgRepo, error) {
-	var repos []orgRepo
-	page := 1
-	for {
-		path := fmt.Sprintf("/orgs/%s/repos?per_page=100&type=all&page=%d", org, page)
-		resp, err := http.Get(platform.WithoutETag(ctx), path)
-		if err != nil {
-			return repos, err
-		}
-		var items []struct {
-			ID       int64  `json:"id"` // v0.27.103 — rename-proof numeric identity
-			FullName string `json:"full_name"`
-			HTMLURL  string `json:"html_url"`
-			Name     string `json:"name"`
-			Owner    struct {
-				Login string `json:"login"`
-			} `json:"owner"`
-			Archived bool `json:"archived"`
-			Fork     bool `json:"fork"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
-			resp.Body.Close()
-			return repos, err
-		}
-		resp.Body.Close()
-
-		if len(items) == 0 {
-			break
-		}
-		for _, item := range items {
-			repos = append(repos, orgRepo{
-				URL:     item.HTMLURL,
-				Owner:   item.Owner.Login,
-				Name:    item.Name,
-				ForgeID: model.ForgeIDString(item.ID),
-			})
-		}
-		page++
-	}
-	return repos, nil
-}
-
-// listGitLabGroupRepos calls GET /groups/{group}/projects to list all projects.
-func listGitLabGroupRepos(ctx context.Context, http *platform.HTTPClient, group string) ([]orgRepo, error) {
-	var repos []orgRepo
-	page := 1
-	encodedGroup := url.PathEscape(group)
-	for {
-		path := fmt.Sprintf("/groups/%s/projects?per_page=100&include_subgroups=true&page=%d", encodedGroup, page)
-		resp, err := http.Get(platform.WithoutETag(ctx), path)
-		if err != nil {
-			return repos, err
-		}
-		var items []struct {
-			ID                int64  `json:"id"` // v0.27.103 — rename-proof numeric identity
-			PathWithNamespace string `json:"path_with_namespace"`
-			WebURL            string `json:"web_url"`
-			Name              string `json:"name"`
-			Namespace         struct {
-				FullPath string `json:"full_path"`
-			} `json:"namespace"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
-			resp.Body.Close()
-			return repos, err
-		}
-		resp.Body.Close()
-
-		if len(items) == 0 {
-			break
-		}
-		for _, item := range items {
-			repos = append(repos, orgRepo{
-				URL:     item.WebURL,
-				Owner:   item.Namespace.FullPath,
-				Name:    item.Name,
-				ForgeID: model.ForgeIDString(item.ID),
-			})
-		}
-		page++
-	}
-	return repos, nil
 }
 
 func runImportFromAugur(cfgPath string, priority int) error {
@@ -1560,21 +1384,11 @@ Create a GitLab OAuth app at: https://gitlab.com/-/profile/applications`,
 				logger.Info("sign-up escrow: off (web.signup_escrow_recipient is empty); no address is kept past its UTC day")
 			}
 
-			// Load GitHub keys for immediate org scanning (non-fatal for web — it
-			// can still serve the GUI without keys, just can't scan orgs). A
-			// failed read is logged (worklist item 55, review round 1): it is
-			// not "no keys", and org scans stay off until the next start.
-			ghKeys, _, kerr := loadKeys(ctx, cfg, store, false, logger)
-			if kerr != nil && ctx.Err() != nil {
-				return nil // a stop during startup, not a failure
-			}
-			if kerr != nil {
-				logger.Error("API keys could not be loaded — web serves without them (no org scans)", "error", kerr)
-			}
-
+			// The web process loads no forge keys (stage 1 of summary/59,
+			// C2): an org added or approved in the GUI is listed by serve.
 			warnAPIPortMismatch(cfg, logger)
 
-			webServer := newWebServer(store, cfg, ghKeys, logger)
+			webServer := newWebServer(store, cfg, logger)
 			// GitLab accounts from before 0.29.69 carry no instance and
 			// match none at sign-in until this stamps them with the
 			// configured one (final review round 3).
@@ -2315,6 +2129,9 @@ func versionCmd() *cobra.Command {
 func loadConfig(cfgPath string, logger *slog.Logger) *config.Config {
 	cfg, err := config.Load(cfgPath)
 	if err == nil {
+		for _, w := range cfg.LoadWarnings() { // a removed key the file still carries (N15)
+			logger.Warn(w, "path", cfgPath)
+		}
 		db.SetProcessCapacitySources(cfg.CapacitySources()) // v0.29.89: every store this process opens
 		return cfg
 	}
@@ -2427,8 +2244,8 @@ func mailerConfigFrom(cfg *config.Config) mailer.Config {
 
 // newWebServer builds `aveloxis web`'s server with its mailer attached.
 // TestProcessMailWiring checks the mailer it carries.
-func newWebServer(store *db.PostgresStore, cfg *config.Config, ghKeys *platform.KeyPool, logger *slog.Logger) *web.Server {
-	return web.New(store, cfg.Web, ghKeys, cfg.GitHub.GitHubAPIBase(), logger).WithMailer(mailer.New(mailerConfigFrom(cfg), logger))
+func newWebServer(store *db.PostgresStore, cfg *config.Config, logger *slog.Logger) *web.Server {
+	return web.New(store, cfg.Web, cfg.GitHub.GitHubAPIBase(), logger).WithMailer(mailer.New(mailerConfigFrom(cfg), logger))
 }
 
 // newMonitorServer, newAPIServer and newWebHTTPServer build the three

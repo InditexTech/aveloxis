@@ -13,6 +13,19 @@
 //   - dm_repo_annual/monthly/weekly tables match 1:1
 //   - message table: Augur uses msg_timestamp, Aveloxis uses msg_timestamp
 //   - contributors: cntrb_id is UUID in both
+//
+// Windows (stage 1b, eval-4 item 4): every windowed reader takes a
+// half-open [lo, hi) — `>= lo AND < hi`, never BETWEEN — and the commit
+// readers count by the UTC day of cmt_author_timestamp (N19: the same day
+// as /timeseries and the daily commit table), never by casting the TEXT
+// cmt_author_date, whose one empty-string row failed the whole query (22007). A
+// bucket is the UTC midnight that starts its period, as an instant:
+// `date_trunc($1, ts AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'` truncates the
+// UTC wall time and reads it back as an instant (then .UTC() in Go for one
+// serialization). The earlier `date_trunc($1, x::DATE)` cast the date to
+// timestamptz in the SESSION's zone, so the bucket's midnight — and the
+// serialized `date` — depended on the database host's zone. An empty
+// result is [] (D6: pgx.CollectRows).
 package db
 
 import (
@@ -47,86 +60,152 @@ type RepoResult struct {
 	Archived bool   `json:"repo_archived"`
 }
 
-// GetAllRepoGroups returns all repo groups.
-func (s *PostgresStore) GetAllRepoGroups(ctx context.Context) ([]RepoGroupResult, error) {
+// RepoScope is what a catalog reader may show (stage 1b, D1): everything
+// (an administrator's session, a caller without an identity), or exactly
+// the repositories in IDs — an API token's groups. The zero value shows
+// NOTHING: an empty scope is never read as "all" (eval-4 item 5).
+type RepoScope struct {
+	All bool
+	IDs []int64
+}
+
+// repoScopeSQL is the predicate every catalog reader applies, with the
+// scope bound as ($all boolean, $ids bigint[]); col is the repository id
+// column. One spelling for every reader (SR-17).
+func repoScopeSQL(col, all, ids string) string {
+	return "(" + all + "::boolean OR " + col + " = ANY(" + ids + "::bigint[]))"
+}
+
+// ids never binds a nil slice: pgx sends a nil []int64 as SQL NULL, and
+// `x = ANY(NULL)` is NULL — which reads as false here, but an explicit empty
+// array says what is meant.
+func (sc RepoScope) ids() []int64 {
+	if sc.IDs == nil {
+		return []int64{}
+	}
+	return sc.IDs
+}
+
+// RepoOutOfScopeError is a catalog lookup's answer when the name exists
+// only outside the caller's scope: the repository's id, so the caller can
+// refuse with the structured 403 that names it (N21; D5: known but out of
+// scope is 403, absent is 404).
+type RepoOutOfScopeError struct{ RepoID int64 }
+
+func (e *RepoOutOfScopeError) Error() string {
+	return fmt.Sprintf("repository %d is outside the caller's scope", e.RepoID)
+}
+
+// repoResultColumns is the one projection every catalog reader scans into
+// RepoResult (pgx.RowToStructByPos: the order is the struct's).
+const repoResultColumns = `repo_id, COALESCE(repo_group_id, 0), repo_git, repo_name, repo_owner, platform_id, COALESCE(repo_archived, false)`
+
+// ListRepoGroups returns the legacy repository groups the scope may see:
+// every group when unscoped, otherwise the groups holding at least one
+// in-scope repository (N20). Ordered by name. Empty is [] (D6).
+func (s *PostgresStore) ListRepoGroups(ctx context.Context, scope RepoScope) ([]RepoGroupResult, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT repo_group_id, rg_name, COALESCE(rg_description, ''), COALESCE(rg_type, '')
-		FROM aveloxis_data.repo_groups
-		ORDER BY rg_name`)
+		FROM aveloxis_data.repo_groups rg
+		WHERE $1::boolean OR EXISTS (
+			SELECT 1 FROM aveloxis_data.repos r
+			WHERE r.repo_group_id = rg.repo_group_id AND r.repo_id = ANY($2::bigint[]))
+		ORDER BY rg_name`, scope.All, scope.ids())
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []RepoGroupResult
-	for rows.Next() {
-		var r RepoGroupResult
-		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &r.Type); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[RepoGroupResult])
 }
 
-// GetAllRepos returns all repos with basic info.
-func (s *PostgresStore) GetAllRepos(ctx context.Context) ([]RepoResult, error) {
+// ListRepos returns the repositories the scope may see, ordered by owner
+// and name. Empty is [] (D6).
+func (s *PostgresStore) ListRepos(ctx context.Context, scope RepoScope) ([]RepoResult, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT repo_id, COALESCE(repo_group_id, 0), repo_git, repo_name, repo_owner, platform_id, COALESCE(repo_archived, false)
+		SELECT `+repoResultColumns+`
 		FROM aveloxis_data.repos
-		ORDER BY repo_owner, repo_name`)
+		WHERE `+repoScopeSQL("repo_id", "$1", "$2")+`
+		ORDER BY repo_owner, repo_name`, scope.All, scope.ids())
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []RepoResult
-	for rows.Next() {
-		var r RepoResult
-		if err := rows.Scan(&r.ID, &r.GroupID, &r.GitURL, &r.Name, &r.Owner, &r.Platform, &r.Archived); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[RepoResult])
 }
 
-// GetReposByGroup returns repos belonging to a specific repo group.
-func (s *PostgresStore) GetReposByGroup(ctx context.Context, groupID int64) ([]RepoResult, error) {
+// GetReposByGroup returns the repositories of one legacy group the scope
+// may see, ordered by owner and name. A group id no group has, or a group
+// with nothing in scope, is an empty list (D6: [], not null).
+func (s *PostgresStore) GetReposByGroup(ctx context.Context, groupID int64, scope RepoScope) ([]RepoResult, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT repo_id, COALESCE(repo_group_id, 0), repo_git, repo_name, repo_owner, platform_id, COALESCE(repo_archived, false)
+		SELECT `+repoResultColumns+`
 		FROM aveloxis_data.repos
-		WHERE repo_group_id = $1
-		ORDER BY repo_owner, repo_name`, groupID)
+		WHERE repo_group_id = $1 AND `+repoScopeSQL("repo_id", "$2", "$3")+`
+		ORDER BY repo_owner, repo_name`, groupID, scope.All, scope.ids())
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []RepoResult
-	for rows.Next() {
-		var r RepoResult
-		if err := rows.Scan(&r.ID, &r.GroupID, &r.GitURL, &r.Name, &r.Owner, &r.Platform, &r.Archived); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[RepoResult])
 }
 
-// GetRepoByOwnerName finds a repo by owner and name (case-insensitive). No
-// such repository is ErrRepoNotFound; every other failure is the store's.
-func (s *PostgresStore) GetRepoByOwnerName(ctx context.Context, owner, name string) (*RepoResult, error) {
-	var r RepoResult
-	err := s.pool.QueryRow(ctx, `
-		SELECT repo_id, COALESCE(repo_group_id, 0), repo_git, repo_name, repo_owner, platform_id, COALESCE(repo_archived, false)
+// GetRepoByOwnerName finds the repository with this owner and name (without
+// regard to letter case) inside the scope; with the name on two forges the
+// pick is by platform then id (N21). When the name exists only outside the
+// scope the answer is RepoOutOfScopeError with that repository's id; no
+// such repository at all is ErrRepoNotFound (SR-5: every other failure is
+// the store's).
+func (s *PostgresStore) GetRepoByOwnerName(ctx context.Context, owner, name string, scope RepoScope) (*RepoResult, error) {
+	return s.catalogPick(ctx, `LOWER(repo_owner) = LOWER($1) AND LOWER(repo_name) = LOWER($2)`, []any{owner, name}, scope,
+		fmt.Sprintf("repo %s/%s", owner, name))
+}
+
+// GetRepoInGroupByName finds the repository named name (without regard to
+// letter case) in the legacy group groupID, with GetRepoByOwnerName's
+// scope rule (stage 1b: the by-group lookup compared the name
+// case-sensitively while the owner/name one did not).
+func (s *PostgresStore) GetRepoInGroupByName(ctx context.Context, groupID int64, name string, scope RepoScope) (*RepoResult, error) {
+	return s.catalogPick(ctx, `repo_group_id = $1 AND LOWER(repo_name) = LOWER($2)`, []any{groupID, name}, scope,
+		fmt.Sprintf("repo %s in group %d", name, groupID))
+}
+
+// catalogPick is the one lookup behind the two by-name readers: the first
+// match of where (its arguments first) inside the scope by platform then
+// id; otherwise an unscoped probe tells RepoOutOfScopeError (the twin's
+// id) from ErrRepoNotFound.
+func (s *PostgresStore) catalogPick(ctx context.Context, where string, args []any, scope RepoScope, what string) (*RepoResult, error) {
+	n := len(args)
+	all, ids := fmt.Sprintf("$%d", n+1), fmt.Sprintf("$%d", n+2)
+	scoped := append(append([]any{}, args...), scope.All, scope.ids())
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+repoResultColumns+`
 		FROM aveloxis_data.repos
-		WHERE LOWER(repo_owner) = LOWER($1) AND LOWER(repo_name) = LOWER($2)
-		LIMIT 1`, owner, name).Scan(&r.ID, &r.GroupID, &r.GitURL, &r.Name, &r.Owner, &r.Platform, &r.Archived)
+		WHERE `+where+` AND `+repoScopeSQL("repo_id", all, ids)+`
+		ORDER BY platform_id, repo_id
+		LIMIT 1`, scoped...)
+	if err != nil {
+		return nil, err
+	}
+	r, err := pgx.CollectOneRow(rows, pgx.RowToStructByPos[RepoResult])
+	if err == nil {
+		return &r, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if scope.All {
+		return nil, fmt.Errorf("%s: %w", what, ErrRepoNotFound)
+	}
+	var twin int64
+	err = s.pool.QueryRow(ctx, `
+		SELECT repo_id FROM aveloxis_data.repos
+		WHERE `+where+`
+		ORDER BY platform_id, repo_id
+		LIMIT 1`, args...).Scan(&twin)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("repo %s/%s: %w", owner, name, ErrRepoNotFound)
+		return nil, fmt.Errorf("%s: %w", what, ErrRepoNotFound)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &r, nil
+	return nil, &RepoOutOfScopeError{RepoID: twin}
 }
 
 // ErrRepoGroupNotFound is GetRepoGroupByName's answer for a name no repo
@@ -134,27 +213,48 @@ func (s *PostgresStore) GetRepoByOwnerName(ctx context.Context, owner, name stri
 // store failure.
 var ErrRepoGroupNotFound = errors.New("repo group not found")
 
-// GetRepoGroupByName finds a repo group by name (case-insensitive). A name
-// no group has is ErrRepoGroupNotFound; every other failure is the store's.
-func (s *PostgresStore) GetRepoGroupByName(ctx context.Context, name string) (*RepoGroupResult, error) {
-	var r RepoGroupResult
-	err := s.pool.QueryRow(ctx, `
+// GetRepoGroupByName finds a repo group by name (case-insensitive) that the
+// scope may see (N20: a group holding no in-scope repository is not
+// found). A name no such group has is ErrRepoGroupNotFound; every other
+// failure is the store's.
+func (s *PostgresStore) GetRepoGroupByName(ctx context.Context, name string, scope RepoScope) (*RepoGroupResult, error) {
+	rows, err := s.pool.Query(ctx, `
 		SELECT repo_group_id, rg_name, COALESCE(rg_description, ''), COALESCE(rg_type, '')
-		FROM aveloxis_data.repo_groups
+		FROM aveloxis_data.repo_groups rg
 		WHERE LOWER(rg_name) = LOWER($1)
-		LIMIT 1`, name).Scan(&r.ID, &r.Name, &r.Description, &r.Type)
+		  AND ($2::boolean OR EXISTS (
+			SELECT 1 FROM aveloxis_data.repos r
+			WHERE r.repo_group_id = rg.repo_group_id AND r.repo_id = ANY($3::bigint[])))
+		ORDER BY repo_group_id
+		LIMIT 1`, name, scope.All, scope.ids())
+	if err != nil {
+		return nil, err
+	}
+	g, err := pgx.CollectOneRow(rows, pgx.RowToStructByPos[RepoGroupResult])
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("repo group %q: %w", name, ErrRepoGroupNotFound)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &r, nil
+	return &g, nil
 }
 
 // ============================================================
 // Issue metrics
 // ============================================================
+
+// bucketSQL is the one spelling of a metric bucket (SR-17): the period $1
+// of expr's UTC wall time, read back as an instant — the file comment says
+// why the earlier cast through the session's zone was wrong. expr MUST be a
+// timestamptz: `timestamp AT TIME ZONE 'UTC'` is a timestamptz, so a
+// timestamp handed in would be truncated in the session's zone (review
+// round 2 caught the DATE site). A DATE is handed in as
+// `(col::timestamp AT TIME ZONE 'UTC')`, its midnight as a UTC instant;
+// TestEveryBucketSQLSiteIsATimestamptz types every site.
+func bucketSQL(expr string) string {
+	return "(date_trunc($1, " + expr + " AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')"
+}
 
 // MetricRow is a generic time-series metric result.
 type MetricRow struct {
@@ -166,12 +266,12 @@ type MetricRow struct {
 // IssuesNew returns count of new issues opened per period.
 func (s *PostgresStore) IssuesNew(ctx context.Context, repoID int64, period string, begin, end time.Time) ([]MetricRow, error) {
 	return s.timeSeriesMetric(ctx, `
-		SELECT date_trunc($1, (i.created_at AT TIME ZONE 'UTC')::DATE) AS date, COUNT(i.issue_id) AS value, r.repo_name
+		SELECT `+bucketSQL("i.created_at")+` AS date, COUNT(i.issue_id) AS value, r.repo_name
 		FROM aveloxis_data.issues i
 		JOIN aveloxis_data.repos r ON i.repo_id = r.repo_id
 		WHERE i.repo_id = $2
 		AND i.pull_request IS NULL
-		AND i.created_at BETWEEN $3 AND $4
+		AND i.created_at >= $3 AND i.created_at < $4
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 }
@@ -179,13 +279,13 @@ func (s *PostgresStore) IssuesNew(ctx context.Context, repoID int64, period stri
 // IssuesClosed returns count of closed issues per period.
 func (s *PostgresStore) IssuesClosed(ctx context.Context, repoID int64, period string, begin, end time.Time) ([]MetricRow, error) {
 	return s.timeSeriesMetric(ctx, `
-		SELECT date_trunc($1, (i.closed_at AT TIME ZONE 'UTC')::DATE) AS date, COUNT(i.issue_id) AS value, r.repo_name
+		SELECT `+bucketSQL("i.closed_at")+` AS date, COUNT(i.issue_id) AS value, r.repo_name
 		FROM aveloxis_data.issues i
 		JOIN aveloxis_data.repos r ON i.repo_id = r.repo_id
 		WHERE i.repo_id = $2
 		AND i.pull_request IS NULL
 		AND i.closed_at IS NOT NULL
-		AND i.closed_at BETWEEN $3 AND $4
+		AND i.closed_at >= $3 AND i.closed_at < $4
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 }
@@ -193,13 +293,13 @@ func (s *PostgresStore) IssuesClosed(ctx context.Context, repoID int64, period s
 // IssuesActive returns count of issues with events per period.
 func (s *PostgresStore) IssuesActive(ctx context.Context, repoID int64, period string, begin, end time.Time) ([]MetricRow, error) {
 	return s.timeSeriesMetric(ctx, `
-		SELECT date_trunc($1, (ie.created_at AT TIME ZONE 'UTC')::DATE) AS date, COUNT(DISTINCT i.issue_id) AS value, r.repo_name
+		SELECT `+bucketSQL("ie.created_at")+` AS date, COUNT(DISTINCT i.issue_id) AS value, r.repo_name
 		FROM aveloxis_data.issues i
 		JOIN aveloxis_data.issue_events ie ON i.issue_id = ie.issue_id
 		JOIN aveloxis_data.repos r ON i.repo_id = r.repo_id
 		WHERE i.repo_id = $2
 		AND i.pull_request IS NULL
-		AND ie.created_at BETWEEN $3 AND $4
+		AND ie.created_at >= $3 AND ie.created_at < $4
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 }
@@ -249,21 +349,12 @@ func (s *PostgresStore) IssueDuration(ctx context.Context, repoID int64, begin, 
 		WHERE i.repo_id = $1
 		AND i.pull_request IS NULL
 		AND i.closed_at IS NOT NULL
-		AND i.created_at BETWEEN $2 AND $3
+		AND i.created_at >= $2 AND i.created_at < $3
 		ORDER BY i.issue_id`, repoID, begin, end)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []IssueDurationRow
-	for rows.Next() {
-		var r IssueDurationRow
-		if err := rows.Scan(&r.IssueID, &r.CreatedAt, &r.ClosedAt, &r.Days, &r.Name); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[IssueDurationRow])
 }
 
 // AverageIssueResolutionTime returns the average days from issue creation to closure.
@@ -292,7 +383,7 @@ func (s *PostgresStore) AbandonedIssues(ctx context.Context, repoID int64) ([]ma
 		return nil, err
 	}
 	defer rows.Close()
-	var result []map[string]any
+	result := []map[string]any{} // D6: empty is []
 	for rows.Next() {
 		var issueID int64
 		var updatedAt time.Time
@@ -307,6 +398,18 @@ func (s *PostgresStore) AbandonedIssues(ctx context.Context, repoID int64) ([]ma
 	return result, rows.Err()
 }
 
+// ClosedIssueCount is the count of closed issues (pull requests excluded):
+// /closed-issues-count's body, in the store since stage 1b (eval-4 item 3:
+// the handler ran this SQL itself).
+func (s *PostgresStore) ClosedIssueCount(ctx context.Context, repoID int64) (int, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(issue_id)
+		FROM aveloxis_data.issues
+		WHERE repo_id = $1 AND issue_state = 'closed' AND pull_request IS NULL`, repoID).Scan(&count)
+	return count, err
+}
+
 // ============================================================
 // Pull request metrics
 // ============================================================
@@ -314,11 +417,11 @@ func (s *PostgresStore) AbandonedIssues(ctx context.Context, repoID int64) ([]ma
 // PRsNew returns count of new pull requests per period.
 func (s *PostgresStore) PRsNew(ctx context.Context, repoID int64, period string, begin, end time.Time) ([]MetricRow, error) {
 	return s.timeSeriesMetric(ctx, `
-		SELECT date_trunc($1, (p.created_at AT TIME ZONE 'UTC')::DATE) AS date, COUNT(*) AS value, r.repo_name
+		SELECT `+bucketSQL("p.created_at")+` AS date, COUNT(*) AS value, r.repo_name
 		FROM aveloxis_data.pull_requests p
 		JOIN aveloxis_data.repos r ON p.repo_id = r.repo_id
 		WHERE p.repo_id = $2
-		AND p.created_at BETWEEN $3 AND $4
+		AND p.created_at >= $3 AND p.created_at < $4
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 }
@@ -326,12 +429,12 @@ func (s *PostgresStore) PRsNew(ctx context.Context, repoID int64, period string,
 // ReviewsAccepted returns merged PRs per period.
 func (s *PostgresStore) ReviewsAccepted(ctx context.Context, repoID int64, period string, begin, end time.Time) ([]MetricRow, error) {
 	return s.timeSeriesMetric(ctx, `
-		SELECT date_trunc($1, (p.merged_at AT TIME ZONE 'UTC')::DATE) AS date, COUNT(*) AS value, r.repo_name
+		SELECT `+bucketSQL("p.merged_at")+` AS date, COUNT(*) AS value, r.repo_name
 		FROM aveloxis_data.pull_requests p
 		JOIN aveloxis_data.repos r ON p.repo_id = r.repo_id
 		WHERE p.repo_id = $2
 		AND p.merged_at IS NOT NULL
-		AND p.merged_at BETWEEN $3 AND $4
+		AND p.merged_at >= $3 AND p.merged_at < $4
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 }
@@ -339,13 +442,13 @@ func (s *PostgresStore) ReviewsAccepted(ctx context.Context, repoID int64, perio
 // ReviewsDeclined returns closed (not merged) PRs per period.
 func (s *PostgresStore) ReviewsDeclined(ctx context.Context, repoID int64, period string, begin, end time.Time) ([]MetricRow, error) {
 	return s.timeSeriesMetric(ctx, `
-		SELECT date_trunc($1, (p.closed_at AT TIME ZONE 'UTC')::DATE) AS date, COUNT(*) AS value, r.repo_name
+		SELECT `+bucketSQL("p.closed_at")+` AS date, COUNT(*) AS value, r.repo_name
 		FROM aveloxis_data.pull_requests p
 		JOIN aveloxis_data.repos r ON p.repo_id = r.repo_id
 		WHERE p.repo_id = $2
 		AND p.closed_at IS NOT NULL
 		AND p.merged_at IS NULL
-		AND p.closed_at BETWEEN $3 AND $4
+		AND p.closed_at >= $3 AND p.closed_at < $4
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 }
@@ -369,21 +472,12 @@ func (s *PostgresStore) ReviewDuration(ctx context.Context, repoID int64, begin,
 		JOIN aveloxis_data.repos r ON p.repo_id = r.repo_id
 		WHERE p.repo_id = $1
 		AND p.merged_at IS NOT NULL
-		AND p.created_at BETWEEN $2 AND $3
+		AND p.created_at >= $2 AND p.created_at < $3
 		ORDER BY p.pull_request_id`, repoID, begin, end)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []ReviewDurationRow
-	for rows.Next() {
-		var r ReviewDurationRow
-		if err := rows.Scan(&r.PRID, &r.CreatedAt, &r.MergedAt, &r.Days, &r.Name); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[ReviewDurationRow])
 }
 
 // ============================================================
@@ -400,13 +494,13 @@ func (s *PostgresStore) Committers(ctx context.Context, repoID int64, period str
 	// cmt_ght_author_id (~92% fleet coverage) leads; unresolved
 	// commits fall back to their non-empty email so nobody vanishes.
 	return s.timeSeriesMetric(ctx, `
-		SELECT date_trunc($1, cmt_author_date::DATE) AS date,
+		SELECT `+bucketSQL("cmt_author_timestamp")+` AS date,
 		       COUNT(DISTINCT COALESCE(cmt_ght_author_id::text, NULLIF(cmt_author_email, ''))) AS value,
 		       r.repo_name
 		FROM aveloxis_data.commits c
 		JOIN aveloxis_data.repos r ON c.repo_id = r.repo_id
 		WHERE c.repo_id = $2
-		AND cmt_author_date::DATE BETWEEN $3 AND $4
+		AND cmt_author_timestamp >= $3 AND cmt_author_timestamp < $4
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 }
@@ -414,13 +508,13 @@ func (s *PostgresStore) Committers(ctx context.Context, repoID int64, period str
 // CodeChanges returns commit counts from the aggregate tables by period.
 func (s *PostgresStore) CodeChanges(ctx context.Context, repoID int64, period string, begin, end time.Time) ([]MetricRow, error) {
 	return s.timeSeriesMetric(ctx, `
-		SELECT date_trunc($1, cmt_author_date::DATE) AS date,
+		SELECT `+bucketSQL("cmt_author_timestamp")+` AS date,
 		       COUNT(DISTINCT cmt_commit_hash) AS value,
 		       r.repo_name
 		FROM aveloxis_data.commits c
 		JOIN aveloxis_data.repos r ON c.repo_id = r.repo_id
 		WHERE c.repo_id = $2
-		AND cmt_author_date::DATE BETWEEN $3 AND $4
+		AND cmt_author_timestamp >= $3 AND cmt_author_timestamp < $4
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 }
@@ -436,29 +530,27 @@ type CodeChangesLinesRow struct {
 // CodeChangesLines returns lines added and removed per period.
 func (s *PostgresStore) CodeChangesLines(ctx context.Context, repoID int64, period string, begin, end time.Time) ([]CodeChangesLinesRow, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT date_trunc($1, cmt_author_date::DATE) AS date,
+		SELECT `+bucketSQL("cmt_author_timestamp")+` AS date,
 		       SUM(cmt_added) AS added,
 		       SUM(cmt_removed) AS removed,
 		       r.repo_name
 		FROM aveloxis_data.commits c
 		JOIN aveloxis_data.repos r ON c.repo_id = r.repo_id
 		WHERE c.repo_id = $2
-		AND cmt_author_date::DATE BETWEEN $3 AND $4
+		AND cmt_author_timestamp >= $3 AND cmt_author_timestamp < $4
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []CodeChangesLinesRow
-	for rows.Next() {
-		var r CodeChangesLinesRow
-		if err := rows.Scan(&r.Date, &r.Added, &r.Removed, &r.Name); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
+	out, err := pgx.CollectRows(rows, pgx.RowToStructByPos[CodeChangesLinesRow])
+	if err != nil {
+		return nil, err
 	}
-	return result, rows.Err()
+	for i := range out {
+		out[i].Date = out[i].Date.UTC()
+	}
+	return out, nil
 }
 
 // ============================================================
@@ -492,21 +584,21 @@ func (s *PostgresStore) Contributors(ctx context.Context, repoID int64, begin, e
 			       0 AS issues, 0 AS prs, 0 AS issue_comments, 0 AS pr_comments, repo_id
 			FROM aveloxis_data.commits
 			WHERE repo_id = $1 AND cmt_ght_author_id IS NOT NULL
-			AND cmt_author_date::DATE BETWEEN $2 AND $3
+			AND cmt_author_timestamp >= $2 AND cmt_author_timestamp < $3
 			GROUP BY cmt_ght_author_id, repo_id
 			UNION ALL
 			-- Issues opened
 			SELECT reporter_id AS cntrb_id, 0, COUNT(*), 0, 0, 0, repo_id
 			FROM aveloxis_data.issues
 			WHERE repo_id = $1 AND reporter_id IS NOT NULL AND pull_request IS NULL
-			AND created_at BETWEEN $2 AND $3
+			AND created_at >= $2 AND created_at < $3
 			GROUP BY reporter_id, repo_id
 			UNION ALL
 			-- PRs opened
 			SELECT author_id AS cntrb_id, 0, 0, COUNT(*), 0, 0, repo_id
 			FROM aveloxis_data.pull_requests
 			WHERE repo_id = $1 AND author_id IS NOT NULL
-			AND created_at BETWEEN $2 AND $3
+			AND created_at >= $2 AND created_at < $3
 			GROUP BY author_id, repo_id
 			UNION ALL
 			-- Issue conversation comments (v0.27.37 Phase 1f: these
@@ -516,7 +608,7 @@ func (s *PostgresStore) Contributors(ctx context.Context, repoID int64, begin, e
 			FROM aveloxis_data.issue_message_ref imr
 			JOIN aveloxis_data.messages m ON m.msg_id = imr.msg_id
 			WHERE imr.repo_id = $1 AND m.cntrb_id IS NOT NULL
-			AND m.msg_timestamp BETWEEN $2 AND $3
+			AND m.msg_timestamp >= $2 AND m.msg_timestamp < $3
 			GROUP BY m.cntrb_id, imr.repo_id
 			UNION ALL
 			-- PR conversation comments
@@ -524,7 +616,7 @@ func (s *PostgresStore) Contributors(ctx context.Context, repoID int64, begin, e
 			FROM aveloxis_data.pull_request_message_ref pmr
 			JOIN aveloxis_data.messages m ON m.msg_id = pmr.msg_id
 			WHERE pmr.repo_id = $1 AND m.cntrb_id IS NOT NULL
-			AND m.msg_timestamp BETWEEN $2 AND $3
+			AND m.msg_timestamp >= $2 AND m.msg_timestamp < $3
 			GROUP BY m.cntrb_id, pmr.repo_id
 		) a
 		JOIN aveloxis_data.repos r ON a.repo_id = r.repo_id
@@ -533,16 +625,7 @@ func (s *PostgresStore) Contributors(ctx context.Context, repoID int64, begin, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []ContributorRow
-	for rows.Next() {
-		var r ContributorRow
-		if err := rows.Scan(&r.UserID, &r.Commits, &r.Issues, &r.PRs, &r.IssueComments, &r.PRComments, &r.Total, &r.Name); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[ContributorRow])
 }
 
 // ContributorsNew returns count of new contributors per period.
@@ -553,13 +636,13 @@ func (s *PostgresStore) ContributorsNew(ctx context.Context, repoID int64, perio
 	// bucket count directly, so a contributor whose first commit AND
 	// first issue both fell in the window counted as TWO new people.
 	return s.timeSeriesMetric(ctx, `
-		SELECT date_trunc($1, first_seen::DATE) AS date, COUNT(*) AS value, r.repo_name
+		SELECT `+bucketSQL("(first_seen::timestamp AT TIME ZONE 'UTC')")+` AS date, COUNT(*) AS value, r.repo_name
 		FROM (
 			SELECT cntrb_id, MIN(first_seen) AS first_seen, repo_id
 			FROM (
-				SELECT cmt_ght_author_id AS cntrb_id, MIN(cmt_author_date::DATE) AS first_seen, repo_id
+				SELECT cmt_ght_author_id AS cntrb_id, MIN((cmt_author_timestamp AT TIME ZONE 'UTC')::DATE) AS first_seen, repo_id
 				FROM aveloxis_data.commits
-				WHERE repo_id = $2 AND cmt_ght_author_id IS NOT NULL
+				WHERE repo_id = $2 AND cmt_ght_author_id IS NOT NULL AND cmt_author_timestamp IS NOT NULL
 				GROUP BY cmt_ght_author_id, repo_id
 				UNION ALL
 				SELECT reporter_id, MIN((created_at AT TIME ZONE 'UTC')::DATE), repo_id
@@ -570,7 +653,7 @@ func (s *PostgresStore) ContributorsNew(ctx context.Context, repoID int64, perio
 			GROUP BY cntrb_id, repo_id
 		) first_appearances
 		JOIN aveloxis_data.repos r ON first_appearances.repo_id = r.repo_id
-		WHERE first_seen BETWEEN $3 AND $4
+		WHERE first_seen >= ($3::timestamptz AT TIME ZONE 'UTC')::DATE AND first_seen < ($4::timestamptz AT TIME ZONE 'UTC')::DATE
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 }
@@ -579,81 +662,58 @@ func (s *PostgresStore) ContributorsNew(ctx context.Context, repoID int64, perio
 // Repo metadata metrics
 // ============================================================
 
-// StarsTimeSeries returns star count over time from repo_info snapshots.
-func (s *PostgresStore) StarsTimeSeries(ctx context.Context, repoID int64) ([]MetricRow, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT snap.date, snap.value, r.repo_name
-		FROM (
-			-- v0.27.37 (Phase 1f): the history pattern keeps only the
-			-- LATEST snapshot in repo_info — without the history union
-			-- this "time series" returned exactly one point.
-			SELECT data_collection_date AS date, star_count AS value, repo_id
-			FROM aveloxis_data.repo_info WHERE repo_id = $1
-			UNION ALL
-			SELECT data_collection_date, star_count, repo_id
-			FROM aveloxis_data.repo_info_history WHERE repo_id = $1
-		) snap
-		JOIN aveloxis_data.repos r ON snap.repo_id = r.repo_id
-		ORDER BY snap.date`, repoID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var result []MetricRow
-	for rows.Next() {
-		var r MetricRow
-		if err := rows.Scan(&r.Date, &r.Value, &r.Name); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+// snapshotColumns are the repo_info counts a caller may ask for by name
+// (LatestCount, SnapshotSeries): the one allowlist that keeps the column
+// name out of the SQL text's reach.
+var snapshotColumns = map[string]bool{
+	"star_count": true, "fork_count": true, "watcher_count": true,
+	"commit_count": true, "issues_count": true, "pr_count": true,
 }
 
-// ForksTimeSeries returns fork count over time from repo_info snapshots.
-func (s *PostgresStore) ForksTimeSeries(ctx context.Context, repoID int64) ([]MetricRow, error) {
-	rows, err := s.pool.Query(ctx, `
+// SnapshotSeries returns one repo_info count over time: the history rows
+// and the current snapshot (the history pattern keeps only the latest in
+// repo_info — v0.27.37: without the union a "series" had one point),
+// oldest first. The one reader behind /stars, /forks and /watchers (stage
+// 1b, eval-4 item 7). A NULL count reads as 0 and a NULL-dated row (legacy
+// snapshots exist) is left out: both failed the scan before. Empty is [].
+func (s *PostgresStore) SnapshotSeries(ctx context.Context, repoID int64, column string) ([]MetricRow, error) {
+	if !snapshotColumns[column] {
+		return nil, fmt.Errorf("invalid column: %s", column)
+	}
+	rows, err := s.pool.Query(ctx, fmt.Sprintf(`
 		SELECT snap.date, snap.value, r.repo_name
 		FROM (
-			-- v0.27.37 (Phase 1f): see StarsTimeSeries — history union
-			-- or this is a one-point "series".
-			SELECT data_collection_date AS date, fork_count AS value, repo_id
+			SELECT data_collection_date AS date, COALESCE(%[1]s, 0) AS value, repo_id
 			FROM aveloxis_data.repo_info WHERE repo_id = $1
 			UNION ALL
-			SELECT data_collection_date, fork_count, repo_id
+			SELECT data_collection_date, COALESCE(%[1]s, 0), repo_id
 			FROM aveloxis_data.repo_info_history WHERE repo_id = $1
 		) snap
 		JOIN aveloxis_data.repos r ON snap.repo_id = r.repo_id
-		ORDER BY snap.date`, repoID)
+		WHERE snap.date IS NOT NULL
+		ORDER BY snap.date`, column), repoID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []MetricRow
-	for rows.Next() {
-		var r MetricRow
-		if err := rows.Scan(&r.Date, &r.Value, &r.Name); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
+	out, err := pgx.CollectRows(rows, pgx.RowToStructByPos[MetricRow])
+	if err != nil {
+		return nil, err
 	}
-	return result, rows.Err()
+	for i := range out {
+		out[i].Date = out[i].Date.UTC() // one serialization with the windowed series (review round 1)
+	}
+	return out, nil
 }
 
 // LatestCount returns the most recent value for a repo_info integer column.
 func (s *PostgresStore) LatestCount(ctx context.Context, repoID int64, column string) (int, string, error) {
-	// Validate column name to prevent SQL injection.
-	allowed := map[string]bool{
-		"star_count": true, "fork_count": true, "watcher_count": true,
-		"commit_count": true, "issues_count": true, "pr_count": true,
-	}
-	if !allowed[column] {
+	if !snapshotColumns[column] {
 		return 0, "", fmt.Errorf("invalid column: %s", column)
 	}
 	var count int
 	var name string
 	err := s.pool.QueryRow(ctx, fmt.Sprintf(`
-		SELECT ri.%s, r.repo_name
+		SELECT COALESCE(ri.%s, 0), r.repo_name
 		FROM aveloxis_data.repo_info ri
 		JOIN aveloxis_data.repos r ON ri.repo_id = r.repo_id
 		WHERE ri.repo_id = $1
@@ -751,7 +811,7 @@ func (s *PostgresStore) Deps(ctx context.Context, repoID int64) ([]DepRow, error
 		return nil, err
 	}
 	defer rows.Close()
-	var result []DepRow
+	result := []DepRow{} // D6: empty is []
 	for rows.Next() {
 		var r DepRow
 		if err := rows.Scan(&r.Name, &r.Requirement, &r.Type, &r.PackageManager,
@@ -789,7 +849,7 @@ func (s *PostgresStore) DepsFiltered(ctx context.Context, repoID int64, license 
 		return nil, err
 	}
 	defer rows.Close()
-	var result []DepRow
+	result := []DepRow{} // D6: empty is []
 	for rows.Next() {
 		var r DepRow
 		if err := rows.Scan(&r.Name, &r.Requirement, &r.Type, &r.PackageManager,
@@ -811,11 +871,11 @@ func (s *PostgresStore) DepsFiltered(ctx context.Context, repoID int64, license 
 // RepoMessages returns message counts per period.
 func (s *PostgresStore) RepoMessages(ctx context.Context, repoID int64, period string, begin, end time.Time) ([]MetricRow, error) {
 	return s.timeSeriesMetric(ctx, `
-		SELECT date_trunc($1, (msg_timestamp AT TIME ZONE 'UTC')::DATE) AS date, COUNT(*) AS value, r.repo_name
+		SELECT `+bucketSQL("msg_timestamp")+` AS date, COUNT(*) AS value, r.repo_name
 		FROM aveloxis_data.messages m
 		JOIN aveloxis_data.repos r ON m.repo_id = r.repo_id
 		WHERE m.repo_id = $2
-		AND msg_timestamp BETWEEN $3 AND $4
+		AND msg_timestamp >= $3 AND msg_timestamp < $4
 		GROUP BY date, r.repo_name
 		ORDER BY date`, period, repoID, begin, end)
 }
@@ -869,16 +929,7 @@ func (s *PostgresStore) ProjectLanguages(ctx context.Context, repoID int64) ([]C
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []ComplexityRow
-	for rows.Next() {
-		var r ComplexityRow
-		if err := rows.Scan(&r.Language, &r.Files, &r.Lines, &r.Blanks, &r.Comments, &r.Code, &r.Complexity); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
-	}
-	return result, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[ComplexityRow])
 }
 
 // ============================================================
@@ -890,14 +941,12 @@ func (s *PostgresStore) timeSeriesMetric(ctx context.Context, query string, args
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var result []MetricRow
-	for rows.Next() {
-		var r MetricRow
-		if err := rows.Scan(&r.Date, &r.Value, &r.Name); err != nil {
-			return nil, err
-		}
-		result = append(result, r)
+	out, err := pgx.CollectRows(rows, pgx.RowToStructByPos[MetricRow])
+	if err != nil {
+		return nil, err
 	}
-	return result, rows.Err()
+	for i := range out {
+		out[i].Date = out[i].Date.UTC() // a bucket is a UTC midnight instant (bucketSQL), serialized as one
+	}
+	return out, nil
 }

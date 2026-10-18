@@ -34,7 +34,7 @@ func TestRemoveRepoFailureIsNotARedirect(t *testing.T) {
 	}
 	closed.Close() // every query fails
 	var logs strings.Builder
-	s := New(closed, config.WebConfig{}, nil, "", slog.New(slog.NewTextHandler(&logs, nil)))
+	s := New(closed, config.WebConfig{}, "", slog.New(slog.NewTextHandler(&logs, nil)))
 	s.sessions["u"] = &Session{UserID: 1, LoginName: "u", ExpiresAt: time.Now().Add(time.Hour)}
 	r := httptest.NewRequest(http.MethodPost, "/groups/remove-repo", strings.NewReader(url.Values{"group_id": {"7"}, "repo_id": {"9"}}.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")

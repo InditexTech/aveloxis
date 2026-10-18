@@ -35,7 +35,6 @@ type Server struct {
 	logger     *slog.Logger
 	ghOAuth    *oauth2.Config
 	glOAuth    *oauth2.Config
-	ghKeys     *platform.KeyPool // for immediate org scanning
 	// ghAPIBase is the GitHub REST host those keys belong to, normalised by
 	// New through platform.GitHubAPIBaseOrPublic so it is never empty. A
 	// REQUIRED parameter of New, next to the pool, so a
@@ -70,9 +69,9 @@ type Session struct {
 	ExpiresAt time.Time
 }
 
-// New creates a web server. ghKeys is optional — if provided, org repos are
-// scanned immediately when added via the GUI.
-func New(store *db.PostgresStore, cfg config.WebConfig, ghKeys *platform.KeyPool, ghAPIBase string, logger *slog.Logger) *Server {
+// New creates a web server. The web process holds no forge keys (stage 1
+// of summary/59, C2): an org added or approved here is listed by serve.
+func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger *slog.Logger) *Server {
 	// One spelling of the GitLab base for every consumer below (the OAuth
 	// endpoints, the /api/v4/user read): a trailing slash made the token
 	// URL "//oauth/token" and every GitLab sign-in failed (found by the
@@ -81,7 +80,6 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghKeys *platform.KeyPool
 	s := &Server{
 		store:     store,
 		cfg:       cfg,
-		ghKeys:    ghKeys,
 		ghAPIBase: platform.GitHubAPIBaseOrPublic(ghAPIBase),
 		logger:    logger,
 		sessions:  make(map[string]*Session),

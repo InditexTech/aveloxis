@@ -366,10 +366,10 @@ func (s *Server) resolveEntityRepos(w http.ResponseWriter, r *http.Request, e en
 // compareWindow parses since/until with the 3-year default.
 func compareWindow(r *http.Request) (since, until time.Time, bucket string, err error) {
 	until = time.Now().UTC()
-	if u := r.URL.Query().Get("until"); u != "" {
-		if until, err = time.Parse("2006-01-02", u); err != nil {
-			return since, until, "", fmt.Errorf("invalid until %q", u)
-		}
+	if t, given, err := queryDay("until", r.URL.Query().Get("until")); err != nil {
+		return since, until, "", err
+	} else if given {
+		until = t
 	}
 	// The one other caller-supplied commit window (2026-10-07): at most
 	// the latest plausible commit time, so a bogus 2080 author date cannot
@@ -377,15 +377,14 @@ func compareWindow(r *http.Request) (since, until time.Time, bucket string, err 
 	until = db.BoundedUpper(until)
 	since = until.AddDate(-3, 0, 0)
 	sinceGiven := false
-	if s := r.URL.Query().Get("since"); s != "" {
-		if since, err = time.Parse("2006-01-02", s); err != nil {
-			return since, until, "", fmt.Errorf("invalid since %q", s)
-		}
-		sinceGiven = true
+	if t, given, err := queryDay("since", r.URL.Query().Get("since")); err != nil {
+		return since, until, "", err
+	} else if given {
+		since, sinceGiven = t, true
 	}
 	since = db.BoundedLower(since) // an explicit since no earlier than the plausible floor (2026-10-07)
 	if !since.Before(until) {
-		return since, until, "", fmt.Errorf("since must be before until")
+		return since, until, "", errWindowOrder
 	}
 	bucket = r.URL.Query().Get("bucket")
 	if bucket == "" {
@@ -426,7 +425,7 @@ func compareWindow(r *http.Request) (since, until time.Time, bucket string, err 
 	// 1970-01-05, until 1969-12-29, and an empty 200): an inverted window
 	// is the same 400 as an explicit one.
 	if !since.Before(until) {
-		return since, until, "", fmt.Errorf("since must be before until")
+		return since, until, "", errWindowOrder
 	}
 	return since, until, bucket, nil
 }
@@ -643,7 +642,10 @@ func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
 	if len(added) > 0 {
 		resp["added_to_group"] = added
 	}
-	body, _ := json.Marshal(resp)
+	body, ok := s.marshalBody(w, r, "handleCompare", resp)
+	if !ok {
+		return
+	}
 	// The auto-add notice is one-time — caching it would replay the
 	// "added to your Comparisons group" toast on every reload within
 	// the TTL, so responses that carried it are never cached.
@@ -746,7 +748,7 @@ func fillBuckets(points []db.WeeklyPoint, since, until time.Time, bucket string)
 	for _, p := range points {
 		byBucket[p.Bucket.UTC().Format("2006-01-02")] = p.Value
 	}
-	var out []db.WeeklyPoint
+	out := []db.WeeklyPoint{} // D6: an empty window is []
 	for t := truncBucket(since, bucket); t.Before(until); t = nextBucket(t, bucket) {
 		out = append(out, db.WeeklyPoint{Bucket: t, Value: byBucket[t.Format("2006-01-02")]})
 	}
@@ -891,7 +893,7 @@ func (s *Server) handleCompareSnapshot(w http.ResponseWriter, r *http.Request) {
 	if len(added) > 0 {
 		resp["added_to_group"] = added
 	}
-	jsonResponse(w, resp)
+	s.writeJSON(w, r, resp)
 }
 
 // handleEntitiesSearch returns picker results in the three §2b
@@ -923,7 +925,7 @@ func (s *Server) handleEntitiesSearch(w http.ResponseWriter, r *http.Request) {
 		Label  string `json:"label"`
 		Class  string `json:"class"`
 	}
-	var repoResults []repoResult
+	repoResults := []repoResult{} // D6: empty is []
 	for _, rr := range repos {
 		repoResults = append(repoResults, repoResult{
 			Entity: fmt.Sprintf("repo:%d", rr.ID),
@@ -942,7 +944,7 @@ func (s *Server) handleEntitiesSearch(w http.ResponseWriter, r *http.Request) {
 		Label     string `json:"label"`
 		RepoCount int    `json:"repo_count"`
 	}
-	var orgResults []orgResult
+	orgResults := []orgResult{}
 	for _, o := range orgs {
 		orgResults = append(orgResults, orgResult{
 			Entity:    fmt.Sprintf("org:%s/%s", o.Host, o.Login),
@@ -953,7 +955,7 @@ func (s *Server) handleEntitiesSearch(w http.ResponseWriter, r *http.Request) {
 
 	// Uncollected: when the query looks like owner/repo or a forge URL
 	// and nothing matched, offer the collection-request affordance.
-	var uncollected []map[string]string
+	uncollected := []map[string]string{}
 	if len(repoResults) == 0 && (strings.Contains(q, "/") || strings.Contains(q, "github.com") || strings.Contains(q, "gitlab.com")) {
 		uncollected = append(uncollected, map[string]string{
 			"query": q,
@@ -962,7 +964,7 @@ func (s *Server) handleEntitiesSearch(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	jsonResponse(w, map[string]any{
+	s.writeJSON(w, r, map[string]any{
 		"repos": repoResults, "orgs": orgResults, "uncollected": uncollected,
 	})
 }

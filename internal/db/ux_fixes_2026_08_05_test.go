@@ -242,11 +242,12 @@ func TestRepoStatsCarriesLastCollected(t *testing.T) {
 		t.Fatal("RepoStats must carry last_collected (omitempty) — the GUI's only way to " +
 			"distinguish 'queued for first collection' from 'collected, zero activity'")
 	}
-	for _, fn := range []string{"GetRepoStats", "GetRepoStatsBatch"} {
-		body := extractFunctionBody(t, "repo_stats.go", fn)
-		if !strings.Contains(body, "last_collected") {
-			t.Errorf("%s must read collection_queue.last_collected", fn)
-		}
+	// Stage 1b: one reader; GetRepoStats is the batch's answer for its id.
+	if body := extractFunctionBody(t, "repo_stats.go", "GetRepoStatsBatch"); !strings.Contains(body, "last_collected") {
+		t.Error("GetRepoStatsBatch must read collection_queue.last_collected")
+	}
+	if body := extractFunctionBody(t, "repo_stats.go", "GetRepoStats"); !strings.Contains(body, "GetRepoStatsBatch(") {
+		t.Error("GetRepoStats must answer from GetRepoStatsBatch")
 	}
 }
 

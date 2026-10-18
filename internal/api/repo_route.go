@@ -60,17 +60,7 @@ func (s *Server) repoFromPath(w http.ResponseWriter, r *http.Request) (int64, bo
 		return 0, false
 	}
 	if marked, ok := repoAuthorizedFor(r); !ok || marked != repoID {
-		if s.repoStates == nil {
-			s.serverError(w, r, "repoFromPath", errNoRepoStateReader)
-			return 0, false
-		}
-		states, err := s.repoStates(r.Context(), []int64{repoID})
-		if err != nil {
-			s.serverError(w, r, "repoFromPath", err)
-			return 0, false
-		}
-		if _, known := states[repoID]; !known {
-			refuseRepoNotFound(w)
+		if !s.repoKnown(w, r, repoID) {
 			return 0, false
 		}
 	}
@@ -80,6 +70,42 @@ func (s *Server) repoFromPath(w http.ResponseWriter, r *http.Request) (int64, bo
 	return repoID, true
 }
 
+// marshalBody is the JSON writer of the handlers that keep their body
+// before writing it (the compare, home, supply-chain, contributor and
+// new-repositories answers): the bytes, or a logged 500 (serverError) and
+// false. Before stage 1b's review round 2 four of those sites discarded the
+// marshal error and answered 200 with an empty body, which their cache then
+// stored.
+func (s *Server) marshalBody(w http.ResponseWriter, r *http.Request, name string, v any) ([]byte, bool) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		s.serverError(w, r, name, err)
+		return nil, false
+	}
+	return body, true
+}
+
+// repoKnown is the existence half of the prelude, on its own for the routes
+// that decide access another way (the star routes, which decide the
+// caller's own star — review round 1): the one existence read, answering
+// the 404 for an id no repository has, or the 500 of a failed read.
+func (s *Server) repoKnown(w http.ResponseWriter, r *http.Request, repoID int64) bool {
+	if s.repoStates == nil {
+		s.serverError(w, r, "repoKnown", errNoRepoStateReader)
+		return false
+	}
+	states, err := s.repoStates(r.Context(), []int64{repoID})
+	if err != nil {
+		s.serverError(w, r, "repoKnown", err)
+		return false
+	}
+	if _, known := states[repoID]; !known {
+		refuseRepoNotFound(w)
+		return false
+	}
+	return true
+}
+
 // refuseRepoNotFound writes the one 404 of a repository id nobody has.
 // About this request's path, never a stored answer.
 func refuseRepoNotFound(w http.ResponseWriter) {
@@ -87,11 +113,13 @@ func refuseRepoNotFound(w http.ResponseWriter) {
 	http.Error(w, "repo not found", http.StatusNotFound)
 }
 
-// writeJSON is the one JSON writer of a 200 answer: Content-Type, then the
-// body. An encode failure after the status is written cannot be turned
-// into a 500 (the header is on the wire) but it is logged — a silently
-// truncated body is a wrong answer (CLAUDE.md: everything that errors is
-// logged; eval-4 item 3).
+// writeJSON is the JSON writer of a 200 answer encoded straight to the
+// wire: Content-Type, then the body. An encode failure after the status is
+// written cannot be turned into a 500 (the header is on the wire) but it is
+// logged — a silently truncated body is a wrong answer (CLAUDE.md:
+// everything that errors is logged; eval-4 item 3). A handler that keeps
+// its body (a cache, a per-token re-scoping) marshals first through
+// marshalBody and writes the bytes itself.
 func (s *Server) writeJSON(w http.ResponseWriter, r *http.Request, data any) {
 	// CORS is handled centrally by the v0.27.x middleware chain
 	// (ratelimit.go cors) — per-handler headers here would bypass the

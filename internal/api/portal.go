@@ -164,7 +164,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	// Account data, with the addresses: never stored by a browser or an
 	// intermediary — requireUser marked the answer `private, no-store`
 	// (PR #226 review 5408306640; pinned in TestMeCarriesTheAccountFields).
-	jsonResponse(w, map[string]any{
+	s.writeJSON(w, r, map[string]any{
 		"user_id":       info.UserID,
 		"login":         login,
 		"name":          name,
@@ -217,7 +217,7 @@ func (s *Server) handleGroupsList(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, groupJSON{g.GroupID, g.Name, status, g.RepoCount, g.Favorited, g.PendingAdds})
 	}
-	jsonResponse(w, map[string]any{"groups": out})
+	s.writeJSON(w, r, map[string]any{"groups": out})
 }
 
 // Bounds on the group writes (ASVS review G7: the out-of-scope refusal points
@@ -259,7 +259,7 @@ func (s *Server) handleGroupCreate(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleGroupCreate", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"group_id": id})
+	s.writeJSON(w, r, map[string]any{"group_id": id})
 }
 
 // parsePortalPage reads the v0.27.14 pagination params: page
@@ -320,7 +320,7 @@ func (s *Server) handleGroupRepos(w http.ResponseWriter, r *http.Request) {
 	if !strings.EqualFold(sortDir, "desc") {
 		sortDir = "asc"
 	}
-	jsonResponse(w, map[string]any{
+	s.writeJSON(w, r, map[string]any{
 		"repos": repos, "total": total, "page": page, "page_size": pageSize,
 		"sort": sortKey, "dir": sortDir,
 	})
@@ -363,7 +363,7 @@ func (s *Server) handleGroupOrgs(w http.ResponseWriter, r *http.Request) {
 	for _, o := range orgs {
 		out = append(out, orgJSON{o.OrgRequestID, o.OrgURL, o.OrgName, o.Platform, o.LastScanned})
 	}
-	jsonResponse(w, map[string]any{"orgs": out})
+	s.writeJSON(w, r, map[string]any{"orgs": out})
 }
 
 // handleGroupAddRepo is the "request access / request collection"
@@ -494,7 +494,7 @@ func (s *Server) handleGroupAddRepo(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	jsonResponse(w, resp)
+	s.writeJSON(w, r, resp)
 }
 
 // handleGroupPendingAdds lists the group's own awaiting-approval
@@ -532,7 +532,7 @@ func (s *Server) handleGroupPendingAdds(w http.ResponseWriter, r *http.Request) 
 	for _, it := range items {
 		out = append(out, itemJSON{it.RequestID, it.Kind, it.URL, it.CreatedAt})
 	}
-	jsonResponse(w, map[string]any{"pending": out})
+	s.writeJSON(w, r, map[string]any{"pending": out})
 }
 
 // notifyAddRequestSubmitted emails the operator about a new pending
@@ -595,7 +595,7 @@ func (s *Server) handleAdminAddRequests(w http.ResponseWriter, r *http.Request) 
 		out = append(out, reqJSON{p.RequestID, p.UserID, p.UserLogin, p.UserEmail,
 			p.GroupID, p.GroupName, p.Kind, p.OrgURL, p.ItemCount, p.SampleURLs, p.CreatedAt})
 	}
-	jsonResponse(w, map[string]any{"pending": out})
+	s.writeJSON(w, r, map[string]any{"pending": out})
 }
 
 // handleAdminAddRequestDecision approves/rejects one add-request.
@@ -700,7 +700,7 @@ func (s *Server) handleAdminAddRequestDecision(w http.ResponseWriter, r *http.Re
 		// token-validation cache so their next request sees it.
 		s.auth.invalidateAll()
 	}
-	jsonResponse(w, map[string]any{"ok": true, "changed": changed})
+	s.writeJSON(w, r, map[string]any{"ok": true, "changed": changed})
 }
 
 // --- admin ---
@@ -727,7 +727,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	for _, u := range users {
 		out = append(out, userJSON{u.UserID, u.Login, u.Email, u.Provider, u.IsAdmin, u.CreatedAt, u.LastSeen})
 	}
-	jsonResponse(w, map[string]any{"users": out})
+	s.writeJSON(w, r, map[string]any{"users": out})
 }
 
 func (s *Server) handleAdminSetUserAdmin(w http.ResponseWriter, r *http.Request) {
@@ -765,7 +765,7 @@ func (s *Server) handleAdminSetUserAdmin(w http.ResponseWriter, r *http.Request)
 	// Role changed — drop the token-validation cache so the target's
 	// own /me reflects the new role immediately, not after the TTL.
 	s.auth.invalidateAll()
-	jsonResponse(w, map[string]any{"ok": true})
+	s.writeJSON(w, r, map[string]any{"ok": true})
 }
 
 func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request) {
@@ -791,7 +791,7 @@ func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request
 	for _, p := range pending {
 		out = append(out, pendingJSON{p.GroupID, p.Name, p.UserID, p.UserLogin, p.UserEmail, p.RepoCount, p.OrgRequests, p.CreatedAt})
 	}
-	jsonResponse(w, map[string]any{"pending": out})
+	s.writeJSON(w, r, map[string]any{"pending": out})
 }
 
 func (s *Server) handleAdminGroupDecision(w http.ResponseWriter, r *http.Request) {
@@ -837,7 +837,7 @@ func (s *Server) handleAdminGroupDecision(w http.ResponseWriter, r *http.Request
 	// Approval changes the requester's repo scope — drop the
 	// token-validation cache so their next request sees it.
 	s.auth.invalidateAll()
-	jsonResponse(w, map[string]any{"ok": true})
+	s.writeJSON(w, r, map[string]any{"ok": true})
 }
 
 func (s *Server) handleAdminMonitorStats(w http.ResponseWriter, r *http.Request) {
@@ -849,7 +849,7 @@ func (s *Server) handleAdminMonitorStats(w http.ResponseWriter, r *http.Request)
 		s.serverError(w, r, "handleAdminMonitorStats", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"queue": stats})
+	s.writeJSON(w, r, map[string]any{"queue": stats})
 }
 
 func (s *Server) handleAdminMonitorQueue(w http.ResponseWriter, r *http.Request) {
@@ -922,7 +922,7 @@ func (s *Server) handleAdminMonitorQueue(w http.ResponseWriter, r *http.Request)
 		}
 		out = append(out, row)
 	}
-	jsonResponse(w, map[string]any{
+	s.writeJSON(w, r, map[string]any{
 		"jobs": out, "total": total, "page": page, "page_size": pageSize,
 		"sort": sortKey, "dir": sortDir,
 	})
@@ -949,7 +949,7 @@ func (s *Server) handleAdminPrioritizeRepo(w http.ResponseWriter, r *http.Reques
 		s.serverError(w, r, "handleAdminPrioritizeRepo", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"ok": true, "repo_id": repoID})
+	s.writeJSON(w, r, map[string]any{"ok": true, "repo_id": repoID})
 }
 
 // --- v0.27.4: home tab (stars + activity) ---
@@ -967,6 +967,15 @@ func (s *Server) handleStarRepo(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// A repository that does not exist is a 404 for every caller (D5),
+	// through the prelude's existence read: before stage 1b's review an
+	// administrator's PUT reached the stars table's foreign key (a 500) and
+	// DELETE answered 200 for nothing. Only a repository that exists is
+	// linked below (user_repos has no FK on repo_id; the other implicit-link
+	// sites check too — 0.29.82 L10 round 3).
+	if !s.repoKnown(w, r, repoID) {
+		return
+	}
 	// v0.27.4 (operator decision): starring an out-of-scope repo
 	// auto-adds it to the user's implicit "Starred" group instead of
 	// 403ing. Search only surfaces already-collected repos, so this
@@ -975,18 +984,6 @@ func (s *Server) handleStarRepo(w http.ResponseWriter, r *http.Request) {
 	// access to data we already have. Unstar needs no scope at all.
 	addedToGroup := ""
 	if r.Method != http.MethodDelete && !info.IsAdmin && !info.Scope[repoID] {
-		// Only a repository that exists is linked (user_repos has no FK on
-		// repo_id; the other implicit-link sites check too — 0.29.82 L10
-		// round 3). A failed lookup is the store's failure (SR-5).
-		repos, lerr := s.store.GetReposBatch(r.Context(), []int64{repoID})
-		if lerr != nil {
-			s.serverError(w, r, "handleStarRepo", lerr)
-			return
-		}
-		if repos[repoID] == nil {
-			http.Error(w, "repository not found", http.StatusNotFound)
-			return
-		}
 		// An API token never writes a group link (operator decision
 		// 2026-10-09): refused, with the way to add the repository.
 		if info.APITokenID != 0 {
@@ -1038,7 +1035,7 @@ func (s *Server) handleStarRepo(w http.ResponseWriter, r *http.Request) {
 	if addedToGroup != "" {
 		resp["added_to_group"] = addedToGroup
 	}
-	jsonResponse(w, resp)
+	s.writeJSON(w, r, resp)
 }
 
 // handleRepoStarState reports whether the signed-in user has starred
@@ -1056,13 +1053,16 @@ func (s *Server) handleRepoStarState(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if !s.repoKnown(w, r, repoID) { // a 404 for a repository that does not exist (D5)
+		return
+	}
 	starred, err := s.store.IsRepoStarred(r.Context(), info.UserID, repoID)
 	if err != nil {
 		httpserver.LogFailure(r.Context(), s.logger, slog.LevelError, err, "star state read failed", "user_id", info.UserID, "repo_id", repoID, "error", err)
 		http.Error(w, "could not read star state", http.StatusInternalServerError)
 		return
 	}
-	jsonResponse(w, map[string]any{"starred": starred})
+	s.writeJSON(w, r, map[string]any{"starred": starred})
 }
 
 // handleHomeRepos returns the signed-in user's home-tab repo list:
@@ -1126,7 +1126,10 @@ func (s *Server) serveHomeRepos(w http.ResponseWriter, r *http.Request, userID, 
 		s.serverError(w, r, "serveHomeRepos", err)
 		return
 	}
-	body, _ = json.Marshal(map[string]any{"repos": repos})
+	body, marshaled := s.marshalBody(w, r, "serveHomeRepos", map[string]any{"repos": repos})
+	if !marshaled {
+		return
+	}
 	s.homeCache.setIfGen(userID, limit, body, gen)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Cache", "miss")
@@ -1156,7 +1159,11 @@ func (s *Server) refreshHomeRepos(userID, limit int) {
 			s.logger.Warn("home repos background refresh failed — stale body keeps serving", "user_id", userID, "error", err)
 			return
 		}
-		body, _ := json.Marshal(map[string]any{"repos": repos})
+		body, err := json.Marshal(map[string]any{"repos": repos})
+		if err != nil {
+			s.logger.Error("home repos background refresh: body not marshaled — stale body keeps serving", "user_id", userID, "error", err)
+			return
+		}
 		s.homeCache.setIfGen(userID, limit, body, gen)
 	}()
 }

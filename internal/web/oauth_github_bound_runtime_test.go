@@ -130,7 +130,7 @@ func TestGitHubCallbackUserReadIsBounded(t *testing.T) {
 		}
 	})
 
-	s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, nil, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := httptest.NewRecorder()
 	start := time.Now()
 	s.handleGitHubCallback(rec, githubCallbackRequest(ctx))
@@ -205,7 +205,7 @@ func TestGitHubCallbackEmailsReadIsBounded(t *testing.T) {
 		}
 	})
 
-	s := New(store, config.WebConfig{GitHubClientID: "id", GitHubClientSecret: "secret"}, nil, "", logger)
+	s := New(store, config.WebConfig{GitHubClientID: "id", GitHubClientSecret: "secret"}, "", logger)
 	rec := httptest.NewRecorder()
 	start := time.Now()
 	s.handleGitHubCallback(rec, githubCallbackRequest(ctx))

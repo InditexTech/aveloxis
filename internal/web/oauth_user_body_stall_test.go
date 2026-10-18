@@ -63,7 +63,7 @@ func TestOAuthCallbackUserBodyStallIsAUserReadFailure(t *testing.T) {
 			start := time.Now()
 			if provider == "github" {
 				ctx, refuse := githubCallbackFixture(t, stallingForge("/login/oauth/access_token", "/user", &bodyStarted))
-				s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, nil, "", logger)
+				s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, "", logger)
 				s.handleGitHubCallback(rec, githubCallbackRequest(ctx))
 				if hosts := refuse.leaked(); len(hosts) > 0 {
 					t.Fatalf("a request to %v bypassed the fixture", hosts)
@@ -71,7 +71,7 @@ func TestOAuthCallbackUserBodyStallIsAUserReadFailure(t *testing.T) {
 			} else {
 				forge := httptest.NewServer(stallingForge("/oauth/token", "/api/v4/user", &bodyStarted))
 				t.Cleanup(forge.Close)
-				s := New(nil, config.WebConfig{DevMode: true, GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: forge.URL}, nil, "", logger)
+				s := New(nil, config.WebConfig{DevMode: true, GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: forge.URL}, "", logger)
 				req := httptest.NewRequest(http.MethodGet, "/auth/gitlab/callback?code=c&state=st", nil)
 				req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "st"})
 				s.handleGitLabCallback(rec, req.WithContext(context.Background()))

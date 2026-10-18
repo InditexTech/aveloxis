@@ -4,7 +4,6 @@
 package web
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,7 +14,6 @@ import (
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 	"github.com/aveloxis/aveloxis/internal/platform"
-	"github.com/aveloxis/aveloxis/internal/safego"
 )
 
 func (s *Server) handleNewGroup(w http.ResponseWriter, r *http.Request) {
@@ -287,10 +285,10 @@ func (s *Server) handleAddOrg(w http.ResponseWriter, r *http.Request) {
 		case out.Registered:
 			// Registered (an admin's add, or a non-admin's auto-approved add of
 			// an org already registered in a group that is not rejected —
-			// including this group, when the add inserted nothing): scan
-			// immediately.
-			// Use a detached context — the HTTP request context gets canceled on redirect.
-			safego.Go(s.logger, "org-repo-scan", func() { s.scanOrgRepos(context.Background(), groupID, orgURL) })
+			// including this group, when the add inserted nothing). Nothing
+			// scans here (stage 1 of summary/59, C2: the web process holds no
+			// forge keys): serve's demand probe finds the never-scanned
+			// registration on its next poll tick.
 		default:
 			// v0.27.20: a non-admin's add of a NEW org pends on an
 			// add-request — nothing scans until an admin approves.

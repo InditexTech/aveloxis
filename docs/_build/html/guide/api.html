@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>REST API &mdash; Aveloxis 0.29.98 documentation</title>
+  <title>REST API &mdash; Aveloxis 0.29.99 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=1bbfc8fa"></script>
+      <script src="../_static/documentation_options.js?v=bfc74ce3"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -332,6 +332,7 @@
 </ul>
 </li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#health-check">Health Check</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#public-fleet-stats">Public fleet stats</a></li>
@@ -1773,6 +1774,54 @@
 </pre></div>
 </div>
 <p>The API runs as a separate process alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code> (collection) and <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> (GUI). All three share the same PostgreSQL database. It refuses to start until <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">migrate</span></code> has brought the schema to its own version.</p>
+<section id="changes-for-api-clients-in-0-29-99">
+<h2>Changes for API clients in 0.29.99<a class="headerlink" href="#changes-for-api-clients-in-0-29-99" title="Link to this heading"></a></h2>
+<p>Stage 1b of the admin-console program (release notes 0.29.99) changed what
+these routes answer. Each line gives the new behavior and the reason.</p>
+<ul class="simple">
+<li><p><strong>An unknown repository id is a <code class="docutils literal notranslate"><span class="pre">404</span></code> on every repository route</strong>
+(<code class="docutils literal notranslate"><span class="pre">/repos/{id}/...</span></code>, the authz route included), before the caller’s scope
+is decided. It was a <code class="docutils literal notranslate"><span class="pre">403</span></code> for API tokens and sessions, and whatever the
+handler did for everyone else (<code class="docutils literal notranslate"><span class="pre">200</span></code> with zeros on <code class="docutils literal notranslate"><span class="pre">/stats</span></code>, <code class="docutils literal notranslate"><span class="pre">500</span></code> on
+<code class="docutils literal notranslate"><span class="pre">/timeseries</span></code>). One answer per situation: <code class="docutils literal notranslate"><span class="pre">404</span></code> means no such
+repository, <code class="docutils literal notranslate"><span class="pre">403</span></code> means a known repository outside an API token’s groups.
+An id of 0 or less is a <code class="docutils literal notranslate"><span class="pre">400</span></code> (<code class="docutils literal notranslate"><span class="pre">invalid</span> <span class="pre">repo_id</span></code>), like a non-integer.</p></li>
+<li><p><strong>A date that does not parse is a <code class="docutils literal notranslate"><span class="pre">400</span></code></strong> on the Augur metrics
+(<code class="docutils literal notranslate"><span class="pre">begin_date</span></code>, <code class="docutils literal notranslate"><span class="pre">end_date</span></code>), <code class="docutils literal notranslate"><span class="pre">/timeseries</span></code>, <code class="docutils literal notranslate"><span class="pre">contributions/*</span></code>,
+<code class="docutils literal notranslate"><span class="pre">/contributors/top</span></code> and <code class="docutils literal notranslate"><span class="pre">/contributors/elsewhere</span></code>. The value fell back to
+the default before, which hid a client’s typo as a default window. The
+body names the parameter and the value (<code class="docutils literal notranslate"><span class="pre">invalid</span> <span class="pre">since</span> <span class="pre">&quot;x&quot;:</span> <span class="pre">want</span> <span class="pre">YYYY-MM-DD</span></code>). Such a request is never served from the repository-page
+cache and never answered <code class="docutils literal notranslate"><span class="pre">304</span></code>.</p></li>
+<li><p><strong>Augur’s <code class="docutils literal notranslate"><span class="pre">end_date</span></code> includes its day</strong>, and the default window is the
+year before today through today (UTC days). The commit metrics
+(<code class="docutils literal notranslate"><span class="pre">committers</span></code>, <code class="docutils literal notranslate"><span class="pre">code-changes</span></code>, <code class="docutils literal notranslate"><span class="pre">code-changes-lines</span></code>, the commit half of
+<code class="docutils literal notranslate"><span class="pre">contributors-new</span></code>) count by the UTC day of the author timestamp, the
+same day <code class="docutils literal notranslate"><span class="pre">/timeseries</span></code> and <code class="docutils literal notranslate"><span class="pre">/compare</span></code> use, instead of the author’s local
+date; a commit whose author date could not be parsed is not counted
+(it never was by <code class="docutils literal notranslate"><span class="pre">/timeseries</span></code>). The <code class="docutils literal notranslate"><span class="pre">date</span></code> of a bucket is the UTC
+midnight that starts it, serialized in UTC.</p></li>
+<li><p><strong>Empty lists are <code class="docutils literal notranslate"><span class="pre">[]</span></code></strong>, never <code class="docutils literal notranslate"><span class="pre">null</span></code>, at every depth of every answer.</p></li>
+<li><p><strong>The Augur catalog is scoped for API tokens</strong>: <code class="docutils literal notranslate"><span class="pre">/repos</span></code>,
+<code class="docutils literal notranslate"><span class="pre">/repo-groups</span></code> (only groups holding one of the token’s repositories),
+<code class="docutils literal notranslate"><span class="pre">/repo-groups/{id}/repos</span></code>, <code class="docutils literal notranslate"><span class="pre">/owner/{owner}/repo/{repo}</span></code>,
+<code class="docutils literal notranslate"><span class="pre">/rg-name/{name}</span></code> and <code class="docutils literal notranslate"><span class="pre">/rg-name/{name}/repo-name/{repo}</span></code> answer within
+the token’s groups. A name that exists only outside the scope is the
+structured <code class="docutils literal notranslate"><span class="pre">403</span></code> naming the repository; a name that exists nowhere is
+<code class="docutils literal notranslate"><span class="pre">404</span></code>. With a name on two forges the GitHub repository is picked, then
+the lower id. The repository name of the group lookup now matches
+without regard to letter case, like the owner lookup. Sessions,
+administrators and callers without an identity keep the whole catalog.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">/watchers</span></code> returns the snapshot history</strong> (one row per metadata
+snapshot), like <code class="docutils literal notranslate"><span class="pre">/stars</span></code> and <code class="docutils literal notranslate"><span class="pre">/forks</span></code>; rows keep the <code class="docutils literal notranslate"><span class="pre">watchers</span></code> key.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">/repos/stats?ids=</span></code> refuses an entry that is not a repository id</strong>
+with a <code class="docutils literal notranslate"><span class="pre">400</span></code> (it skipped the entry before), and its rows carry
+<code class="docutils literal notranslate"><span class="pre">archived</span></code>, <code class="docutils literal notranslate"><span class="pre">forked_from</span></code>, <code class="docutils literal notranslate"><span class="pre">last_activity_at</span></code> and <code class="docutils literal notranslate"><span class="pre">forge_id_changes</span></code> as
+the single-repository endpoint does: both are one reader now.</p></li>
+<li><p><strong>The searches match <code class="docutils literal notranslate"><span class="pre">%</span></code> and <code class="docutils literal notranslate"><span class="pre">_</span></code> literally</strong> (<code class="docutils literal notranslate"><span class="pre">/repos/search</span></code>, the
+entity search’s owner match, the monitor’s queue search); they acted as
+SQL wildcards.</p></li>
+</ul>
+</section>
 <section id="endpoints">
 <h2>Endpoints<a class="headerlink" href="#endpoints" title="Link to this heading"></a></h2>
 <section id="health-check">
@@ -1810,7 +1859,7 @@ the per-IP rate limiter.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">GET</span> <span class="o">/</span><span class="n">api</span><span class="o">/</span><span class="n">v1</span><span class="o">/</span><span class="n">repos</span><span class="o">/</span><span class="p">{</span><span class="n">repoID</span><span class="p">}</span><span class="o">/</span><span class="n">stats</span>
 </pre></div>
 </div>
-<p>Returns gathered (collected totals) vs metadata (API-reported totals) for a single repo.</p>
+<p>Returns gathered (collected totals) vs metadata (API-reported totals) for a single repo. An id no repository has is a <code class="docutils literal notranslate"><span class="pre">404</span></code> (since 0.29.99; see “Changes for API clients”).</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;repo_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;gathered_prs&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1500</span><span class="p">,</span>
@@ -1978,7 +2027,7 @@ listed). Networks are stored normalised.</p></li>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>GET /api/v1/repos/stats?ids=1,2,3,42
 </pre></div>
 </div>
-<p>Returns stats for multiple repos in one call. Response is a map keyed by repo ID.</p>
+<p>Returns stats for multiple repos in one call. Response is a map keyed by repo ID. Since 0.29.99 the single-repository endpoint and this one are the same reader: every row carries every field the single endpoint does (<code class="docutils literal notranslate"><span class="pre">archived</span></code>, <code class="docutils literal notranslate"><span class="pre">forked_from</span></code>, <code class="docutils literal notranslate"><span class="pre">last_activity_at</span></code>, <code class="docutils literal notranslate"><span class="pre">forge_id_changes</span></code> included), and an <code class="docutils literal notranslate"><span class="pre">ids</span></code> entry that is not a positive integer is a <code class="docutils literal notranslate"><span class="pre">400</span></code> instead of being skipped, and an id no repository has is left out of the answer (it was a row of zeros).</p>
 <p>Since v0.28.7 the batch rows carry the same <code class="docutils literal notranslate"><span class="pre">gone_at</span></code> and
 <code class="docutils literal notranslate"><span class="pre">metadata_as_of</span></code> fields as the single-repo endpoint (and, since
 v0.29.70, <code class="docutils literal notranslate"><span class="pre">unavailable_reason</span></code> and <code class="docutils literal notranslate"><span class="pre">unavailable_url</span></code>), and requested ids
@@ -2015,8 +2064,14 @@ GET /api/v1/repos/{repoID}/timeseries?since=2024-01-01
 <td><p>2 years ago</p></td>
 <td><p>Start date for time series</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">until</span></code></p></td>
+<td><p>date (YYYY-MM-DD)</p></td>
+<td><p>the latest plausible commit time</p></td>
+<td><p>Last day of the window, inclusive</p></td>
+</tr>
 </tbody>
 </table>
+<p>A value that does not parse as <code class="docutils literal notranslate"><span class="pre">YYYY-MM-DD</span></code> is a <code class="docutils literal notranslate"><span class="pre">400</span></code> (since 0.29.99).</p>
 <div class="highlight-jsonc notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;repo_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;repo_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;augur&quot;</span><span class="p">,</span>
@@ -2069,7 +2124,7 @@ GET /api/v1/repos/{repoID}/timeseries?since=2024-01-01
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>GET /api/v1/repos/search?q=augur
 </pre></div>
 </div>
-<p>Case-insensitive search across repo name, owner, and URL. Returns up to 20 matches. Used by the comparison page’s autocomplete search.</p>
+<p>Case-insensitive search across repo name, owner, and URL. Returns up to 20 matches; <code class="docutils literal notranslate"><span class="pre">[]</span></code> when nothing matches. <code class="docutils literal notranslate"><span class="pre">%</span></code> and <code class="docutils literal notranslate"><span class="pre">_</span></code> in the query match themselves (since 0.29.99). Used by the comparison page’s autocomplete search.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">[</span>
 <span class="w">  </span><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;owner&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;aveloxis&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;augur&quot;</span><span class="p">},</span>
 <span class="w">  </span><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">31</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;owner&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;chaoss&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;augur-license&quot;</span><span class="p">}</span>
@@ -2143,7 +2198,7 @@ GET /api/v1/repos/{repoID}/contributions/identities?since=2024-01-01&amp;until=2
 </tbody>
 </table>
 <p>The <code class="docutils literal notranslate"><span class="pre">until</span></code> date is treated as <strong>inclusive</strong> of the entire calendar day — the server shifts it by +1 day before comparing against the half-open <code class="docutils literal notranslate"><span class="pre">&lt;</span> <span class="pre">upper</span></code> SQL filter, so passing <code class="docutils literal notranslate"><span class="pre">until=2024-12-31</span></code> captures everything through <code class="docutils literal notranslate"><span class="pre">2024-12-31T23:59:59.999Z</span></code>.</p>
-<p>Malformed dates fall back to the defaults rather than returning 400, matching the existing <code class="docutils literal notranslate"><span class="pre">/timeseries</span></code> endpoint behavior so charts and dashboards keep rendering. The one validation error that does surface as 400 is <code class="docutils literal notranslate"><span class="pre">since</span> <span class="pre">&gt;=</span> <span class="pre">until</span></code>, which is almost certainly an operator typo.</p>
+<p>A date that does not parse as <code class="docutils literal notranslate"><span class="pre">YYYY-MM-DD</span></code> is a <code class="docutils literal notranslate"><span class="pre">400</span></code> naming the parameter (since 0.29.99; it fell back to the default before, which hid a client’s typo as a default window), and so is <code class="docutils literal notranslate"><span class="pre">since</span> <span class="pre">&gt;=</span> <span class="pre">until</span></code>.</p>
 <p>Response shape:</p>
 <div class="highlight-jsonc notranslate"><div class="highlight"><pre><span></span><span class="p">[</span>
 <span class="w">  </span><span class="p">{</span>
@@ -2637,11 +2692,19 @@ page’s sortable table.</p></li>
 <h2>Augur-compatible metric endpoints<a class="headerlink" href="#augur-compatible-metric-endpoints" title="Link to this heading"></a></h2>
 <p>For 8Knot and other Augur API consumers, the server also exposes the
 Augur swagger-spec metric routes. They use Augur’s parameter conventions
-(<code class="docutils literal notranslate"><span class="pre">begin_date</span></code>, <code class="docutils literal notranslate"><span class="pre">end_date</span></code>, <code class="docutils literal notranslate"><span class="pre">period</span></code>) rather than the native <code class="docutils literal notranslate"><span class="pre">since</span></code>/<code class="docutils literal notranslate"><span class="pre">until</span></code>.</p>
+(<code class="docutils literal notranslate"><span class="pre">begin_date</span></code>, <code class="docutils literal notranslate"><span class="pre">end_date</span></code>, <code class="docutils literal notranslate"><span class="pre">period</span></code>) rather than the native <code class="docutils literal notranslate"><span class="pre">since</span></code>/<code class="docutils literal notranslate"><span class="pre">until</span></code>.
+Both dates are inclusive UTC days (the default window is the year before
+today through today), a date that does not parse is a <code class="docutils literal notranslate"><span class="pre">400</span></code>, an unknown
+repository id is a <code class="docutils literal notranslate"><span class="pre">404</span></code>, and an empty series is <code class="docutils literal notranslate"><span class="pre">[]</span></code> (all since 0.29.99).
+The series keep Aveloxis’s uniform <code class="docutils literal notranslate"><span class="pre">value</span></code> field where Augur names the
+field per metric; <code class="docutils literal notranslate"><span class="pre">/watchers</span></code> keeps Augur’s <code class="docutils literal notranslate"><span class="pre">watchers</span></code>.</p>
 <p>Catalog routes: <code class="docutils literal notranslate"><span class="pre">/api/v1/repo-groups</span></code>, <code class="docutils literal notranslate"><span class="pre">/api/v1/repos</span></code>,
 <code class="docutils literal notranslate"><span class="pre">/api/v1/repos/{repoID}</span></code>, <code class="docutils literal notranslate"><span class="pre">/api/v1/repo-groups/{groupID}/repos</span></code>,
 <code class="docutils literal notranslate"><span class="pre">/api/v1/owner/{owner}/repo/{repo}</span></code>, <code class="docutils literal notranslate"><span class="pre">/api/v1/rg-name/{rgName}</span></code>,
-<code class="docutils literal notranslate"><span class="pre">/api/v1/rg-name/{rgName}/repo-name/{repoName}</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">/api/v1/rg-name/{rgName}/repo-name/{repoName}</span></code>. An API token sees only
+its owner’s groups through them (since 0.29.99): a group is listed when it
+holds one of the token’s repositories, a name that exists only outside the
+scope is the structured <code class="docutils literal notranslate"><span class="pre">403</span></code>, a name that exists nowhere is <code class="docutils literal notranslate"><span class="pre">404</span></code>.</p>
 <p>Per-repo metrics (all under <code class="docutils literal notranslate"><span class="pre">/api/v1/repos/{repoID}/</span></code>):</p>
 <table class="docutils align-default">
 <thead>
@@ -3586,21 +3649,24 @@ a non-admin; linking an already-linked group is an idempotent ok).</p></li>
 families — documented so cross-referencing them is not mistaken for a
 data bug:</p>
 <ul class="simple">
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">until</span></code> inclusivity differs</strong>: <code class="docutils literal notranslate"><span class="pre">/repos/{id}/timeseries</span></code> treats
-<code class="docutils literal notranslate"><span class="pre">until</span></code> as INCLUSIVE (the named day’s data appears — the handler
-shifts by +1 day internally); <code class="docutils literal notranslate"><span class="pre">/compare</span></code> treats the parsed date’s
-midnight as EXCLUSIVE. Changing either would break existing
-consumers, so the divergence is documented rather than converged.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">until</span></code> inclusivity differs</strong>: <code class="docutils literal notranslate"><span class="pre">/repos/{id}/timeseries</span></code> and the
+Augur metrics’ <code class="docutils literal notranslate"><span class="pre">end_date</span></code> (since 0.29.99) treat the end day as
+INCLUSIVE (the named day’s data appears — the handler shifts by +1 day
+internally); <code class="docutils literal notranslate"><span class="pre">/compare</span></code> treats the parsed date’s midnight as EXCLUSIVE.
+Changing <code class="docutils literal notranslate"><span class="pre">/compare</span></code> would break existing consumers, so that divergence
+is documented rather than converged.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">/compare</span></code> ends at the last COMPLETE bucket</strong> (v0.27.39): the
 in-progress week/month is never served as a data point — pre-fix it
 made every active repo’s final point droop and painted phantom
 anomaly dots on trend charts. Request an explicit <code class="docutils literal notranslate"><span class="pre">until</span></code> inside a
 bucket and the series still ends at that bucket’s start.</p></li>
-<li><p><strong>Commit bucketing differs by family</strong> (deliberate, v0.27.29): the
-Augur-compat metric routes bucket commits by the AUTHOR-LOCAL date
-(<code class="docutils literal notranslate"><span class="pre">cmt_author_date</span></code>, Augur’s historical semantic); <code class="docutils literal notranslate"><span class="pre">/compare</span></code> and
-<code class="docutils literal notranslate"><span class="pre">/timeseries</span></code> bucket by UTC (<code class="docutils literal notranslate"><span class="pre">cmt_author_timestamp</span> <span class="pre">AT</span> <span class="pre">TIME</span> <span class="pre">ZONE</span> <span class="pre">'UTC'</span></code>). The same commit can land in adjacent days/weeks across the
-two families at bucket edges; both answers are internally correct.</p></li>
+<li><p><strong>Commit bucketing is one rule since 0.29.99</strong>: the Augur-compat
+metric routes, <code class="docutils literal notranslate"><span class="pre">/compare</span></code> and <code class="docutils literal notranslate"><span class="pre">/timeseries</span></code> all bucket commits by the
+UTC day of <code class="docutils literal notranslate"><span class="pre">cmt_author_timestamp</span></code>. (Until 0.29.98 the Augur routes used
+the author’s LOCAL date, <code class="docutils literal notranslate"><span class="pre">cmt_author_date</span></code>, Augur’s historical semantic,
+so the same commit could land in adjacent days across the two
+families.) A commit whose author date could not be parsed has no
+timestamp and is counted by no family.</p></li>
 </ul>
 </section>
 </section>

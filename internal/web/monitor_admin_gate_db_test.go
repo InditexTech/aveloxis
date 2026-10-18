@@ -58,7 +58,7 @@ func TestMonitorRoutesAreAdministratorOnly(t *testing.T) {
 		}
 		return p
 	}
-	s := New(store, config.WebConfig{DevMode: true}, nil, "", logger)
+	s := New(store, config.WebConfig{DevMode: true}, "", logger)
 	s.sessions["user-tok"] = &Session{UserID: 1 << 30, LoginName: "user", ExpiresAt: time.Now().Add(time.Hour)}
 	s.sessions["admin-tok"] = &Session{UserID: 1<<30 + 1, LoginName: "admin", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
 	h := s.Handler()
@@ -93,7 +93,7 @@ func TestMonitorRoutesAreAdministratorOnly(t *testing.T) {
 // The Monitor link is shown to administrators only (a non-admin's link
 // would only lead to a 403).
 func TestMonitorLinkIsShownToAdministratorsOnly(t *testing.T) {
-	s := New(nil, config.WebConfig{}, nil, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := New(nil, config.WebConfig{}, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	for _, page := range []string{"dashboard", "group", "repo_detail", "compare"} {
 		for _, admin := range []bool{false, true} {
 			var b strings.Builder

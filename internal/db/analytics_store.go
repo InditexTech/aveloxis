@@ -32,7 +32,7 @@ func (s *PostgresStore) ResolveOrgRepos(ctx context.Context, host, login string)
 	rows, err := s.pool.Query(ctx, `
 		SELECT repo_id FROM aveloxis_data.repos
 		WHERE LOWER(repo_owner) = LOWER($1)
-		  AND repo_git ILIKE '%://' || $2 || '/%'
+		  AND LOWER(`+repoHostSQL+`) = LOWER($2)
 		ORDER BY repo_id LIMIT $3`, login, host, OrgRepoCap)
 	if err != nil {
 		return nil, err
@@ -248,11 +248,11 @@ type OrgSearchResult struct {
 func (s *PostgresStore) SearchOrgs(ctx context.Context, query string, limit int) ([]OrgSearchResult, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT LOWER(repo_owner),
-		       COALESCE(split_part(split_part(MIN(repo_git), '://', 2), '/', 1), ''),
+		       COALESCE(MIN(`+repoHostSQL+`), ''),
 		       COUNT(*)
 		FROM aveloxis_data.repos
-		WHERE repo_owner ILIKE '%' || $1 || '%'
-		GROUP BY 1 ORDER BY 3 DESC LIMIT $2`, query, limit)
+		WHERE repo_owner ILIKE $1 ESCAPE '\'
+		GROUP BY 1 ORDER BY 3 DESC LIMIT $2`, LikeContains(query), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -290,28 +290,48 @@ func (s *PostgresStore) SearchOrgs(ctx context.Context, query string, limit int)
 // unfilled until their next walk repairs them, and this reader was the one
 // live scan left on the page (3.2M rows, 152 s, measured on kate).
 func (s *PostgresStore) LastActivityAt(ctx context.Context, repoIDs []int64) (time.Time, bool, error) {
-	if len(repoIDs) == 0 {
-		return time.Time{}, false, nil
+	byRepo, err := s.lastActivityByRepo(ctx, repoIDs)
+	if err != nil {
+		return time.Time{}, false, err
 	}
-	// One row per arm per repository (O11 option 1, 2026-09-29): MAX over
-	// `repo_id = ANY($1)` cannot take PostgreSQL's one-row MIN/MAX path,
-	// so the issue and PR arms read every index entry of a giant
-	// repository. ORDER BY … DESC LIMIT 1 on (repo_id, created_at) reads
-	// one; IS NOT NULL because DESC puts NULLs first. The commits arm reads
-	// the stored repos.last_commit_at (O11 option 2): there is no
-	// (repo_id, cmt_author_timestamp) index — only a partial timestamp
-	// index from 2024 on, which this query cannot use — so the live form
-	// reads every per-file commit row of the repository. The live scan is
-	// COALESCE's fallback, taken only while the column is unfilled (the
-	// facade fills it on the repository's next collection).
-	// A stored bound outside the plausible range (a bogus author date —
-	// 2080, or the epoch — written before the rule, 2026-10-07) reads as
-	// unfilled, and the live arm reads only plausible rows; the next walk
-	// repairs the stored value (RecordCommitBounds).
+	var la time.Time
+	ok := false
+	for _, at := range byRepo {
+		if !ok || at.After(la) {
+			la, ok = at, true
+		}
+	}
+	return la, ok, nil
+}
+
+// lastActivityByRepo is the one activity reader (stage 1b: the stats
+// batch reads it per id; LastActivityAt is its MAX): each repository's
+// most recent issue, pull request or commit, UTC. A repository with no
+// activity is absent from the map.
+//
+// One row per arm per repository (O11 option 1, 2026-09-29): MAX over
+// `repo_id = ANY($1)` cannot take PostgreSQL's one-row MIN/MAX path, so
+// the issue and PR arms read every index entry of a giant repository.
+// ORDER BY … DESC LIMIT 1 on (repo_id, created_at) reads one; IS NOT NULL
+// because DESC puts NULLs first. The commits arm reads the stored
+// repos.last_commit_at (O11 option 2): there is no (repo_id,
+// cmt_author_timestamp) index — only a partial timestamp index from 2024
+// on, which this query cannot use — so the live form reads every per-file
+// commit row of the repository. The live scan is COALESCE's fallback,
+// taken only while the column is unfilled (the facade fills it on the
+// repository's next collection). A stored bound outside the plausible
+// range (a bogus author date — 2080, or the epoch — written before the
+// rule, 2026-10-07) reads as unfilled, and the live arm reads only
+// plausible rows; the next walk repairs the stored value
+// (RecordCommitBounds).
+func (s *PostgresStore) lastActivityByRepo(ctx context.Context, repoIDs []int64) (map[int64]time.Time, error) {
+	out := make(map[int64]time.Time, len(repoIDs))
+	if len(repoIDs) == 0 {
+		return out, nil
+	}
 	bound := LatestPlausibleCommitTime(time.Now())
-	var la *time.Time
-	err := s.pool.QueryRow(ctx, `
-		SELECT MAX(GREATEST(
+	rows, err := s.pool.Query(ctx, `
+		SELECT r.id, GREATEST(
 			(SELECT created_at FROM aveloxis_data.issues
 			  WHERE repo_id = r.id AND created_at IS NOT NULL ORDER BY created_at DESC LIMIT 1),
 			(SELECT created_at FROM aveloxis_data.pull_requests
@@ -324,15 +344,23 @@ func (s *PostgresStore) LastActivityAt(ctx context.Context, repoIDs []int64) (ti
 			  (SELECT cmt_author_timestamp FROM aveloxis_data.commits
 			    WHERE repo_id = r.id AND cmt_author_timestamp IS NOT NULL AND cmt_author_timestamp >= $3::timestamptz AND cmt_author_timestamp < $2::timestamptz
 			    ORDER BY cmt_author_timestamp DESC LIMIT 1))
-		))
-		FROM unnest($1::bigint[]) AS r(id)`, repoIDs, bound, EarliestPlausibleCommitTime()).Scan(&la)
+		)
+		FROM unnest($1::bigint[]) AS r(id)`, repoIDs, bound, EarliestPlausibleCommitTime())
 	if err != nil {
-		return time.Time{}, false, err
+		return nil, err
 	}
-	if la == nil {
-		return time.Time{}, false, nil
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var la *time.Time
+		if err := rows.Scan(&id, &la); err != nil {
+			return nil, err
+		}
+		if la != nil {
+			out[id] = la.UTC()
+		}
 	}
-	return la.UTC(), true, nil
+	return out, rows.Err()
 }
 
 // FirstActivityAt returns the earliest known activity across a repo

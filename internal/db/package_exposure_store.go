@@ -296,12 +296,6 @@ func isUndefinedTable(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "42P01"
 }
 
-// likeLiteral escapes LIKE's metacharacters (backslash first, then % and
-// _) for a pattern whose ESCAPE character is backslash.
-func likeLiteral(s string) string {
-	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
-}
-
 func exposureSelectColumns() string {
 	return `ecosystem, package_name, cohort_repos, repos_unresolved, findings, findings_unresolved,
 	        pct_unresolved, pct_transitive, median_days_open, max_cvss, worst_severity, n_advisories,

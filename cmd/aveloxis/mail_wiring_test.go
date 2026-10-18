@@ -133,7 +133,7 @@ func TestProcessMailWiring(t *testing.T) {
 		}
 	}
 	var webLogs, apiLogs bytes.Buffer
-	check(t, "aveloxis web", newWebServer(nil, cfg, nil, slog.New(slog.NewTextHandler(&webLogs, nil))).Mailer())
+	check(t, "aveloxis web", newWebServer(nil, cfg, slog.New(slog.NewTextHandler(&webLogs, nil))).Mailer())
 	logsTo(t, "aveloxis web", &webLogs)
 	check(t, "aveloxis api", apiOptions(cfg, slog.New(slog.NewTextHandler(&apiLogs, nil))).Mailer)
 	logsTo(t, "aveloxis api", &apiLogs)

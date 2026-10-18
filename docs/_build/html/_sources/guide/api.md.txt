@@ -8,6 +8,54 @@ aveloxis api            # listens on api.addr, 127.0.0.1:8383 by default; --addr
 
 The API runs as a separate process alongside `aveloxis serve` (collection) and `aveloxis web` (GUI). All three share the same PostgreSQL database. It refuses to start until `aveloxis migrate` has brought the schema to its own version.
 
+## Changes for API clients in 0.29.99
+
+Stage 1b of the admin-console program (release notes 0.29.99) changed what
+these routes answer. Each line gives the new behavior and the reason.
+
+- **An unknown repository id is a `404` on every repository route**
+  (`/repos/{id}/...`, the authz route included), before the caller's scope
+  is decided. It was a `403` for API tokens and sessions, and whatever the
+  handler did for everyone else (`200` with zeros on `/stats`, `500` on
+  `/timeseries`). One answer per situation: `404` means no such
+  repository, `403` means a known repository outside an API token's groups.
+  An id of 0 or less is a `400` (`invalid repo_id`), like a non-integer.
+- **A date that does not parse is a `400`** on the Augur metrics
+  (`begin_date`, `end_date`), `/timeseries`, `contributions/*`,
+  `/contributors/top` and `/contributors/elsewhere`. The value fell back to
+  the default before, which hid a client's typo as a default window. The
+  body names the parameter and the value (`invalid since "x": want
+  YYYY-MM-DD`). Such a request is never served from the repository-page
+  cache and never answered `304`.
+- **Augur's `end_date` includes its day**, and the default window is the
+  year before today through today (UTC days). The commit metrics
+  (`committers`, `code-changes`, `code-changes-lines`, the commit half of
+  `contributors-new`) count by the UTC day of the author timestamp, the
+  same day `/timeseries` and `/compare` use, instead of the author's local
+  date; a commit whose author date could not be parsed is not counted
+  (it never was by `/timeseries`). The `date` of a bucket is the UTC
+  midnight that starts it, serialized in UTC.
+- **Empty lists are `[]`**, never `null`, at every depth of every answer.
+- **The Augur catalog is scoped for API tokens**: `/repos`,
+  `/repo-groups` (only groups holding one of the token's repositories),
+  `/repo-groups/{id}/repos`, `/owner/{owner}/repo/{repo}`,
+  `/rg-name/{name}` and `/rg-name/{name}/repo-name/{repo}` answer within
+  the token's groups. A name that exists only outside the scope is the
+  structured `403` naming the repository; a name that exists nowhere is
+  `404`. With a name on two forges the GitHub repository is picked, then
+  the lower id. The repository name of the group lookup now matches
+  without regard to letter case, like the owner lookup. Sessions,
+  administrators and callers without an identity keep the whole catalog.
+- **`/watchers` returns the snapshot history** (one row per metadata
+  snapshot), like `/stars` and `/forks`; rows keep the `watchers` key.
+- **`/repos/stats?ids=` refuses an entry that is not a repository id**
+  with a `400` (it skipped the entry before), and its rows carry
+  `archived`, `forked_from`, `last_activity_at` and `forge_id_changes` as
+  the single-repository endpoint does: both are one reader now.
+- **The searches match `%` and `_` literally** (`/repos/search`, the
+  entity search's owner match, the monitor's queue search); they acted as
+  SQL wildcards.
+
 ## Endpoints
 
 ### Health Check
@@ -51,7 +99,7 @@ the per-IP rate limiter.
 GET /api/v1/repos/{repoID}/stats
 ```
 
-Returns gathered (collected totals) vs metadata (API-reported totals) for a single repo.
+Returns gathered (collected totals) vs metadata (API-reported totals) for a single repo. An id no repository has is a `404` (since 0.29.99; see "Changes for API clients").
 
 ```json
 {
@@ -230,7 +278,7 @@ Every change is logged with who made it.
 GET /api/v1/repos/stats?ids=1,2,3,42
 ```
 
-Returns stats for multiple repos in one call. Response is a map keyed by repo ID.
+Returns stats for multiple repos in one call. Response is a map keyed by repo ID. Since 0.29.99 the single-repository endpoint and this one are the same reader: every row carries every field the single endpoint does (`archived`, `forked_from`, `last_activity_at`, `forge_id_changes` included), and an `ids` entry that is not a positive integer is a `400` instead of being skipped, and an id no repository has is left out of the answer (it was a row of zeros).
 
 Since v0.28.7 the batch rows carry the same `gone_at` and
 `metadata_as_of` fields as the single-repo endpoint (and, since
@@ -261,6 +309,9 @@ Every commit window on this API — this series, `/contributors/top`, `/contribu
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `since` | date (YYYY-MM-DD) | 2 years ago | Start date for time series |
+| `until` | date (YYYY-MM-DD) | the latest plausible commit time | Last day of the window, inclusive |
+
+A value that does not parse as `YYYY-MM-DD` is a `400` (since 0.29.99).
 
 ```jsonc
 {
@@ -307,7 +358,7 @@ Returns a summary of dependency licenses with counts and OSI compliance status.
 GET /api/v1/repos/search?q=augur
 ```
 
-Case-insensitive search across repo name, owner, and URL. Returns up to 20 matches. Used by the comparison page's autocomplete search.
+Case-insensitive search across repo name, owner, and URL. Returns up to 20 matches; `[]` when nothing matches. `%` and `_` in the query match themselves (since 0.29.99). Used by the comparison page's autocomplete search.
 
 ```json
 [
@@ -352,7 +403,7 @@ Returns every distinct contributor who made any kind of contribution to the repo
 
 The `until` date is treated as **inclusive** of the entire calendar day — the server shifts it by +1 day before comparing against the half-open `< upper` SQL filter, so passing `until=2024-12-31` captures everything through `2024-12-31T23:59:59.999Z`.
 
-Malformed dates fall back to the defaults rather than returning 400, matching the existing `/timeseries` endpoint behavior so charts and dashboards keep rendering. The one validation error that does surface as 400 is `since >= until`, which is almost certainly an operator typo.
+A date that does not parse as `YYYY-MM-DD` is a `400` naming the parameter (since 0.29.99; it fell back to the default before, which hid a client's typo as a default window), and so is `since >= until`.
 
 Response shape:
 
@@ -762,11 +813,19 @@ worker (v0.21.0+).
 For 8Knot and other Augur API consumers, the server also exposes the
 Augur swagger-spec metric routes. They use Augur's parameter conventions
 (`begin_date`, `end_date`, `period`) rather than the native `since`/`until`.
+Both dates are inclusive UTC days (the default window is the year before
+today through today), a date that does not parse is a `400`, an unknown
+repository id is a `404`, and an empty series is `[]` (all since 0.29.99).
+The series keep Aveloxis's uniform `value` field where Augur names the
+field per metric; `/watchers` keeps Augur's `watchers`.
 
 Catalog routes: `/api/v1/repo-groups`, `/api/v1/repos`,
 `/api/v1/repos/{repoID}`, `/api/v1/repo-groups/{groupID}/repos`,
 `/api/v1/owner/{owner}/repo/{repo}`, `/api/v1/rg-name/{rgName}`,
-`/api/v1/rg-name/{rgName}/repo-name/{repoName}`.
+`/api/v1/rg-name/{rgName}/repo-name/{repoName}`. An API token sees only
+its owner's groups through them (since 0.29.99): a group is listed when it
+holds one of the token's repositories, a name that exists only outside the
+scope is the structured `403`, a name that exists nowhere is `404`.
 
 Per-repo metrics (all under `/api/v1/repos/{repoID}/`):
 
@@ -1711,19 +1770,21 @@ Two deliberate boundary behaviors that differ between endpoint
 families — documented so cross-referencing them is not mistaken for a
 data bug:
 
-- **`until` inclusivity differs**: `/repos/{id}/timeseries` treats
-  `until` as INCLUSIVE (the named day's data appears — the handler
-  shifts by +1 day internally); `/compare` treats the parsed date's
-  midnight as EXCLUSIVE. Changing either would break existing
-  consumers, so the divergence is documented rather than converged.
+- **`until` inclusivity differs**: `/repos/{id}/timeseries` and the
+  Augur metrics' `end_date` (since 0.29.99) treat the end day as
+  INCLUSIVE (the named day's data appears — the handler shifts by +1 day
+  internally); `/compare` treats the parsed date's midnight as EXCLUSIVE.
+  Changing `/compare` would break existing consumers, so that divergence
+  is documented rather than converged.
 - **`/compare` ends at the last COMPLETE bucket** (v0.27.39): the
   in-progress week/month is never served as a data point — pre-fix it
   made every active repo's final point droop and painted phantom
   anomaly dots on trend charts. Request an explicit `until` inside a
   bucket and the series still ends at that bucket's start.
-- **Commit bucketing differs by family** (deliberate, v0.27.29): the
-  Augur-compat metric routes bucket commits by the AUTHOR-LOCAL date
-  (`cmt_author_date`, Augur's historical semantic); `/compare` and
-  `/timeseries` bucket by UTC (`cmt_author_timestamp AT TIME ZONE
-  'UTC'`). The same commit can land in adjacent days/weeks across the
-  two families at bucket edges; both answers are internally correct.
+- **Commit bucketing is one rule since 0.29.99**: the Augur-compat
+  metric routes, `/compare` and `/timeseries` all bucket commits by the
+  UTC day of `cmt_author_timestamp`. (Until 0.29.98 the Augur routes used
+  the author's LOCAL date, `cmt_author_date`, Augur's historical semantic,
+  so the same commit could land in adjacent days across the two
+  families.) A commit whose author date could not be parsed has no
+  timestamp and is counted by no family.

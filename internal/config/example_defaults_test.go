@@ -249,14 +249,11 @@ func TestConfigurationDocSnippetMatchesEffectiveDefaults(t *testing.T) {
 	if err := json.Unmarshal([]byte(block), &snippet); err != nil {
 		t.Fatalf("the configuration.md full-configuration snippet is not valid JSON: %v", err)
 	}
-	// One reasoned exemption, in the shape the value allowlist above
-	// uses: the github and gitlab blocks share PlatformConfig, and
-	// GitLabHosts is documented "Only relevant for GitLab config".
-	// Requiring it under github would teach operators a setting that
-	// does nothing there. The gitlab block does carry it.
-	snippetPresenceExemptions := map[string]string{
-		"github.gitlab_hosts": "PlatformConfig is shared by both forge blocks; GitLabHosts is GitLab-only, and the gitlab block carries it",
-	}
+	// No presence exemption is left (stage 1 of summary/59 removed the
+	// GitLab-only gitlab_hosts field the github block was excused from);
+	// the map stays so a future one is reviewed here, in the shape the
+	// value allowlist above uses.
+	snippetPresenceExemptions := map[string]string{}
 	exemptionUsed := map[string]bool{}
 
 	cfgType := reflect.TypeOf(Config{})
@@ -525,7 +522,6 @@ var snippetValueAllowlist = map[string]string{
 	"database.DBName":        "a placeholder database name; the compiled default is the Augur-era \"augur\"",
 	"github.APIKeys":         "placeholder tokens; there is no compiled default",
 	"gitlab.APIKeys":         "placeholder tokens; there is no compiled default",
-	"gitlab.GitLabHosts":     "an illustrative self-hosted host list; the compiled default is empty",
 	"web.SessionSecret":      "a placeholder secret; there is no compiled default",
 	"web.BaseURL":            "a placeholder public URL; there is no compiled default",
 	"web.GitHubClientID":     "a placeholder OAuth app id; there is no compiled default",

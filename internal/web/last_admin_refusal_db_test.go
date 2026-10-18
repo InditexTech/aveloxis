@@ -71,7 +71,7 @@ func TestDemotingTheLastAdminIsRefusedNotA500(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := New(store, config.WebConfig{}, nil, "", logger)
+	s := New(store, config.WebConfig{}, "", logger)
 	// A stale session: it says admin, but the database no longer does.
 	s.sessions["stale-admin"] = &Session{UserID: target + 100000, LoginName: "_avweb_stale", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
 	r := httptest.NewRequest(http.MethodPost, "/admin/users/"+strconv.Itoa(target)+"/admin", strings.NewReader(url.Values{"admin": {"false"}}.Encode()))

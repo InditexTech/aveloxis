@@ -67,7 +67,7 @@ func (s *Server) handleAdminCapacity(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleAdminCapacity", err)
 		return
 	}
-	jsonResponse(w, map[string]any{
+	s.writeJSON(w, r, map[string]any{
 		"quotas": list, "contact_email": contact, "signups_per_day": signups, "signup_allowlist": allow,
 		"overrides": overrides, "busiest_today": busiest,
 	})
@@ -84,7 +84,7 @@ func (s *Server) handleAdminCapacityLargest(w http.ResponseWriter, r *http.Reque
 		s.serverError(w, r, "handleAdminCapacityLargest", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"accounts": out})
+	s.writeJSON(w, r, map[string]any{"accounts": out})
 }
 
 // POST /api/v1/admin/capacity/quotas/{name} {allowed, mode} — only a quota
@@ -121,7 +121,7 @@ func (s *Server) handleAdminCapacityQuota(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.logger.Info("capacity quota changed", "quota", name, "allowed", *body.Allowed, "mode", string(mode), "by", info.UserID)
-	jsonResponse(w, map[string]any{"name": name, "allowed": *body.Allowed, "mode": mode})
+	s.writeJSON(w, r, map[string]any{"name": name, "allowed": *body.Allowed, "mode": mode})
 }
 
 // POST /api/v1/admin/capacity/contact {contact_email}
@@ -147,7 +147,7 @@ func (s *Server) handleAdminCapacityContact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.logger.Info("capacity contact address changed", "by", info.UserID)
-	jsonResponse(w, map[string]any{"saved": true})
+	s.writeJSON(w, r, map[string]any{"saved": true})
 }
 
 // GET /api/v1/admin/capacity/accounts?login=… or ?user_id=… — one
@@ -195,7 +195,7 @@ func (s *Server) handleAdminCapacityAccount(w http.ResponseWriter, r *http.Reque
 		s.serverError(w, r, "handleAdminCapacityAccount", err)
 		return
 	}
-	jsonResponse(w, a)
+	s.writeJSON(w, r, a)
 }
 
 // POST /api/v1/admin/capacity/accounts/{userID} {repos_allowed?,
@@ -237,7 +237,7 @@ func (s *Server) handleAdminCapacityOverride(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	s.logger.Info("capacity override changed", "user_id", userID, "by", info.UserID)
-	jsonResponse(w, map[string]any{"user_id": userID, "saved": true})
+	s.writeJSON(w, r, map[string]any{"user_id": userID, "saved": true})
 }
 
 // POST /api/v1/admin/capacity/signup-allowlist {cidr, note}
@@ -264,7 +264,7 @@ func (s *Server) handleAdminSignupAllowlistAdd(w http.ResponseWriter, r *http.Re
 		return
 	}
 	s.logger.Info("sign-up allowlist entry added", "cidr", cidr, "by", info.UserID)
-	jsonResponse(w, map[string]any{"cidr": cidr})
+	s.writeJSON(w, r, map[string]any{"cidr": cidr})
 }
 
 // POST /api/v1/admin/capacity/signup-allowlist/remove {cidr}
@@ -294,7 +294,7 @@ func (s *Server) handleAdminSignupAllowlistRemove(w http.ResponseWriter, r *http
 		return
 	}
 	s.logger.Info("sign-up allowlist entry removed", "cidr", body.CIDR, "by", info.UserID)
-	jsonResponse(w, map[string]any{"removed": true})
+	s.writeJSON(w, r, map[string]any{"removed": true})
 }
 
 // POST /api/v1/groups/{groupID}/repos/{repoID}/remove — removes a
@@ -305,6 +305,9 @@ func (s *Server) handleGroupRemoveRepo(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Both ids are judged together in one message (a group route, not a
+	// repository route: the group's ownership decides, N11); stage 1 moves
+	// the decision into the service.
 	groupID, gerr := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
 	repoID, rerr := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
 	if gerr != nil || rerr != nil || groupID <= 0 || repoID <= 0 {
@@ -329,7 +332,7 @@ func (s *Server) handleGroupRemoveRepo(w http.ResponseWriter, r *http.Request) {
 	// The caller's scope may have narrowed: drop only their cached scope.
 	s.auth.invalidateUser(info.UserID)
 	s.homeCache.invalidate(info.UserID)
-	jsonResponse(w, map[string]any{"group_id": groupID, "repo_id": repoID, "removed": true})
+	s.writeJSON(w, r, map[string]any{"group_id": groupID, "repo_id": repoID, "removed": true})
 }
 
 // meCapacity is /me's capacity object: the account's repositories against

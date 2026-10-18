@@ -4,6 +4,7 @@
 package scheduler
 
 import (
+	"github.com/aveloxis/aveloxis/internal/srctest"
 	"os"
 	"strings"
 	"testing"
@@ -83,9 +84,14 @@ func TestMainPlumbsMailingListConfig(t *testing.T) {
 // TestSignaledRepoResolutionWiredIntoOrgScan — §5c repo-side: a newly
 // discovered repo must trigger signaled_repo_id backfill.
 func TestSignaledRepoResolutionWiredIntoOrgScan(t *testing.T) {
-	src := readFile(t, "scheduler.go")
-	if c := strings.Count(src, "ResolveSignaledRepoForURL("); c < 2 {
-		t.Errorf("both refreshGitHubOrg and refreshGitLabGroup must call ResolveSignaledRepoForURL on new repos (found %d call sites)", c)
+	// Stage 1: the one ingest behind every org pass (refreshGitHubOrg,
+	// refreshGitLabGroup, refreshUserOrgs) resolves the signal on a repository
+	// it records.
+	body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/scheduler", "func (s *Scheduler) ingestDiscovered("))
+	created := strings.Index(body, "out.repoID, out.created = repoID, true")
+	resolve := strings.Index(body, "ResolveSignaledRepoForURL(")
+	if created < 0 || resolve < created {
+		t.Errorf("ingestDiscovered must call ResolveSignaledRepoForURL on a repository it just recorded (created at %d, resolve at %d)", created, resolve)
 	}
 }
 

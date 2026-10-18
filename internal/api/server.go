@@ -329,7 +329,7 @@ func requestChain(rl *rateLimiter, a *authenticator, next http.Handler) http.Han
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	jsonResponse(w, map[string]string{"status": "ok", "version": db.ToolVersion})
+	s.writeJSON(w, r, map[string]string{"status": "ok", "version": db.ToolVersion})
 }
 
 // handleMailingListStats (v0.25.7, #11) surfaces the mailing-list collection
@@ -340,7 +340,7 @@ func (s *Server) handleMailingListStats(w http.ResponseWriter, r *http.Request) 
 		s.serverError(w, r, "handleMailingListStats", err)
 		return
 	}
-	jsonResponse(w, st)
+	s.writeJSON(w, r, st)
 }
 
 func (s *Server) handleRepoStats(w http.ResponseWriter, r *http.Request) {
@@ -353,7 +353,7 @@ func (s *Server) handleRepoStats(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleRepoStats", err)
 		return
 	}
-	jsonResponse(w, stats)
+	s.writeJSON(w, r, stats)
 }
 
 func (s *Server) handleRepoStatsBatch(w http.ResponseWriter, r *http.Request) {
@@ -363,16 +363,15 @@ func (s *Server) handleRepoStatsBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ids []int64
-	for _, s := range strings.Split(idsParam, ",") {
-		id, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
-		if err != nil {
-			continue
+	for _, raw := range strings.Split(idsParam, ",") {
+		id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil || id <= 0 {
+			// N23 (stage 1b): an entry that is not a repository id is a
+			// 400, never skipped — a skipped typo read as a shorter list.
+			http.Error(w, "invalid repo_id in ids", http.StatusBadRequest)
+			return
 		}
 		ids = append(ids, id)
-	}
-	if len(ids) == 0 {
-		http.Error(w, "no valid repo IDs", http.StatusBadRequest)
-		return
 	}
 	// v0.28.10 (Copilot round 7): the batch is bounded — its queueless
 	// fallback runs live aggregates for gone repos, so an uncapped id
@@ -398,7 +397,7 @@ func (s *Server) handleRepoStatsBatch(w http.ResponseWriter, r *http.Request) {
 		}
 		ids = in
 		if len(ids) == 0 {
-			jsonResponse(w, map[int64]*db.RepoStats{})
+			s.writeJSON(w, r, map[int64]*db.RepoStats{})
 			return
 		}
 	}
@@ -407,7 +406,7 @@ func (s *Server) handleRepoStatsBatch(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleRepoStatsBatch", err)
 		return
 	}
-	jsonResponse(w, stats)
+	s.writeJSON(w, r, stats)
 }
 
 // handleSBOMDownload generates and returns an SBOM for a repo.
@@ -501,12 +500,12 @@ func (s *Server) handleTimeSeries(w http.ResponseWriter, r *http.Request) {
 	// Default window: last 2 years to now, day-aligned (v0.29.71) so the
 	// answer can be cached for the day. Both ends overridable via
 	// ?since=YYYY-MM-DD and ?until=YYYY-MM-DD (inclusive); an invalid value
-	// falls back to the default rather than erroring, so charts keep
-	// rendering. parseWindow is the contributions routes' reader too, and
-	// its parseDayParam is the cache key's (PR #226 review 5403959037).
-	since, until, ok := parseWindow(r)
-	if !ok {
-		http.Error(w, "since must be before until", http.StatusBadRequest)
+	// is a 400 (D7, stage 1b; it fell back to the default before).
+	// parseWindow is the contributions routes' reader too, and its queryDay
+	// is the cache key's (PR #226 review 5403959037).
+	since, until, err := parseWindow(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Cached by the route's cachedRepoGET (pageDatedKept; v0.29.73), which
@@ -516,7 +515,7 @@ func (s *Server) handleTimeSeries(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleTimeSeries", err)
 		return
 	}
-	jsonResponse(w, ts)
+	s.writeJSON(w, r, ts)
 }
 
 func (s *Server) handleRepoSearch(w http.ResponseWriter, r *http.Request) {
@@ -539,7 +538,7 @@ func (s *Server) handleRepoSearch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	jsonResponse(w, repos)
+	s.writeJSON(w, r, repos)
 }
 
 func (s *Server) handleLicenses(w http.ResponseWriter, r *http.Request) {
@@ -572,7 +571,7 @@ func (s *Server) handleLicenses(w http.ResponseWriter, r *http.Request) {
 		// Served as "not scanned"; never cached (v0.29.73).
 		s.partialAnswer(r, err, "dependency-data probe failed — licenses served as not scanned", "repo_id", repoID, "error", err)
 	}
-	jsonResponse(w, map[string]any{
+	s.writeJSON(w, r, map[string]any{
 		"scanned":  scanned,
 		"scope":    map[bool]string{true: "runtime", false: "all"}[runtimeOnly],
 		"licenses": licenses,
@@ -623,7 +622,7 @@ func (s *Server) handleScancodeLicenses(w http.ResponseWriter, r *http.Request) 
 		ScancodeVersion: scancodeVer,
 	}
 
-	jsonResponse(w, resp)
+	s.writeJSON(w, r, resp)
 }
 
 // handleScancodeFiles returns per-file scancode data for the sortable web GUI table.
@@ -640,5 +639,5 @@ func (s *Server) handleScancodeFiles(w http.ResponseWriter, r *http.Request) {
 	if files == nil {
 		files = []db.ScancodeFileEntry{}
 	}
-	jsonResponse(w, files)
+	s.writeJSON(w, r, files)
 }

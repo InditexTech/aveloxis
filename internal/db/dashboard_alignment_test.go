@@ -43,7 +43,18 @@ func TestGetRepoStatsReadsFromQueueCache(t *testing.T) {
 	}
 	rest := src[fnIdx:]
 	end := strings.Index(rest[1:], "\nfunc ")
-	body := rest[:end+1]
+	single := rest[:end+1]
+	// Stage 1b: the single reader IS the batch reader for one id (the two
+	// were hand-kept twins); the queue read lives in the batch's body.
+	if !strings.Contains(single, "s.GetRepoStatsBatch(ctx, []int64{repoID})") || strings.Contains(single, "SELECT") {
+		t.Fatal("GetRepoStats must be the batch's answer for its id, with no query of its own")
+	}
+	fnIdx = strings.Index(src, "func (s *PostgresStore) GetRepoStatsBatch(")
+	rest = src[fnIdx:]
+	body := rest
+	if end = strings.Index(rest[1:], "\nfunc "); end >= 0 {
+		body = rest[:end+1]
+	}
 
 	for _, needle := range []string{"last_issues", "last_prs", "last_commits", "last_collected"} {
 		if !strings.Contains(body, needle) {

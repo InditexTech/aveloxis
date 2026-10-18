@@ -694,9 +694,9 @@ func TestPageCacheFollowersDoNotReplaceTheEntry(t *testing.T) {
 // day fix the window for the rest of it.
 func TestParseWindowDefaultStartsOnAUTCDay(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/repos/7/contributors/top", nil)
-	since, _, ok := parseWindow(r)
-	if !ok {
-		t.Fatal("the default window must be valid")
+	since, _, err := parseWindow(r)
+	if err != nil {
+		t.Fatalf("the default window must be valid: %v", err)
 	}
 	if since.Location() != time.UTC || since.Hour() != 0 || since.Minute() != 0 || since.Second() != 0 || since.Nanosecond() != 0 {
 		t.Errorf("default since %v must be a UTC midnight", since)
@@ -733,10 +733,13 @@ func TestPageCacheRecomputedAnswerMatchingTheClientsTagIs304(t *testing.T) {
 
 // PR #226 review 5403959037: the key holds each parameter's EFFECTIVE value
 // — the value the handler acts on — not its spelling. Every spelling a
-// handler folds into one value (an invalid date into the default window,
-// an invalid limit into 20, any bots value but "hide" into "show them")
-// shares that value's entry, so junk spellings cannot each recompute the
-// heaviest route, fill the LRU and become re-warm candidates.
+// handler folds into one value (an invalid limit into 20, any bots value
+// but "hide" into "show them") shares that value's entry, so junk
+// spellings cannot each recompute the heaviest route, fill the LRU and
+// become re-warm candidates. A value the handler REFUSES and the key cannot
+// spell — an invalid date (D7, stage 1b) — is not keyable: keyed on the
+// default it would be answered with a stored 200 for a request the handler
+// answers 400.
 func TestPageCacheKeyIsTheEffectiveValue(t *testing.T) {
 	const top = "GET /api/v1/repos/{repoID}/contributors/top"
 	const ts = "GET /api/v1/repos/{repoID}/timeseries"
@@ -744,7 +747,20 @@ func TestPageCacheKeyIsTheEffectiveValue(t *testing.T) {
 	const deps = "GET /api/v1/repos/{repoID}/deps"
 	key := func(pattern, q string) string {
 		r := httptest.NewRequest(http.MethodGet, "/x?"+q, nil)
-		return canonicalQuery(r, pageParams[pattern])
+		k, keyable := canonicalQuery(r, pageParams[pattern])
+		if !keyable {
+			t.Fatalf("%s ?%s is not keyable", pattern, q)
+		}
+		return k
+	}
+	for _, c := range []struct{ pattern, q string }{
+		{top, "since=yesterday"}, {top, "since=2024-1-1"}, {top, "until=2024-02-30"}, {ts, "since=2024-13-01"},
+		{ts, "since=2024-01-01&until=bad"},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/x?"+c.q, nil)
+		if k, keyable := canonicalQuery(r, pageParams[c.pattern]); keyable {
+			t.Errorf("%s: ?%s is an invalid date the handler refuses, but it keys as %q (it would share a stored 200)", c.pattern, c.q, k)
+		}
 	}
 	same := []struct{ pattern, a, b string }{
 		{top, "", "limit=20"},
@@ -755,11 +771,7 @@ func TestPageCacheKeyIsTheEffectiveValue(t *testing.T) {
 		{top, "limit=7", "limit=07"},
 		{top, "", "bots=x"},
 		{top, "", "bots=HIDE"},
-		{top, "", "since=yesterday"},
-		{top, "", "since=2024-1-1"},
-		{top, "", "until=2024-02-30"},
 		{top, "bots=hide&limit=10", "limit=10&bots=hide&limit=99"},
-		{ts, "", "since=2024-13-01"},
 		{ts, "", "since="},
 		{sbom, "", "vulns=true"},
 		{sbom, "", "vulns=0"},
@@ -832,11 +844,11 @@ func TestSameKeyMeansSameHandlerArguments(t *testing.T) {
 			top = append(top, strings.Trim(d+"&"+extra, "&"))
 		}
 	}
-	window := func(r *http.Request) any { s, u, ok := parseWindow(r); return [3]any{s, u, ok} }
+	window := func(r *http.Request) any { s, u, err := parseWindow(r); return [3]any{s, u, err == nil} }
 	routes := []route{
 		{"GET /api/v1/repos/{repoID}/contributors/top", top, func(r *http.Request) any {
-			a, ok := parseTopContributorsArgs(r)
-			return [2]any{a, ok}
+			a, err := parseTopContributorsArgs(r)
+			return [2]any{a, err == nil}
 		}},
 		{"GET /api/v1/repos/{repoID}/timeseries", days, window},
 		{"GET /api/v1/repos/{repoID}/contributions/identities", days, window},
@@ -855,7 +867,11 @@ func TestSameKeyMeansSameHandlerArguments(t *testing.T) {
 		byKey := map[string]parsed{}
 		for _, q := range rt.corpus {
 			r := httptest.NewRequest(http.MethodGet, "/x?"+q, nil)
-			k, a := canonicalQuery(r, pageParams[rt.pattern]), rt.args(r)
+			k, keyable := canonicalQuery(r, pageParams[rt.pattern])
+			a := rt.args(r)
+			if !keyable {
+				continue // never keyed: answered live with the handler's 400 (checked above)
+			}
 			if prev, ok := byKey[k]; ok && fmt.Sprint(prev.args) != fmt.Sprint(a) {
 				t.Errorf("%s: ?%s and ?%s share key %q but the handler acts on %v vs %v", rt.pattern, prev.q, q, k, prev.args, a)
 			}
@@ -898,8 +914,11 @@ func TestCanonicalQueryIsItsOwnCanonicalForm(t *testing.T) {
 		for _, q := range []string{"", "limit=500", "limit=07", "limit=abc", "bots=x", "bots=hide", "since=2024-01-01", "since=bad",
 			"until=2024-02-29", "vulns=true", "vulns=1", "format=spdx", "scope=all", "scope=runtime", "license=Apache-2.0%20OR%20MIT",
 			"license=a%2Bb", "limit=10&bots=hide&since=2024-01-01&until=2024-06-01"} {
-			once := canonicalQuery(httptest.NewRequest(http.MethodGet, "/x?"+q, nil), params)
-			twice := canonicalQuery(httptest.NewRequest(http.MethodGet, "/x?"+once, nil), params)
+			once, keyable := canonicalQuery(httptest.NewRequest(http.MethodGet, "/x?"+q, nil), params)
+			if !keyable {
+				continue // an invalid date is never keyed (stage 1b)
+			}
+			twice, _ := canonicalQuery(httptest.NewRequest(http.MethodGet, "/x?"+once, nil), params)
 			if once != twice {
 				t.Errorf("%s: ?%s canonicalizes to %q, which canonicalizes to %q", pattern, q, once, twice)
 			}
@@ -1097,5 +1116,37 @@ func TestNegativeBudgetIsTheZeroBudget(t *testing.T) {
 	}
 	if c.keptWithoutBudget() != collectionCacheMaxEntries {
 		t.Errorf("keptWithoutBudget = %d at a negative budget, want %d", c.keptWithoutBudget(), collectionCacheMaxEntries)
+	}
+}
+
+// Stage 1b (eval-4 item 2): a request with an invalid date is answered
+// live — never stored, never a hit, and never a 304 even with a forged
+// If-None-Match — because its handler refuses it with 400 and the default
+// entry's stored 200 must not answer it.
+func TestPageCacheNeverServesAnInvalidDateFromTheCache(t *testing.T) {
+	hn := newPageCacheHarness(t, pageDatedKept, 1<<20, func(hn *pageCacheHarness, w http.ResponseWriter, r *http.Request) {
+		if _, _, err := parseWindow(r); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		okBody(hn, w, r)
+	})
+	pageParams[testPagePattern] = append(pageParams[testPagePattern], "since", "until")
+	t.Cleanup(func() { pageParams[testPagePattern] = pageParams[testPagePattern][:len(pageParams[testPagePattern])-2] })
+	if w := hn.get("/api/v1/repos/7/thing"); w.Code != 200 || w.Header().Get("ETag") == "" {
+		t.Fatalf("the default window: %d, ETag %q", w.Code, w.Header().Get("ETag"))
+	}
+	etag := hn.get("/api/v1/repos/7/thing").Header().Get("ETag")
+	for _, q := range []string{"since=garbage", "until=2024-02-30", "since=2024-01-01&until=x"} {
+		w := hn.get("/api/v1/repos/7/thing?"+q, ifNoneMatch(etag))
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("?%s with the default entry's ETag = %d %q; want the handler's 400, never a hit or a 304", q, w.Code, w.Body.String())
+		}
+		if cc := w.Header().Get("Cache-Control"); !strings.Contains(cc, "no-store") || w.Header().Get("ETag") != "" {
+			t.Errorf("?%s is marked %q with ETag %q; want no-store and no validator", q, cc, w.Header().Get("ETag"))
+		}
+	}
+	if len(hn.s.pageCache.m) != 1 {
+		t.Errorf("entries = %d; want the one default entry (nothing stored for an invalid date)", len(hn.s.pageCache.m))
 	}
 }

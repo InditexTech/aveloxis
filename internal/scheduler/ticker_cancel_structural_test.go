@@ -31,7 +31,7 @@ import (
 // Scope (pass 34 widened it, pass 35 again): every `s.<fn>(ctx…)`
 // reachable from Run — the select arms AND the prelude — followed to a
 // fixpoint; the first cut stopped at the task body and missed
-// refreshOrgs' two forge helpers, checkForRenames, largeRepoExclusions,
+// refreshOrgs' two forge helpers, largeRepoExclusions,
 // the history worker, the leftover-staging drain, the metadata
 // backfill, the mailing-list loops and the DB-health probe. Delegates
 // in OTHER packages (collector: breadth, enrich, facade, staged,

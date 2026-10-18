@@ -26,9 +26,9 @@ func TestRepoStatsCarriesArchivedAndLastActivity(t *testing.T) {
 	for _, needle := range []string{
 		"`json:\"archived\"`",
 		"`json:\"last_activity_at,omitempty\"`",
-		`COALESCE(status, '')`,
+		`COALESCE(ri.status, '')`, // stage 1b: the batch is the one reader
 		`status == "Archived"`,
-		"s.LastActivityAt(ctx",
+		"s.lastActivityByRepo(ctx",
 	} {
 		if !strings.Contains(code, needle) {
 			t.Errorf("repo_stats.go missing v0.27.50 wiring %q — the GUI chip and the "+
@@ -49,9 +49,11 @@ func TestLastActivityAtShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	code := string(src)
-	at := strings.Index(code, "func (s *PostgresStore) LastActivityAt(")
+	// Stage 1b: the query lives in lastActivityByRepo (LastActivityAt is
+	// its max in Go).
+	at := strings.Index(code, "func (s *PostgresStore) lastActivityByRepo(")
 	if at < 0 {
-		t.Fatal("LastActivityAt not found")
+		t.Fatal("lastActivityByRepo not found")
 	}
 	end := strings.Index(code[at:], "\nfunc ")
 	body := code[at : at+end]

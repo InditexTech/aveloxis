@@ -486,13 +486,13 @@ func (s *PostgresStore) GetGroupDetail(ctx context.Context, userID int, groupID 
 	// Count total matching repos.
 	var totalRepos int
 	if search != "" {
-		searchPattern := "%" + strings.ToLower(search) + "%"
+		searchPattern := LikeContains(strings.ToLower(search)) // % and _ are literal (stage 1b review, the class sweep)
 		err = s.pool.QueryRow(ctx, `
 			SELECT COUNT(*)
 			FROM aveloxis_ops.user_repos ur
 			JOIN aveloxis_data.repos r ON r.repo_id = ur.repo_id
 			WHERE ur.group_id = $1
-			  AND (LOWER(r.repo_name) LIKE $2 OR LOWER(r.repo_owner) LIKE $2 OR LOWER(r.repo_git) LIKE $2)`,
+			  AND (LOWER(r.repo_name) LIKE $2 ESCAPE '\' OR LOWER(r.repo_owner) LIKE $2 ESCAPE '\' OR LOWER(r.repo_git) LIKE $2 ESCAPE '\')`,
 			groupID, searchPattern).Scan(&totalRepos)
 	} else {
 		err = s.pool.QueryRow(ctx, `
@@ -527,13 +527,13 @@ func (s *PostgresStore) loadGroupRepos(ctx context.Context, groupID int64, searc
 	var err error
 
 	if search != "" {
-		searchPattern := "%" + strings.ToLower(search) + "%"
+		searchPattern := LikeContains(strings.ToLower(search))
 		repoRows, err = s.pool.Query(ctx, `
 			SELECT r.repo_id, r.repo_name, r.repo_owner, r.repo_git, r.platform_id
 			FROM aveloxis_ops.user_repos ur
 			JOIN aveloxis_data.repos r ON r.repo_id = ur.repo_id
 			WHERE ur.group_id = $1
-			  AND (LOWER(r.repo_name) LIKE $2 OR LOWER(r.repo_owner) LIKE $2 OR LOWER(r.repo_git) LIKE $2)
+			  AND (LOWER(r.repo_name) LIKE $2 ESCAPE '\' OR LOWER(r.repo_owner) LIKE $2 ESCAPE '\' OR LOWER(r.repo_git) LIKE $2 ESCAPE '\')
 			ORDER BY r.repo_owner, r.repo_name
 			LIMIT $3 OFFSET $4`, groupID, searchPattern, limit, offset)
 	} else {

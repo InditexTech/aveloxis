@@ -53,7 +53,7 @@ func (s *Server) handleAdminAPITokens(w http.ResponseWriter, r *http.Request) {
 	if tokens == nil {
 		tokens = []db.APIToken{}
 	}
-	jsonResponse(w, map[string]any{"tokens": tokens, "settings": settings})
+	s.writeJSON(w, r, map[string]any{"tokens": tokens, "settings": settings})
 }
 
 // POST /api/v1/admin/api-tokens {user_id, label, lifetime_days?, rate_limit_per_hour?, rate_limit_per_day?}
@@ -166,7 +166,7 @@ func (s *Server) handleAdminAPITokenRevoke(w http.ResponseWriter, r *http.Reques
 		s.auth.invalidateAll()
 	}
 	s.logger.Info("API token revoked", "token_id", id, "by", info.UserID)
-	jsonResponse(w, map[string]any{"token_id": id, "revoked": true})
+	s.writeJSON(w, r, map[string]any{"token_id": id, "revoked": true})
 }
 
 // GET /api/v1/admin/api-token-settings
@@ -179,7 +179,7 @@ func (s *Server) handleAdminAPITokenSettings(w http.ResponseWriter, r *http.Requ
 		s.serverError(w, r, "handleAdminAPITokenSettings", err)
 		return
 	}
-	jsonResponse(w, settings)
+	s.writeJSON(w, r, settings)
 }
 
 // POST /api/v1/admin/api-token-settings {default_rate_limit_per_hour, default_rate_limit_per_day?, default_lifetime_days}
@@ -232,7 +232,7 @@ func (s *Server) handleAdminAPITokenSettingsUpdate(w http.ResponseWriter, r *htt
 	}
 	s.logger.Info("API token defaults changed", "default_rate_limit_per_hour", saved.DefaultRateLimitPerHour,
 		"default_rate_limit_per_day", saved.DefaultRateLimitPerDay, "default_lifetime_days", saved.DefaultLifetimeDays, "by", info.UserID)
-	jsonResponse(w, map[string]any{"default_rate_limit_per_hour": saved.DefaultRateLimitPerHour,
+	s.writeJSON(w, r, map[string]any{"default_rate_limit_per_hour": saved.DefaultRateLimitPerHour,
 		"default_rate_limit_per_day": saved.DefaultRateLimitPerDay, "default_lifetime_days": saved.DefaultLifetimeDays})
 }
 

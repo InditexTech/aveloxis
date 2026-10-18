@@ -86,7 +86,7 @@ func TestAddNoticesAreShownToTheUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := New(store, config.WebConfig{}, nil, "", logger)
+	s := New(store, config.WebConfig{}, "", logger)
 	s.sessions["probe-token"] = &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)}
 	serve := func(r *http.Request) *httptest.ResponseRecorder {
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})

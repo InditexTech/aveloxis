@@ -10,8 +10,6 @@ import (
 	"strings"
 
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 // RepoStats holds gathered (actual row counts) and metadata (from repo_info API snapshot)
@@ -102,18 +100,18 @@ type SearchRepoResult struct {
 // SearchRepos searches repos by name or owner (case-insensitive). Used by the
 // comparison page's repo search dropdown.
 func (s *PostgresStore) SearchRepos(ctx context.Context, query string, limit int) ([]SearchRepoResult, error) {
-	pattern := "%" + strings.ToLower(query) + "%"
+	pattern := LikeContains(strings.ToLower(query)) // % and _ in the term are literal (stage 1b)
 	rows, err := s.pool.Query(ctx, `
 		SELECT repo_id, repo_owner, repo_name
 		FROM aveloxis_data.repos
-		WHERE LOWER(repo_name) LIKE $1 OR LOWER(repo_owner) LIKE $1 OR LOWER(repo_git) LIKE $1
+		WHERE LOWER(repo_name) LIKE $1 ESCAPE '\' OR LOWER(repo_owner) LIKE $1 ESCAPE '\' OR LOWER(repo_git) LIKE $1 ESCAPE '\'
 		ORDER BY repo_owner, repo_name
 		LIMIT $2`, pattern, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var result []SearchRepoResult
+	result := []SearchRepoResult{} // D6: empty is []
 	for rows.Next() {
 		var r SearchRepoResult
 		if err := rows.Scan(&r.ID, &r.Owner, &r.Name); err != nil {
@@ -124,154 +122,50 @@ func (s *PostgresStore) SearchRepos(ctx context.Context, query string, limit int
 	return result, rows.Err()
 }
 
-// GetRepoStats returns gathered vs metadata counts for a single repo.
-// Gathered counts come from actual rows in the data tables.
-// Metadata counts come from the most recent repo_info snapshot (GitHub/GitLab API totals).
-//
-// v0.27.36: every query error propagates. The pre-fix structure
-// discarded all Scan errors, so a DB failure served all-zero stats as
-// if they were real (summary/18 Phase 0b). The tolerated no-row cases
-// are legitimate absences only: a missing repo_info snapshot and a
-// missing collection_queue row (never-collected / removed-from-queue
-// repos) yield zero counts and nil last_collected.
+// GetRepoStats returns gathered vs metadata counts for a single repo: the
+// batch reader's answer for that id (stage 1b, summary/58 §7 #16 — the
+// two were hand-kept twins, and the batch had lost archived, forked_from
+// and last_activity_at). Everything the answer carries is documented on
+// GetRepoStatsBatch.
 func (s *PostgresStore) GetRepoStats(ctx context.Context, repoID int64) (*RepoStats, error) {
-	st := &RepoStats{RepoID: repoID}
-
-	// Gathered counts + queue freshness — ONE read of the queue row's
-	// cached cumulative totals (last_issues / last_prs / last_commits,
-	// populated by CompleteJob; cumulative since v0.19.11/v0.21.2) plus
-	// last_collected (nil = never collected, drives the GUI's queued
-	// banner). v0.27.85: the single-repo path adopts the v0.18.30
-	// batch-path pattern — the previous three live COUNT(*)s cost
-	// ~23,500 buffer pages per call on a big repo (measured on
-	// kubernetes/website), 10-20s of random I/O cold on spinning disks,
-	// which stalled the repo page's chained weekly-activity load. A
-	// repo with no queue row (removed from collection) legitimately
-	// reports zero gathered counts and nil last_collected.
-	if err := s.pool.QueryRow(ctx, `
-		SELECT COALESCE(last_issues, 0), COALESCE(last_prs, 0),
-		       COALESCE(last_commits, 0), last_collected
-		FROM aveloxis_ops.collection_queue
-		WHERE repo_id = $1`, repoID).
-		Scan(&st.GatheredIssues, &st.GatheredPRs, &st.GatheredCommits, &st.LastCollected); err != nil {
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("queue cached counts: %w", err)
-		}
-		// v0.28.1 (A6): no queue row = the QUEUELESS cohort — prelim
-		// dequeues gone repos (privatized/deleted upstream), taking
-		// the cached counts with the queue row, so the tiles showed
-		// fabricated zeros over real collected data (the
-		// department-of-veterans-affairs report: 477 repos). Count
-		// the actual stored rows instead — gated to this rare cohort
-		// only; every tracked repo keeps the v0.27.85 cached read.
-		if lcErr := s.queuelessLiveCounts(ctx, repoID, st); lcErr != nil {
-			return nil, fmt.Errorf("queueless live counts: %w", lcErr)
-		}
-	}
-
-	// Metadata counts — from the most recent repo_info snapshot.
-	// ErrNoRows = never collected; zeros are the honest answer.
-	// v0.28.1 (A6): the snapshot date rides along as MetadataAsOf so
-	// gone repos can date their frozen metadata.
-	var status string
-	err := s.pool.QueryRow(ctx, `
-		SELECT COALESCE(pr_count, 0), COALESCE(issues_count, 0), COALESCE(commit_count, 0),
-		       COALESCE(status, ''), data_collection_date
-		FROM aveloxis_data.repo_info
-		WHERE repo_id = $1
-		ORDER BY data_collection_date DESC NULLS LAST, repo_info_id DESC
-		LIMIT 1`, repoID).Scan(&st.MetadataPRs, &st.MetadataIssues, &st.MetadataCommits, &status, &st.MetadataAsOf)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("metadata counts: %w", err)
-	}
-	st.HasMetadataSnapshot = err == nil // a row exists (its date may be NULL)
-	st.Archived = status == "Archived"
-
-	// v0.27.79: fork lineage for the GUI chip. ErrNoRows cannot happen
-	// for a repo the caller already resolved, but degrade the same way
-	// the metadata block does rather than 500 the whole stats payload.
-	// v0.28.1 (A6): repo_gone_at rides the same repos read.
-	if err := s.pool.QueryRow(ctx,
-		`SELECT COALESCE(forked_from, ''), COALESCE(repo_unavailable_reason, ''), COALESCE(repo_unavailable_url, ''),
-		        repo_gone_at FROM aveloxis_data.repos WHERE repo_id = $1`,
-		repoID).Scan(&st.ForkedFrom, &st.UnavailableReason, &st.UnavailableURL, &st.GoneAt); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("fork lineage: %w", err)
-	}
-	// The forge-ID notice degrades ONLY when its table does not exist yet
-	// (v0.29.62 review round 2: an api running before the migrate that
-	// creates repo_forge_id_changes, worklist 49's incident, must still
-	// serve the rest of the page). Any other failure fails the stats: a
-	// page that silently drops "this may affect statistics" is a wrong
-	// answer, not a degraded one (v0.29.63 review, SR-5). A caller leaving
-	// (cancelled or past its deadline) is not a failure.
-	changes, ferr := s.repoForgeIDChangesAdopted(ctx, repoID)
-	if ferr != nil {
-		if errors.Is(ferr, context.Canceled) || errors.Is(ferr, context.DeadlineExceeded) {
-			return nil, ferr
-		}
-		if !isUndefinedTable(ferr) {
-			return nil, fmt.Errorf("forge-ID changes: %w", ferr)
-		}
-		s.logger.Error("repo stats: repo_forge_id_changes does not exist — run aveloxis migrate; the page renders without the forge-ID notice", "repo_id", repoID, "error", ferr)
-	}
-	st.ForgeIDChanges = changes
-
-	// v0.27.50: last observed activity — drives the chart last-active
-	// ceiling and the dormant/archived chip. Non-fatal: an error here
-	// leaves LastActivityAt nil (the chip/ceiling degrade to off).
-	if la, ok, laErr := s.LastActivityAt(ctx, []int64{repoID}); laErr == nil && ok {
-		st.LastActivityAt = &la
-	}
-
-	// Vulnerability counts from OSV.dev scan.
-	vc, err := s.CountRepoVulnerabilityClasses(ctx, repoID)
-	st.Vulnerabilities, st.CriticalVulns, st.VulnsVersionUnknown = vc.Exposure, vc.Critical, vc.UnknownVersion
+	batch, err := s.GetRepoStatsBatch(ctx, []int64{repoID})
 	if err != nil {
-		return nil, fmt.Errorf("vulnerability counts: %w", err)
+		return nil, err
 	}
-
+	st, ok := batch[repoID]
+	if !ok {
+		return nil, fmt.Errorf("repo %d: %w", repoID, ErrRepoNotFound)
+	}
 	return st, nil
 }
 
-// queuelessLiveCounts fills gathered counts by counting the actual
-// stored rows — reached ONLY from GetRepoStats' queue-row-ErrNoRows
-// branch (v0.28.1 A6). The live aggregates are exactly what v0.27.85
-// removed from the hot path (~23,500 buffer pages on a kernel-class
-// repo), which is why this lives in its own method OUTSIDE
-// GetRepoStats' body: the dashboard-alignment pin keeps banning the
-// aggregates from the main path, and this gated fallback runs only
-// for the rare queueless cohort (prelim-dequeued gone repos,
-// operator-removed rows — hundreds fleet-wide, none kernel-class).
-func (s *PostgresStore) queuelessLiveCounts(ctx context.Context, repoID int64, st *RepoStats) error {
-	return s.pool.QueryRow(ctx, `
-		SELECT (SELECT COUNT(*) FROM aveloxis_data.issues WHERE repo_id = $1),
-		       (SELECT COUNT(*) FROM aveloxis_data.pull_requests WHERE repo_id = $1),
-		       (SELECT COUNT(DISTINCT cmt_commit_hash) FROM aveloxis_data.commits WHERE repo_id = $1)`,
-		repoID).Scan(&st.GatheredIssues, &st.GatheredPRs, &st.GatheredCommits)
-}
-
-// queuelessLiveCountsBatch is queuelessLiveCounts' set-based twin for
-// GetRepoStatsBatch (v0.28.7, Copilot round 3): one query over ONLY
-// the requested ids that had no collection_queue row, filling live
-// gathered counts PLUS gone_at + the latest repo_info metadata —
-// without it, /repos/stats?ids= served the prelim-dequeued gone
-// cohort as all-zeros and disagreed with the single-repo endpoint.
-// Same cost posture as the single-repo fallback: the aggregates run
-// only for the rare queueless subset, never for tracked repos (the
-// v0.27.85 cached read stays the sole hot path).
-func (s *PostgresStore) queuelessLiveCountsBatch(ctx context.Context, repoIDs []int64, result map[int64]*RepoStats) error {
+// queuelessLiveCountsBatch fills the ids that had no collection_queue
+// row (v0.28.7, Copilot round 3; since stage 1b the one fallback, the
+// single reader's twin folded in): one query over ONLY those ids, counting
+// the actual stored rows — the QUEUELESS cohort: prelim dequeues gone
+// repos (privatized/deleted upstream), taking the cached counts with the
+// queue row, so the tiles showed fabricated zeros over real collected data
+// (the department-of-veterans-affairs report: 477 repos; v0.28.1 A6) —
+// plus gone_at, the forge notice, the latest repo_info metadata, archived
+// and forked_from. The live aggregates are exactly what v0.27.85 removed
+// from the hot path (~23,500 buffer pages on a kernel-class repo), which is
+// why this lives OUTSIDE GetRepoStatsBatch's body: the dashboard-alignment
+// pin keeps banning the aggregates from the main path, and this gated
+// fallback runs only for the rare queueless cohort (hundreds fleet-wide,
+// none kernel-class), never for a tracked repository.
+func (s *PostgresStore) queuelessLiveCountsBatch(ctx context.Context, repoIDs []int64, result map[int64]*RepoStats, seen map[int64]bool) error {
 	rows, err := s.pool.Query(ctx, `
 		SELECT r.repo_id, r.repo_gone_at,
-		       COALESCE(r.repo_unavailable_reason, ''), COALESCE(r.repo_unavailable_url, ''),
+		       COALESCE(r.repo_unavailable_reason, ''), COALESCE(r.repo_unavailable_url, ''), COALESCE(r.forked_from, ''),
 		       ri.data_collection_date,
-		       COALESCE(ri.has_snapshot, FALSE),
+		       COALESCE(ri.has_snapshot, FALSE), COALESCE(ri.status, ''),
 		       COALESCE(ri.pr_count, 0), COALESCE(ri.issues_count, 0), COALESCE(ri.commit_count, 0),
 		       (SELECT COUNT(*) FROM aveloxis_data.issues i WHERE i.repo_id = r.repo_id),
 		       (SELECT COUNT(*) FROM aveloxis_data.pull_requests p WHERE p.repo_id = r.repo_id),
 		       (SELECT COUNT(DISTINCT c.cmt_commit_hash) FROM aveloxis_data.commits c WHERE c.repo_id = r.repo_id)
 		FROM aveloxis_data.repos r
 		LEFT JOIN LATERAL (
-		    SELECT pr_count, issues_count, commit_count, data_collection_date,
+		    SELECT pr_count, issues_count, commit_count, data_collection_date, status,
 		           TRUE AS has_snapshot
 		    FROM aveloxis_data.repo_info
 		    WHERE repo_id = r.repo_id
@@ -286,16 +180,19 @@ func (s *PostgresStore) queuelessLiveCountsBatch(ctx context.Context, repoIDs []
 	for rows.Next() {
 		var id int64
 		var goneAt, metaAsOf *time.Time
-		var unavailReason, unavailURL string
+		var unavailReason, unavailURL, forkedFrom, status string
 		var hasSnap bool
 		var mPRs, mIssues, mCommits, gIssues, gPRs, gCommits int
-		if err := rows.Scan(&id, &goneAt, &unavailReason, &unavailURL, &metaAsOf, &hasSnap, &mPRs, &mIssues, &mCommits, &gIssues, &gPRs, &gCommits); err != nil {
+		if err := rows.Scan(&id, &goneAt, &unavailReason, &unavailURL, &forkedFrom, &metaAsOf, &hasSnap, &status, &mPRs, &mIssues, &mCommits, &gIssues, &gPRs, &gCommits); err != nil {
 			return fmt.Errorf("batch queueless scan: %w", err)
 		}
 		if st, ok := result[id]; ok {
+			seen[id] = true
 			st.GoneAt = goneAt
 			st.UnavailableReason = unavailReason
 			st.UnavailableURL = unavailURL
+			st.ForkedFrom = forkedFrom
+			st.Archived = status == "Archived"
 			st.MetadataAsOf = metaAsOf
 			st.HasMetadataSnapshot = hasSnap
 			st.MetadataPRs = mPRs
@@ -312,8 +209,16 @@ func (s *PostgresStore) queuelessLiveCountsBatch(ctx context.Context, repoIDs []
 	return nil
 }
 
-// GetRepoStatsBatch returns stats for multiple repos in fewer queries.
-// Used by the web GUI group detail page and the monitor dashboard.
+// GetRepoStatsBatch returns stats for multiple repos in fewer queries: the
+// ONE stats reader (stage 1b, summary/58 §7 #16) — the single-repository
+// endpoint, the web GUI group detail page and the monitor dashboard. Per
+// id: the queue's cached gathered counts and last_collected (v0.27.85 —
+// the live COUNTs cost ~23,500 buffer pages per call on a big repo), the
+// latest repo_info snapshot's metadata counts, date, and archived status
+// (status = 'Archived', the forge's read-only flag: the accurate signal,
+// distinct from repos.repo_archived), the repository row's gone_at, forge
+// notice and forked_from, the last observed activity, the adopted forge-ID
+// changes and the vulnerability classes.
 //
 // v0.18.30 rewrite: instead of issuing 5 separate aggregate queries
 // against the heavy child tables (pull_requests / issues / commits /
@@ -375,13 +280,13 @@ func (s *PostgresStore) GetRepoStatsBatch(ctx context.Context, repoIDs []int64) 
 		       COALESCE(ri.issues_count, 0),
 		       COALESCE(ri.commit_count, 0),
 		       ri.data_collection_date,
-		       COALESCE(ri.has_snapshot, FALSE),
+		       COALESCE(ri.has_snapshot, FALSE), COALESCE(ri.status, ''),
 		       r.repo_gone_at,
-		       COALESCE(r.repo_unavailable_reason, ''), COALESCE(r.repo_unavailable_url, '')
+		       COALESCE(r.repo_unavailable_reason, ''), COALESCE(r.repo_unavailable_url, ''), COALESCE(r.forked_from, '')
 		FROM aveloxis_ops.collection_queue q
 		JOIN aveloxis_data.repos r ON r.repo_id = q.repo_id
 		LEFT JOIN LATERAL (
-		    SELECT pr_count, issues_count, commit_count, data_collection_date,
+		    SELECT pr_count, issues_count, commit_count, data_collection_date, status,
 		           TRUE AS has_snapshot
 		    FROM aveloxis_data.repo_info
 		    WHERE repo_id = q.repo_id
@@ -398,8 +303,8 @@ func (s *PostgresStore) GetRepoStatsBatch(ctx context.Context, repoIDs []int64) 
 		var gIssues, gPRs, gCommits, mPRs, mIssues, mCommits int
 		var hasSnap bool
 		var lastCollected, metaAsOf, goneAt *time.Time
-		var unavailReason, unavailURL string
-		if err := rows.Scan(&id, &gIssues, &gPRs, &gCommits, &lastCollected, &mPRs, &mIssues, &mCommits, &metaAsOf, &hasSnap, &goneAt, &unavailReason, &unavailURL); err != nil {
+		var unavailReason, unavailURL, forkedFrom, status string
+		if err := rows.Scan(&id, &gIssues, &gPRs, &gCommits, &lastCollected, &mPRs, &mIssues, &mCommits, &metaAsOf, &hasSnap, &status, &goneAt, &unavailReason, &unavailURL, &forkedFrom); err != nil {
 			return nil, fmt.Errorf("batch stats scan: %w", err)
 		}
 		if st, ok := result[id]; ok {
@@ -413,9 +318,11 @@ func (s *PostgresStore) GetRepoStatsBatch(ctx context.Context, repoIDs []int64) 
 			st.MetadataCommits = mCommits
 			st.MetadataAsOf = metaAsOf
 			st.HasMetadataSnapshot = hasSnap
+			st.Archived = status == "Archived"
 			st.GoneAt = goneAt
 			st.UnavailableReason = unavailReason
 			st.UnavailableURL = unavailURL
+			st.ForkedFrom = forkedFrom
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -428,8 +335,55 @@ func (s *PostgresStore) GetRepoStatsBatch(ctx context.Context, repoIDs []int64) 
 		}
 	}
 	if len(missing) > 0 {
-		if err := s.queuelessLiveCountsBatch(ctx, missing, result); err != nil {
+		if err := s.queuelessLiveCountsBatch(ctx, missing, result, seen); err != nil {
 			return nil, err
+		}
+	}
+	// An id neither read returned names no repository: absent, never a
+	// fabricated zero record (the v0.28.10 rule for the cap; stage 1b
+	// review round 1 — the single route is a 404 and the two surfaces are
+	// one reader).
+	for _, id := range repoIDs {
+		if !seen[id] {
+			delete(result, id)
+		}
+	}
+
+	// The forge-ID notice degrades ONLY when its table does not exist yet
+	// (v0.29.62 review round 2: an api running before the migrate that
+	// creates repo_forge_id_changes, worklist 49's incident, must still
+	// serve the rest of the page). Any other failure fails the stats: a
+	// page that silently drops "this may affect statistics" is a wrong
+	// answer, not a degraded one (v0.29.63 review, SR-5). A caller leaving
+	// (cancelled or past its deadline) is not a failure.
+	changes, ferr := s.repoForgeIDChangesAdoptedBatch(ctx, repoIDs)
+	if ferr != nil {
+		if errors.Is(ferr, context.Canceled) || errors.Is(ferr, context.DeadlineExceeded) {
+			return nil, ferr
+		}
+		if !isUndefinedTable(ferr) {
+			return nil, fmt.Errorf("forge-ID changes: %w", ferr)
+		}
+		s.logger.Error("repo stats: repo_forge_id_changes does not exist — run aveloxis migrate; the page renders without the forge-ID notice", "repo_ids", len(repoIDs), "error", ferr)
+	}
+	for id, st := range result {
+		st.ForgeIDChanges = changes[id]
+	}
+
+	// v0.27.50: last observed activity — drives the chart last-active
+	// ceiling and the dormant/archived chip. Non-fatal: a failure leaves
+	// LastActivityAt nil (the chip/ceiling degrade to off), logged.
+	if activity, aerr := s.lastActivityByRepo(ctx, repoIDs); aerr != nil {
+		if errors.Is(aerr, context.Canceled) || errors.Is(aerr, context.DeadlineExceeded) {
+			return nil, aerr
+		}
+		s.logger.Warn("repo stats: last activity unreadable — answering without it", "repo_ids", len(repoIDs), "error", aerr)
+	} else {
+		for id, at := range activity {
+			if st, ok := result[id]; ok {
+				t := at
+				st.LastActivityAt = &t
+			}
 		}
 	}
 

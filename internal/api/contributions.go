@@ -5,47 +5,7 @@ package api
 
 import (
 	"net/http"
-	"time"
 )
-
-// parseWindow parses ?since=YYYY-MM-DD and ?until=YYYY-MM-DD off the
-// request and returns a (since, until) pair shaped exactly like the
-// existing handleTimeSeries window:
-//
-//   - default since: 2 years ago.
-//   - default until: zero time, which the store layer treats as "no
-//     upper bound" via resolveWindow.
-//   - until is treated as INCLUSIVE — we advance it one day before
-//     handing off to the store, so the store's exclusive-upper
-//     comparison includes the end-date.
-//
-// An invalid date in either field reverts that field to its default
-// instead of erroring, matching the existing timeseries behavior so
-// charts and dashboards keep rendering on malformed input.
-//
-// Returns ok=false if since >= until after parsing — the caller
-// surfaces a 400 in that case.
-func parseWindow(r *http.Request) (since, until time.Time, ok bool) {
-	// The UTC day boundary, as handleTimeSeries: the repository-page cache
-	// keys these answers by the UTC day (pageEnriched), so an instant-precise
-	// default let the first request of a day fix the window for the rest of
-	// it (PR #226 review).
-	since = time.Now().UTC().Truncate(24*time.Hour).AddDate(-2, 0, 0)
-	if t, ok := parseDayParam(r.URL.Query().Get("since")); ok {
-		since = t
-	}
-	var u time.Time
-	if t, ok := parseDayParam(r.URL.Query().Get("until")); ok {
-		// Inclusive end-date: shift by one day so the store's
-		// exclusive-upper compare (< $3) covers the requested
-		// final calendar day.
-		u = t.AddDate(0, 0, 1)
-	}
-	if !u.IsZero() && !since.Before(u) {
-		return since, u, false
-	}
-	return since, u, true
-}
 
 // handleRepoContributors returns all distinct contributors who made any
 // kind of contribution to the repo in the requested window. See the
@@ -56,9 +16,9 @@ func (s *Server) handleRepoContributors(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	since, until, ok := parseWindow(r)
-	if !ok {
-		http.Error(w, "since must be before until", http.StatusBadRequest)
+	since, until, err := parseWindow(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -68,7 +28,7 @@ func (s *Server) handleRepoContributors(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	jsonResponse(w, contribs)
+	s.writeJSON(w, r, contribs)
 }
 
 // handleRepoContributionsCoverage returns the enrichment-state
@@ -84,9 +44,9 @@ func (s *Server) handleRepoContributionsCoverage(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	since, until, ok := parseWindow(r)
-	if !ok {
-		http.Error(w, "since must be before until", http.StatusBadRequest)
+	since, until, err := parseWindow(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -96,7 +56,7 @@ func (s *Server) handleRepoContributionsCoverage(w http.ResponseWriter, r *http.
 		return
 	}
 
-	jsonResponse(w, cov)
+	s.writeJSON(w, r, cov)
 }
 
 // handleRepoAffiliations returns the per-affiliation contributor count
@@ -107,9 +67,9 @@ func (s *Server) handleRepoAffiliations(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	since, until, ok := parseWindow(r)
-	if !ok {
-		http.Error(w, "since must be before until", http.StatusBadRequest)
+	since, until, err := parseWindow(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -119,5 +79,5 @@ func (s *Server) handleRepoAffiliations(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	jsonResponse(w, counts)
+	s.writeJSON(w, r, counts)
 }

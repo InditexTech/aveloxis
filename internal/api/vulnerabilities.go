@@ -198,7 +198,7 @@ func (s *Server) handleRepoVulnerabilities(w http.ResponseWriter, r *http.Reques
 		s.partialAnswer(r, serr, "vuln scan stamp lookup failed", "repo_id", repoID, "error", serr)
 		scannedAt = nil
 	}
-	jsonResponse(w, map[string]any{
+	s.writeJSON(w, r, map[string]any{
 		"repo_id":            repoID,
 		"vulnerabilities":    out,
 		"scanned_at":         scannedAt,
@@ -421,7 +421,7 @@ func (s *Server) handleRepoScorecard(w http.ResponseWriter, r *http.Request) {
 	if !asOf.IsZero() {
 		resp["as_of"] = asOf
 	}
-	jsonResponse(w, resp)
+	s.writeJSON(w, r, resp)
 }
 
 // cvssMethodFromVector derives the CycloneDX rating method from the

@@ -288,7 +288,7 @@ func (s *PostgresStore) GetRepoScorecard(ctx context.Context, repoID int64) ([]S
 	}
 	defer rows.Close()
 	var (
-		checks  []ScorecardCheck
+		checks  = []ScorecardCheck{} // D6: no run is []
 		overall *float64
 		asOf    time.Time
 		mode    string

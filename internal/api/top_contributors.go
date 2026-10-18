@@ -4,7 +4,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 )
 
@@ -26,9 +25,9 @@ func (s *Server) handleTopContributors(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	args, ok := parseTopContributorsArgs(r)
-	if !ok {
-		http.Error(w, "since must be before until", http.StatusBadRequest)
+	args, err := parseTopContributorsArgs(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	since, until, limit := args.since, args.until, args.limit
@@ -45,9 +44,8 @@ func (s *Server) handleTopContributors(w http.ResponseWriter, r *http.Request) {
 		"limit":        limit,
 		"contributors": rows,
 	}
-	body, err := json.Marshal(envelope)
-	if err != nil {
-		s.serverError(w, r, "handleTopContributors", err)
+	body, ok := s.marshalBody(w, r, "handleTopContributors", envelope)
+	if !ok {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

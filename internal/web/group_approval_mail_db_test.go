@@ -19,7 +19,6 @@ import (
 	"github.com/aveloxis/aveloxis/internal/config"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/mailer"
-	"github.com/aveloxis/aveloxis/internal/platform"
 )
 
 // TestAdminGroupApprovalMailsTheRequesterOnce (AVELOXIS_TEST_DB): approving a
@@ -68,7 +67,7 @@ func TestAdminGroupApprovalMailsTheRequesterOnce(t *testing.T) {
 			sent <- strings.Join(to, ",")
 			return nil
 		})
-	s := New(store, config.WebConfig{}, nil, "", logger).WithMailer(m)
+	s := New(store, config.WebConfig{}, "", logger).WithMailer(m)
 	s.sessions["admin"] = &Session{UserID: uid, LoginName: login, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
 	approve := func() *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/admin/groups/"+strconv.FormatInt(gid, 10)+"/approve", nil)
@@ -168,7 +167,7 @@ func TestAdminAddRequestReapproveResumesProcessing(t *testing.T) {
 			return nil
 		})
 	logs := &lockedBuffer{}
-	s := New(store, config.WebConfig{}, nil, "", slog.New(slog.NewTextHandler(logs, nil))).WithMailer(m)
+	s := New(store, config.WebConfig{}, "", slog.New(slog.NewTextHandler(logs, nil))).WithMailer(m)
 	s.sessions["admin"] = &Session{UserID: uid, LoginName: login, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
 	r := httptest.NewRequest(http.MethodPost, "/admin/add-requests/"+strconv.FormatInt(out.RequestID, 10)+"/approve", nil)
 	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin"})
@@ -213,12 +212,13 @@ func TestAdminAddRequestReapproveResumesProcessing(t *testing.T) {
 	}
 }
 
-// TestAdminOrgReapproveDoesNotRescan (AVELOXIS_TEST_DB): an org approval scans
-// the org once; re-approving it (registration present, nothing to complete)
-// neither scans again nor mails again (round-12 review: nothing pinned
-// "scan only on a real decision"). The web process has no GitHub key, so
-// the scan stops at its logged key gate, before any network use (v0.29.71:
-// it used a rejected group, which no longer takes an approval).
+// TestAdminOrgReapproveDoesNotRescan (AVELOXIS_TEST_DB): an org approval
+// registers the org once, for serve to list (stage 1 of summary/59, C2:
+// the web process scans nothing — it holds no forge key); re-approving it
+// (registration present, nothing to complete) neither registers again nor
+// mails again (round-12 review: nothing pinned "act only on a real
+// decision"). v0.29.71: it used a rejected group, which no longer takes an
+// approval.
 func TestAdminOrgReapproveDoesNotRescan(t *testing.T) {
 	dsn := os.Getenv("AVELOXIS_TEST_DB")
 	if dsn == "" {
@@ -268,9 +268,7 @@ func TestAdminOrgReapproveDoesNotRescan(t *testing.T) {
 			return nil
 		})
 	logs := &lockedBuffer{}
-	// An empty key pool: the scan is refused at the key gate and logged as
-	// such, before any network use.
-	s := New(store, config.WebConfig{}, platform.NewKeyPool(nil, discard), "", slog.New(slog.NewTextHandler(logs, nil))).WithMailer(m)
+	s := New(store, config.WebConfig{}, "", slog.New(slog.NewTextHandler(logs, nil))).WithMailer(m)
 	s.sessions["admin"] = &Session{UserID: uid, LoginName: login, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
 	approve := func() {
 		t.Helper()
@@ -282,14 +280,22 @@ func TestAdminOrgReapproveDoesNotRescan(t *testing.T) {
 			t.Fatalf("approve = %d %s", w.Code, w.Body.String())
 		}
 	}
-	const scanned = "org scan skipped — this web process has no usable GitHub API key"
+	registrations := func() (n int, unscanned bool) {
+		t.Helper()
+		if err := p.QueryRow(ctx, `SELECT COUNT(*), bool_and(last_scanned IS NULL) FROM aveloxis_ops.user_org_requests WHERE group_id = $1`, gid).Scan(&n, &unscanned); err != nil {
+			t.Fatal(err)
+		}
+		return n, unscanned
+	}
 
 	approve()
-	waitForLog(t, logs, scanned)
 	select {
 	case <-sent:
 	case <-time.After(10 * time.Second):
 		t.Fatal("the approval mailed nobody")
+	}
+	if n, unscanned := registrations(); n != 1 || !unscanned {
+		t.Fatalf("after the approval: %d registrations (unscanned %v); want one, never scanned, for serve's demand probe", n, unscanned)
 	}
 	approve()
 	select {
@@ -297,7 +303,10 @@ func TestAdminOrgReapproveDoesNotRescan(t *testing.T) {
 		t.Errorf("re-approving mailed %q again", to)
 	case <-time.After(500 * time.Millisecond):
 	}
-	if n := strings.Count(logs.String(), scanned); n != 1 {
-		t.Errorf("the org was scanned %d times, want once; log:\n%s", n, logs.String())
+	if n, unscanned := registrations(); n != 1 || !unscanned {
+		t.Errorf("after re-approving: %d registrations (unscanned %v); want the one, still never scanned", n, unscanned)
+	}
+	if strings.Contains(logs.String(), "org scan") || strings.Contains(logs.String(), "scanning repos") {
+		t.Errorf("the web process scanned or tried to: the org is listed by serve; log:\n%s", logs.String())
 	}
 }

@@ -32,7 +32,7 @@ func (s *Server) handleCollectionsList(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleCollectionsList", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"collections": cols})
+	s.writeJSON(w, r, map[string]any{"collections": cols})
 }
 
 // handleStarCollection stars (PUT) or unstars (DELETE) a collection
@@ -66,7 +66,7 @@ func (s *Server) handleStarCollection(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleStarCollection", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"ok": true, "starred": r.Method != http.MethodDelete})
+	s.writeJSON(w, r, map[string]any{"ok": true, "starred": r.Method != http.MethodDelete})
 }
 
 // handleCollectionDetail — GET
@@ -119,7 +119,7 @@ func (s *Server) handleCollectionDetail(w http.ResponseWriter, r *http.Request) 
 	if !strings.EqualFold(sortDir, "desc") {
 		sortDir = "asc"
 	}
-	jsonResponse(w, map[string]any{
+	s.writeJSON(w, r, map[string]any{
 		"collection_id": collID,
 		"groups":        groups,
 		"repos":         repos,
@@ -185,7 +185,7 @@ func (s *Server) handleCollectionCopy(w http.ResponseWriter, r *http.Request) {
 	// The copy widened the caller's repo scope — bust the caller's caches.
 	s.auth.invalidateUser(info.UserID)
 	s.homeCache.invalidate(info.UserID)
-	jsonResponse(w, map[string]any{"added": added, "group_id": groupID})
+	s.writeJSON(w, r, map[string]any{"added": added, "group_id": groupID})
 }
 
 // ─── Admin mutations (requireAdmin, POST-everywhere) ────────────
@@ -211,7 +211,7 @@ func (s *Server) handleAdminCollectionCreate(w http.ResponseWriter, r *http.Requ
 		s.serverError(w, r, "handleAdminCollectionCreate", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"collection_id": id})
+	s.writeJSON(w, r, map[string]any{"collection_id": id})
 }
 
 // handleAdminCollectionUpdate — POST /admin/collections/{collectionID}
@@ -238,7 +238,7 @@ func (s *Server) handleAdminCollectionUpdate(w http.ResponseWriter, r *http.Requ
 		s.serverError(w, r, "handleAdminCollectionUpdate", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"ok": true})
+	s.writeJSON(w, r, map[string]any{"ok": true})
 }
 
 // handleAdminCollectionDelete — POST /admin/collections/{collectionID}/delete.
@@ -255,7 +255,7 @@ func (s *Server) handleAdminCollectionDelete(w http.ResponseWriter, r *http.Requ
 		s.serverError(w, r, "handleAdminCollectionDelete", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"ok": true})
+	s.writeJSON(w, r, map[string]any{"ok": true})
 }
 
 // handleAdminCollectionAddGroup — POST /admin/collections/{collectionID}/groups
@@ -284,7 +284,7 @@ func (s *Server) handleAdminCollectionAddGroup(w http.ResponseWriter, r *http.Re
 		s.serverError(w, r, "handleAdminCollectionAddGroup", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"ok": true})
+	s.writeJSON(w, r, map[string]any{"ok": true})
 }
 
 // handleAdminCollectionRemoveGroup — POST
@@ -307,5 +307,5 @@ func (s *Server) handleAdminCollectionRemoveGroup(w http.ResponseWriter, r *http
 		s.serverError(w, r, "handleAdminCollectionRemoveGroup", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"ok": true})
+	s.writeJSON(w, r, map[string]any{"ok": true})
 }

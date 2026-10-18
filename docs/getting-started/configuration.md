@@ -35,9 +35,7 @@ claim on two axes, and they have different reach:
 - **Presence — every block, every key.** Each section of the snippet
   must carry every field of its Go config struct. An omitted key is
   invisible to any value check (absent simply means "use the
-  default"), so presence is asserted separately. The one reasoned
-  exemption is `github.gitlab_hosts`: the two forge blocks share one
-  struct and that field is GitLab-only.
+  default"), so presence is asserted separately.
 - **Values — every block, every field, plus the top-level scalars.**
   Each field is compared against the compiled default: through its
   effective accessor where it has one, and by value where it does
@@ -74,8 +72,7 @@ a half against its own reference table below:
   },
   "gitlab": {
     "api_keys": ["glpat-your_token_here"],
-    "base_url": "https://gitlab.com/api/v4",
-    "gitlab_hosts": ["gitlab.freedesktop.org"]
+    "base_url": "https://gitlab.com/api/v4"
   },
   "mail": {
     "gmail_user": "aveloxis-ops@yourdomain.com",
@@ -239,7 +236,6 @@ Every field is optional except `database` credentials and at least one API key s
 |---|---|---|---|
 | `gitlab.api_keys` | string[] | `[]` | GitLab personal access tokens. |
 | `gitlab.base_url` | string | `"https://gitlab.com/api/v4"` | GitLab API base URL. Change for self-hosted GitLab instances. It also names the one host the `gitlab.api_keys` are sent to (v0.29.11): the periodic GitLab group refresh skips, with a WARN, any group whose URL is on a different host rather than send it the keys. Before v0.29.11 that refresh used the GitHub keys. |
-| `gitlab.gitlab_hosts` | string[] | `[]` | Additional hostnames to recognize as GitLab instances. Use this for self-hosted GitLab servers whose hostnames do not contain "gitlab". |
 
 ### Collection
 

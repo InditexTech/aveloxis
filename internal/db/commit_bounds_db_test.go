@@ -229,7 +229,7 @@ func TestActivityBoundsPreferTheStoredColumn(t *testing.T) {
 	// the complete daily picture (one primary-key read), and scan only
 	// plausible rows — the scan is the LAST arm.
 	for fn, needles := range map[string][]string{
-		"LastActivityAt": {
+		"lastActivityByRepo": { // stage 1b: the one activity query; LastActivityAt is its max
 			"COALESCE( (SELECT last_commit_at FROM aveloxis_data.repos WHERE repo_id = r.id AND last_commit_at >= $3::timestamptz AND last_commit_at < $2::timestamptz), (SELECT (MAX(d.day)::timestamp AT TIME ZONE 'UTC') FROM aveloxis_data.repo_commit_daily d",
 			"p.commit_daily_complete_at IS NOT NULL)), (SELECT cmt_author_timestamp FROM aveloxis_data.commits WHERE repo_id = r.id AND cmt_author_timestamp IS NOT NULL AND cmt_author_timestamp >= $3::timestamptz AND cmt_author_timestamp < $2::timestamptz",
 		},

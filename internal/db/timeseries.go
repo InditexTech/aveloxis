@@ -51,12 +51,14 @@ func (s *PostgresStore) GetRepoTimeSeries(ctx context.Context, repoID int64, sin
 		return nil, fmt.Errorf("time series repo lookup: %w", err)
 	}
 
-	// The upper bound is at most the latest plausible commit time (a UTC
-	// midnight: an open-ended window stays day-aligned so the daily commit
-	// table can serve it — summary/49; and bogus future author dates never
-	// stretch the series — 2026-10-07, NVIDIA/nova's 2080s).
-	upper := BoundedUpper(until)
-	since = BoundedLower(since) // and no earlier than the plausible floor (an unset clock stamps the epoch)
+	// The bounds are resolveWindow's (stage 1b: one normalizer, shared
+	// with the contributions readers): the upper bound is at most the
+	// latest plausible commit time (a UTC midnight: an open-ended window
+	// stays day-aligned so the daily commit table can serve it —
+	// summary/49; and bogus future author dates never stretch the series —
+	// 2026-10-07, NVIDIA/nova's 2080s), the lower no earlier than the
+	// plausible floor (an unset clock stamps the epoch).
+	since, upper := resolveWindow(since, until)
 
 	// The commit series (summary/49): the daily table when it serves this
 	// window, the commits table otherwise (one row per file per commit, so
@@ -128,7 +130,7 @@ func (s *PostgresStore) weeklySeries(ctx context.Context, query string, repoID i
 		return nil, err
 	}
 	defer rows.Close()
-	var out []WeeklyDataPoint
+	out := []WeeklyDataPoint{} // D6: a series with no activity is []
 	for rows.Next() {
 		var dp WeeklyDataPoint
 		if err := rows.Scan(&dp.WeekStart, &dp.Count); err != nil {
@@ -208,7 +210,7 @@ func (s *PostgresStore) GetRepoLicensesScoped(ctx context.Context, repoID int64,
 		return nil, err
 	}
 
-	var result []LicenseCount
+	result := []LicenseCount{} // D6: no dependencies is []
 	for lic, cnt := range counts {
 		result = append(result, LicenseCount{
 			License: lic,

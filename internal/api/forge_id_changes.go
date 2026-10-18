@@ -44,7 +44,7 @@ func (s *Server) handleAdminForgeIDChanges(w http.ResponseWriter, r *http.Reques
 	if changes == nil {
 		changes = []db.ForgeIDChange{}
 	}
-	jsonResponse(w, map[string]any{"changes": changes})
+	s.writeJSON(w, r, map[string]any{"changes": changes})
 }
 
 // adoptNoteMaxBytes bounds the optional note (it is stored and shown to
@@ -123,5 +123,5 @@ func (s *Server) handleAdminForgeIDAdopt(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	s.logger.Info("forge-ID change adopted from the admin page", "repo_id", repoID, "old", logSafe(body.OldForgeID), "new", logSafe(body.NewForgeID), "adopted_by", adoptedBy)
-	jsonResponse(w, map[string]any{"adopted": true, "repo_id": repoID})
+	s.writeJSON(w, r, map[string]any{"adopted": true, "repo_id": repoID})
 }

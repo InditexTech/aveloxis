@@ -178,11 +178,12 @@ func TestRepoAuthorizedMarkHasOneReviewedSetter(t *testing.T) {
 		t.Fatal("servePageCached must mark the request only after its own authorizeRepo returned true")
 	}
 	// Every handler run after the mark gets the marked request (stage 1b:
-	// the unlisted-route arm and runOnce; the unknown-repository arm became
-	// the wrapper's own 404 before the mark).
+	// the unlisted-route arm, the not-keyable arm — an invalid date — and
+	// runOnce; the unknown-repository arm became the wrapper's own 404
+	// before the mark).
 	after := body[mark:]
 	if strings.Contains(after, "h(w, r)") || strings.Contains(after, "runOnce(c, key, r,") ||
-		strings.Count(after, "h(w, authed)") != 1 || !strings.Contains(after, "runOnce(c, key, authed,") {
+		strings.Count(after, "h(w, authed)") != 2 || !strings.Contains(after, "runOnce(c, key, authed,") {
 		t.Error("after the mark, servePageCached must run the handler only with the marked request (authed)")
 	}
 }

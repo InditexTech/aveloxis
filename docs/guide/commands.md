@@ -306,7 +306,8 @@ aveloxis add-repo https://github.com/chaoss/augur
 # Single GitLab repo (including nested subgroups)
 aveloxis add-repo https://gitlab.com/group/subgroup/project
 
-# GitHub organization (adds all repos in the org)
+# GitHub organization: registered as an org group; serve lists its
+# repositories on its next org refresh (collection.org_refresh_hours)
 aveloxis add-repo https://github.com/chaoss
 
 # Multiple repos at once
@@ -325,7 +326,7 @@ aveloxis add-repo --from-augur
 
 - URLs containing `github.com` are treated as GitHub
 - URLs containing `gitlab` in the hostname are treated as GitLab
-- Hostnames listed in `gitlab.gitlab_hosts` in the config are treated as GitLab
+- A URL under the configured GitLab instance's web URL (`gitlab.base_url` without its `/api/v4`, an install under a sub-path included) is treated as GitLab; the `gitlab_hosts` key of releases before 0.29.100 was never read and is reported as ignored at start
 
 ---
 

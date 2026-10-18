@@ -52,15 +52,17 @@ func TestHandleAddOrgHonorsPendingOutcome(t *testing.T) {
 	}
 }
 
-// TestScanOrgReposCarriesRejectedGate pins the v0.27.20 belt: a
-// rejected group's orgs never scan. The pre-v0.27.20 code had NO
-// status check here at all (the ApproveGroup comment claiming
-// otherwise was false — audited 2026-07-16).
-func TestScanOrgReposCarriesRejectedGate(t *testing.T) {
-	body := srctest.PackageFunc(t, "internal/web", "func (s *Server) scanOrgRepos(")
-	if !strings.Contains(body, "GetGroupStatus") || !strings.Contains(body, `"rejected"`) {
-		t.Error("scanOrgRepos must skip scanning when the owning group is 'rejected' — " +
-			"the group-level abuse lever must stop org-driven enqueue")
+// Stage 1 of summary/59 (C2): the web process scans no org — it holds no
+// forge key and no HTTP client to a forge; an org registered or approved
+// here is listed by serve's one lister, whose rejected-group gate is
+// pinned at runtime (scheduler TestRefreshUserOrgsEnumeratesEachOrgOnce)
+// and in source (scheduler org_rejected_gate_fail_closed_test.go).
+func TestWebScansNoOrganization(t *testing.T) {
+	src := srctest.StripGoComments(srctest.PackageSource(t, "internal/web", 10))
+	for _, banned := range []string{"platform.NewHTTPClient(", "platform.KeyPool", "scanOrgRepos", `"/orgs/`, `"/users/`} {
+		if strings.Contains(src, banned) {
+			t.Errorf("internal/web spells %q: the web process holds no forge key and lists no org (C2)", banned)
+		}
 	}
 }
 
@@ -79,8 +81,9 @@ func TestAddRequestAdminRoutesRegistered(t *testing.T) {
 }
 
 // TestApprovalProcessingRunsInBackground pins that a large approval
-// never blocks the admin's request: item processing and the approved
-// org scan run under safego goroutines from the shared decision flow.
+// never blocks the admin's request: item processing runs under a safego
+// goroutine from the shared decision flow (the approved org is listed by
+// serve, stage 1 of summary/59).
 func TestApprovalProcessingRunsInBackground(t *testing.T) {
 	s := readWebSource(t, "admin.go")
 	start := strings.Index(s, "func (s *Server) decideAddRequest(")
@@ -91,7 +94,7 @@ func TestApprovalProcessingRunsInBackground(t *testing.T) {
 	if end := strings.Index(body[1:], "\nfunc "); end > 0 {
 		body = body[:end+1]
 	}
-	for _, needle := range []string{"safego.Go", "ProcessApprovedAddRequest", "scanOrgRepos", "SendAddRequestDecided"} {
+	for _, needle := range []string{"safego.Go", "ProcessApprovedAddRequest", "SendAddRequestDecided"} {
 		if !strings.Contains(body, needle) {
 			t.Errorf("decideAddRequest missing %q — approval must process items/scan the org "+
 				"in the background and notify the requester", needle)

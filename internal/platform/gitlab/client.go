@@ -55,7 +55,7 @@ func (c *Client) OnPermanentRedirect(hook func(from, to string)) {
 }
 
 func (c *Client) ParseRepoURL(rawURL string) (owner, repo string, err error) {
-	parsed, err := platform.ParseRepoURLWithHints(rawURL, map[string]bool{c.host: true})
+	parsed, err := platform.ParseRepoURLWithHints(rawURL, []string{"https://" + c.host})
 	if err != nil {
 		return "", "", err
 	}

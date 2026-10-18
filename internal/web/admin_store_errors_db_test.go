@@ -37,7 +37,7 @@ func TestAdminDecisionStoreFailuresAreGeneric500s(t *testing.T) {
 	}
 	closed.Close()
 	var logs strings.Builder
-	s := New(closed, config.WebConfig{}, nil, "", slog.New(slog.NewTextHandler(&logs, nil)))
+	s := New(closed, config.WebConfig{}, "", slog.New(slog.NewTextHandler(&logs, nil)))
 	const self = 4242
 	s.sessions["admin-probe"] = &Session{UserID: self, LoginName: "_avweb_admin_probe", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
 	post := func(path string, form url.Values) *httptest.ResponseRecorder {

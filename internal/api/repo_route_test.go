@@ -4,6 +4,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"go/ast"
@@ -11,6 +12,7 @@ import (
 	"go/token"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -296,4 +298,54 @@ func receiverOfDecl(fd *ast.FuncDecl) (name, typ string) {
 		name = field.Names[0].Name
 	}
 	return name, typ
+}
+
+// Round 1 of the stage 1b review: the star routes decide the caller's own
+// star, not the repository's data, so they keep their own access rule — but
+// an id no repository has is a 404 on them too, decided through the same
+// existence read before anything else (before 1b, PUT by an administrator
+// reached the stars table's foreign key and answered 500; GET and DELETE
+// answered 200 for a repository that does not exist).
+func TestStarRoutesAnswerNotFoundForAnUnknownRepository(t *testing.T) {
+	s := preludeServer(map[int64]bool{42: true}, nil)
+	s.mux = http.NewServeMux()
+	s.mux.HandleFunc("PUT /api/v1/repos/{repoID}/star", s.handleStarRepo)
+	s.mux.HandleFunc("DELETE /api/v1/repos/{repoID}/star", s.handleStarRepo)
+	s.mux.HandleFunc("GET /api/v1/repos/{repoID}/star", s.handleRepoStarState)
+	for _, c := range []struct {
+		method string
+		info   authInfo
+	}{
+		{http.MethodPut, authInfo{UserID: 1, IsAdmin: true}},
+		{http.MethodPut, authInfo{UserID: 1, Scope: map[int64]bool{}}},
+		{http.MethodDelete, authInfo{UserID: 1, Scope: map[int64]bool{}}},
+		{http.MethodGet, authInfo{UserID: 1, Scope: map[int64]bool{}}},
+	} {
+		r := httptest.NewRequest(c.method, "/api/v1/repos/99/star", nil)
+		r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, c.info))
+		w := httptest.NewRecorder()
+		s.mux.ServeHTTP(w, r) // the store is nil: a 404 proves the read came first
+		if w.Code != http.StatusNotFound || !strings.Contains(w.Body.String(), "repo not found") {
+			t.Errorf("%s star of an unknown repository (admin %v) = %d %q; want 404 repo not found", c.method, c.info.IsAdmin, w.Code, w.Body.String())
+		}
+	}
+}
+
+// Stage 1b review round 2: the handlers that cache their body marshal it
+// first through marshalBody, whose failure is a logged 500 — before, four of
+// them discarded the error (`body, _ :=`) and answered 200 with an empty
+// body, which the cache then stored.
+func TestMarshalBodyAnswersALoggedServerErrorOnFailure(t *testing.T) {
+	var logs bytes.Buffer
+	s := &Server{logger: slog.New(slog.NewTextHandler(&logs, nil))}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/compare", nil)
+	body, ok := s.marshalBody(w, r, "handleCompare", map[string]any{"z": math.NaN()})
+	if ok || body != nil || w.Code != http.StatusInternalServerError || !strings.Contains(logs.String(), "level=ERROR") {
+		t.Fatalf("marshal of a NaN: ok %v, body %q, status %d, logs %q; want a logged 500", ok, body, w.Code, logs.String())
+	}
+	w = httptest.NewRecorder()
+	if body, ok := s.marshalBody(w, r, "handleCompare", map[string]int{"n": 1}); !ok || string(body) != `{"n":1}` || w.Code != 200 {
+		t.Fatalf("marshal of a value: ok %v, body %q, status %d", ok, body, w.Code)
+	}
 }

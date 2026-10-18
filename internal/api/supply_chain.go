@@ -4,7 +4,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -143,13 +142,16 @@ func (s *Server) handleSupplyChainPackages(w http.ResponseWriter, r *http.Reques
 		rows = []*db.PackageExposure{}
 	}
 	scope.Source = sourceLabel(page.Live)
-	body, _ := json.Marshal(map[string]any{
+	body, ok := s.marshalBody(w, r, "handleSupplyChainPackages", map[string]any{
 		"scope":        scope,
 		"total":        page.Total,
 		"packages":     rows,
 		"sort":         sortKey,
 		"generated_at": time.Now().UTC(),
 	})
+	if !ok {
+		return
+	}
 	s.cmpCache.put(key, body)
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(body)
@@ -228,7 +230,7 @@ func (s *Server) handleSupplyChainPackage(w http.ResponseWriter, r *http.Request
 	if repos == nil {
 		repos = []db.PackageExposedRepo{}
 	}
-	body, _ := json.Marshal(map[string]any{
+	body, ok := s.marshalBody(w, r, "handleSupplyChainPackage", map[string]any{
 		"scope":        scope,
 		"package":      profile,
 		"advisories":   advOut,
@@ -236,6 +238,9 @@ func (s *Server) handleSupplyChainPackage(w http.ResponseWriter, r *http.Request
 		"repos":        repos,
 		"generated_at": time.Now().UTC(),
 	})
+	if !ok {
+		return
+	}
 	s.cmpCache.put(key, body)
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(body)

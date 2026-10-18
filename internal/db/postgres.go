@@ -754,33 +754,6 @@ func (s *PostgresStore) GetUserGroupIDsForOrgURL(ctx context.Context, orgURL str
 	return ids, rows.Err()
 }
 
-// GetReposForRenameCheck returns repos that should be checked for renames.
-// Picks repos not collected recently, limited to n repos per check cycle.
-func (s *PostgresStore) GetReposForRenameCheck(ctx context.Context, limit int) ([]model.Repo, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT r.repo_id, r.platform_id, r.repo_git, r.repo_name, r.repo_owner
-		FROM aveloxis_data.repos r
-		LEFT JOIN aveloxis_ops.collection_queue q ON q.repo_id = r.repo_id
-		WHERE q.status IS DISTINCT FROM 'collecting'
-		ORDER BY r.data_collection_date ASC NULLS FIRST
-		LIMIT $1`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var repos []model.Repo
-	for rows.Next() {
-		var r model.Repo
-		var platID int16
-		if err := rows.Scan(&r.ID, &platID, &r.GitURL, &r.Name, &r.Owner); err != nil {
-			return nil, err
-		}
-		r.Platform = model.Platform(platID)
-		repos = append(repos, r)
-	}
-	return repos, rows.Err()
-}
-
 // FindReviewDBID looks up the aveloxis DB pr_review_id for a platform
 // review ID within one repo.
 //

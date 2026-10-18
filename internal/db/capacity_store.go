@@ -1398,7 +1398,7 @@ func (s *PostgresStore) SignupsPerDay(ctx context.Context, days int) ([]SignupDa
 		return nil, fmt.Errorf("sign-ups per day: %w", err)
 	}
 	defer rows.Close()
-	var out []SignupDay
+	out := []SignupDay{} // D6: no sign-up in the window is []
 	for rows.Next() {
 		var d SignupDay
 		if err := rows.Scan(&d.Day, &d.Accounts); err != nil {

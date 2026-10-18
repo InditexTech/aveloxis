@@ -180,6 +180,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -191,12 +193,14 @@ paths:
       operationId: repositoryStatsBatch
       summary: Returns the statistics of several repositories, keyed by id.
       description: |
-        `ids` is a comma-separated list; entries that are not integers are
-        skipped. At most 500 ids per request. A caller that is not an
+        `ids` is a comma-separated list of repository ids; an entry that is
+        not a positive integer is a `400` (since 0.29.99; it was skipped
+        before). At most 500 ids per request. A caller that is not an
         administrator's session (an API token, or any other signed-in session)
         gets only the ids in its groups; the others are left out, and an
-        answer with none of them is `{}`. Repositories no longer in the
-        collection queue fall back to live counts.
+        answer with none of them is `{}`. An id no repository has is left
+        out too (since 0.29.99; it was a row of zeros). Repositories no
+        longer in the collection queue fall back to live counts.
 
         Handler: `handleRepoStatsBatch`.
       tags: [Repositories]
@@ -222,7 +226,7 @@ paths:
                 additionalProperties:
                   $ref: '#/components/schemas/RepoStats'
         "400":
-          description: '`ids` missing, no valid id in it, or more than 500 ids.'
+          description: '`ids` missing, an entry that is not a positive integer, or more than 500 ids.'
           content:
             text/plain:
               schema:
@@ -299,7 +303,7 @@ paths:
         "304":
           $ref: '#/components/responses/NotModified'
         "400":
-          description: An id that is not an integer, or `format` / `scope` outside their values.
+          description: An id that is not a positive integer, or `format` / `scope` outside their values.
           content:
             text/plain:
               schema:
@@ -359,7 +363,7 @@ paths:
         "304":
           $ref: '#/components/responses/NotModified'
         "400":
-          description: An id that is not an integer, or `since` not before `until`.
+          description: An id that is not a positive integer, a date that does not parse, or `since` not before `until`.
           content:
             text/plain:
               schema:
@@ -368,6 +372,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -385,7 +391,7 @@ paths:
       description: |
         One row per canonical SPDX expression. `scanned` is false until
         dependency analysis has run for the repository (or when that probe
-        failed; such an answer is not cached); `licenses` is `null` when
+        failed; such an answer is not cached); `licenses` is `[]` when
         there are no dependencies.
 
         Handler: `handleLicenses`.
@@ -427,13 +433,13 @@ paths:
                     enum: [all, runtime]
                     description: The scope in effect.
                   licenses:
-                    type: [array, "null"]
+                    type: array
                     items:
                       $ref: '#/components/schemas/LicenseCount'
         "304":
           $ref: '#/components/responses/NotModified'
         "400":
-          description: An id that is not an integer, or `scope` outside its values.
+          description: An id that is not a positive integer, or `scope` outside its values.
           content:
             text/plain:
               schema:
@@ -442,6 +448,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -455,7 +463,7 @@ paths:
       description: |
         Aggregated from the per-file scan. `last_run` is `""` until ScanCode
         has run for the repository. A part that could not be read is served
-        empty (`null` lists) and the answer is not cached.
+        empty (`[]` lists) and the answer is not cached.
 
         Handler: `handleScancodeLicenses`.
       tags: [Repositories]
@@ -482,11 +490,11 @@ paths:
                 required: [licenses, copyrights, last_run, scancode_version]
                 properties:
                   licenses:
-                    type: [array, "null"]
+                    type: array
                     items:
                       $ref: '#/components/schemas/ScancodeSourceLicense'
                   copyrights:
-                    type: [array, "null"]
+                    type: array
                     items:
                       $ref: '#/components/schemas/ScancodeSourceCopyright'
                   last_run:
@@ -502,8 +510,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/ServerError'
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/repos/{repoID}/scancode-files:
@@ -546,8 +558,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/ServerError'
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/repos/search:
@@ -557,8 +573,8 @@ paths:
       description: |
         Case-insensitive substring match over every collected repository
         (not limited to the caller's groups), ordered by owner then name.
-        `%` and `_` in `q` act as SQL wildcards. `null` when nothing
-        matches.
+        `%` and `_` in `q` match themselves (since 0.29.99; they acted as
+        SQL wildcards before). `[]` when nothing matches.
 
         Handler: `handleRepoSearch`.
       tags: [Repositories]
@@ -575,7 +591,7 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 maxItems: 20
                 items:
                   $ref: '#/components/schemas/SearchRepoResult'
@@ -615,8 +631,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/ServerError'
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/repos/{repoID}/contributions/identities:
@@ -659,7 +679,7 @@ paths:
         "304":
           $ref: '#/components/responses/NotModified'
         "400":
-          description: An id that is not an integer, or `since` not before `until`.
+          description: An id that is not a positive integer, a date that does not parse, or `since` not before `until`.
           content:
             text/plain:
               schema:
@@ -668,6 +688,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -714,7 +736,7 @@ paths:
         "304":
           $ref: '#/components/responses/NotModified'
         "400":
-          description: An id that is not an integer, or `since` not before `until`.
+          description: An id that is not a positive integer, a date that does not parse, or `since` not before `until`.
           content:
             text/plain:
               schema:
@@ -723,6 +745,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -765,7 +789,7 @@ paths:
         "304":
           $ref: '#/components/responses/NotModified'
         "400":
-          description: An id that is not an integer, or `since` not before `until`.
+          description: An id that is not a positive integer, a date that does not parse, or `since` not before `until`.
           content:
             text/plain:
               schema:
@@ -774,6 +798,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -844,7 +870,7 @@ paths:
         "304":
           $ref: '#/components/responses/NotModified'
         "400":
-          description: An id that is not an integer, or `since` not before `until`.
+          description: An id that is not a positive integer, a date that does not parse, or `since` not before `until`.
           content:
             text/plain:
               schema:
@@ -853,6 +879,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -878,7 +906,7 @@ paths:
         - name: since
           in: query
           required: false
-          description: First day of the window (`YYYY-MM-DD`); defaults to 180 days ago, and a value that does not parse means the default.
+          description: First day of the window (`YYYY-MM-DD`); defaults to 180 days ago. A value that does not parse is a `400` (since 0.29.99).
           schema:
             type: string
             format: date
@@ -922,6 +950,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -1480,7 +1510,7 @@ paths:
         `collected`, which a session's compare would add) and up to 10
         organizations. When no repository matches and the query looks like
         a forge path or URL, `uncollected` carries one entry: the query,
-        which is not collected yet. Empty lists are `null`.
+        which is not collected yet. Empty lists are `[]`.
 
         Handler: `handleEntitiesSearch`.
       tags: [Comparison]
@@ -1502,7 +1532,7 @@ paths:
                 required: [repos, orgs, uncollected]
                 properties:
                   repos:
-                    type: [array, "null"]
+                    type: array
                     items:
                       type: object
                       required: [entity, label, class]
@@ -1517,7 +1547,7 @@ paths:
                           type: string
                           enum: [in_scope, collected]
                   orgs:
-                    type: [array, "null"]
+                    type: array
                     items:
                       type: object
                       required: [entity, label, repo_count]
@@ -1530,7 +1560,7 @@ paths:
                         repo_count:
                           type: integer
                   uncollected:
-                    type: [array, "null"]
+                    type: array
                     items:
                       type: object
                       required: [query, class, hint]
@@ -1644,6 +1674,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -1655,7 +1687,7 @@ paths:
       operationId: repositoryScorecard
       summary: Returns a repository's latest OpenSSF Scorecard checks and overall score.
       description: |
-        `scanned` is false (and `checks` `null`) when no Scorecard run is
+        `scanned` is false (and `checks` `[]`) when no Scorecard run is
         stored. `mode` is `remote` for the complete check set, `local` for
         the subset Scorecard computes from a clone alone, and empty for a
         scan that predates the distinction. `overall` is absent for scans
@@ -1689,7 +1721,7 @@ paths:
                     type: integer
                     format: int64
                   checks:
-                    type: [array, "null"]
+                    type: array
                     items:
                       $ref: '#/components/schemas/ScorecardCheck'
                   scanned:
@@ -1713,6 +1745,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -2477,7 +2511,7 @@ paths:
                     type: string
                     description: The address refusals name; empty when none is offered.
                   signups_per_day:
-                    type: [array, "null"]
+                    type: array
                     items:
                       $ref: '#/components/schemas/SignupDay'
                   signup_allowlist:
@@ -4190,6 +4224,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -4229,7 +4265,7 @@ paths:
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
         "404":
-          description: No repository has this id (checked only for a repository outside the caller's groups).
+          $ref: '#/components/responses/RepoNotFound'
           content:
             text/plain:
               schema:
@@ -4261,6 +4297,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -4448,7 +4486,7 @@ paths:
       tags: ["Augur catalog"]
       summary: "Returns every repository group, ordered by name."
       description: |
-        The legacy repository groups (`aveloxis_data.repo_groups`), not the caller's own groups (see Groups). Not scoped: every caller that may read data sees every group. An empty result is `null`, not `[]`.
+        The legacy repository groups (`aveloxis_data.repo_groups`), not the caller's own groups (see Groups). An API token sees only the groups holding at least one repository of its owner's groups (since 0.29.99); every other caller sees every group. An empty result is `[]`.
 
         Handler: `handleRepoGroups`.
       security:
@@ -4461,7 +4499,7 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurRepositoryGroup'
         "401":
@@ -4478,7 +4516,7 @@ paths:
       tags: ["Augur catalog"]
       summary: "Returns every collected repository, ordered by owner and name."
       description: |
-        Not scoped and not paged: every caller that may read data gets the whole catalog, one row per repository. Cost: one scan of the repositories table. An empty result is `null`, not `[]`.
+        Not paged: one row per repository. An API token sees only the repositories of its owner's groups (since 0.29.99); a session, an administrator and a caller without an identity get the whole catalog. Cost: one scan of the repositories table. An empty result is `[]`.
 
         Handler: `handleAllRepos`.
       security:
@@ -4491,7 +4529,7 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurRepository'
         "401":
@@ -4528,7 +4566,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AugurRepositoryRecord'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -4555,7 +4593,7 @@ paths:
       tags: ["Augur catalog"]
       summary: "Returns the repositories of one repository group, ordered by owner and name."
       description: |
-        Not scoped. A group id no group has answers `200` with `null` (no `404`). An empty result is `null`, not `[]`.
+        An API token sees only the repositories of its owner's groups (since 0.29.99). A group id no group has, or a group with nothing in the token's scope, answers `200` with `[]` (no `404`). An empty result is `[]`.
 
         Handler: `handleReposByGroup`.
       security:
@@ -4576,7 +4614,7 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurRepository'
         "400":
@@ -4599,7 +4637,7 @@ paths:
       tags: ["Augur catalog"]
       summary: "Returns the repository with this owner and name."
       description: |
-        Owner and name match without regard to letter case; the first match wins. Not scoped.
+        Owner and name match without regard to letter case. When the name exists on two forges the GitHub one is picked, then the lower id. An API token is answered within its owner's groups (since 0.29.99): the in-scope repository when one exists; when the name exists only outside its scope, the structured `403` naming that repository; when it exists nowhere, `404`.
 
         Handler: `handleRepoByOwnerName`.
       security:
@@ -4628,6 +4666,8 @@ paths:
                 $ref: '#/components/schemas/AugurRepository'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/RepoOutOfScope'
         "404":
           description: "No repository has this owner and name (`repo not found`)."
           content:
@@ -4646,7 +4686,7 @@ paths:
       tags: ["Augur catalog"]
       summary: "Returns the repository group with this name."
       description: |
-        The name matches without regard to letter case; the first match wins. Not scoped.
+        The name matches without regard to letter case; the first match wins. An API token finds only a group holding at least one repository of its owner's groups (since 0.29.99); any other is `404`.
 
         Handler: `handleRepoGroupByName`.
       security:
@@ -4687,7 +4727,7 @@ paths:
       tags: ["Augur catalog"]
       summary: "Returns the repository with this name in the named repository group."
       description: |
-        The group name matches without regard to letter case; the repository name must match exactly (letter case included). Not scoped.
+        Both names match without regard to letter case (since 0.29.99 the repository name too; it had to match exactly). With the name on two forges the GitHub one is picked, then the lower id. An API token is answered within its owner's groups (since 0.29.99): a group holding none of them is `404`; a repository that exists in the group only outside the scope is the structured `403` naming it.
 
         Handler: `handleRepoByGroupAndName`.
       security:
@@ -4704,7 +4744,7 @@ paths:
         - name: repoName
           in: path
           required: true
-          description: The repository's name, matched exactly.
+          description: The repository's name (letter case ignored).
           schema:
             type: string
       responses:
@@ -4716,8 +4756,10 @@ paths:
                 $ref: '#/components/schemas/AugurRepository'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/RepoOutOfScope'
         "404":
-          description: "No repository group has this name (`repo group not found`), or the group has no repository with this name (`repo not found in group`)."
+          description: "No repository group has this name (`repo group not found`), or the group has no repository with this name (`repo not found`)."
           content:
             text/plain:
               schema:
@@ -4734,7 +4776,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the issues opened per period."
       description: |
-        Issues (pull requests excluded) counted by the day they were created. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Issues (pull requests excluded) counted by the day they were created. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleIssuesNew`.
       security:
@@ -4755,11 +4797,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -4768,6 +4810,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -4780,7 +4824,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the issues closed per period."
       description: |
-        Issues (pull requests excluded) counted by the day they were closed. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Issues (pull requests excluded) counted by the day they were closed. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleIssuesClosed`.
       security:
@@ -4801,11 +4845,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -4814,6 +4858,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -4826,7 +4872,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the issues with activity per period."
       description: |
-        Distinct issues (pull requests excluded) with at least one issue event in the bucket. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Distinct issues (pull requests excluded) with at least one issue event in the bucket. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleIssuesActive`.
       security:
@@ -4847,11 +4893,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -4860,6 +4906,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -4896,7 +4944,7 @@ paths:
                   issue_backlog:
                     type: integer
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -4905,6 +4953,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -4943,7 +4993,7 @@ paths:
                     minimum: 0
                     maximum: 1
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -4952,6 +5002,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -4964,7 +5016,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns how long each closed issue stayed open."
       description: |
-        One row per closed issue (pull requests excluded) created inside the window, ordered by issue id. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. An empty result is `null`, not `[]`.
+        One row per closed issue (pull requests excluded) created inside the window, ordered by issue id. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. An empty result is `[]`.
 
         Handler: `handleIssueDuration`.
       security:
@@ -4984,11 +5036,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurIssueDurationRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -4997,6 +5049,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5033,7 +5087,7 @@ paths:
                   avg_issue_resolution_days:
                     type: number
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5042,6 +5096,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5054,7 +5110,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the open issues not updated for a year."
       description: |
-        Open issues (pull requests excluded) whose last update is more than a year before now, least recently updated first. An empty result is `null`, not `[]`.
+        Open issues (pull requests excluded) whose last update is more than a year before now, least recently updated first. An empty result is `[]`.
 
         Handler: `handleAbandonedIssues`.
       security:
@@ -5072,7 +5128,7 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   type: object
                   required: [issue_id, updated_at]
@@ -5084,7 +5140,7 @@ paths:
                       type: string
                       format: date-time
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5093,6 +5149,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5129,7 +5187,7 @@ paths:
                   open_count:
                     type: integer
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5138,6 +5196,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5174,7 +5234,7 @@ paths:
                   closed_count:
                     type: integer
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5183,6 +5243,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5195,7 +5257,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the pull requests opened per period."
       description: |
-        Pull requests counted by the day they were created. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Pull requests counted by the day they were created. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handlePRsNew`.
       security:
@@ -5216,11 +5278,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5229,6 +5291,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5241,7 +5305,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the pull requests opened per period, under Augur's reviews name."
       description: |
-        Augur's "reviews" metric counts pull requests created; the answer is identical to `pull-requests-new`. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Augur's "reviews" metric counts pull requests created; the answer is identical to `pull-requests-new`. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleReviews`.
       security:
@@ -5262,11 +5326,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5275,6 +5339,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5287,7 +5353,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the pull requests merged per period."
       description: |
-        Pull requests counted by the day they were merged. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Pull requests counted by the day they were merged. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleReviewsAccepted`.
       security:
@@ -5308,11 +5374,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5321,6 +5387,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5333,7 +5401,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the pull requests closed without merging per period."
       description: |
-        Pull requests closed and never merged, counted by the day they were closed. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Pull requests closed and never merged, counted by the day they were closed. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleReviewsDeclined`.
       security:
@@ -5354,11 +5422,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5367,6 +5435,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5379,7 +5449,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns how long each merged pull request took to merge."
       description: |
-        One row per merged pull request created inside the window, ordered by pull request id. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. An empty result is `null`, not `[]`.
+        One row per merged pull request created inside the window, ordered by pull request id. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. An empty result is `[]`.
 
         Handler: `handleReviewDuration`.
       security:
@@ -5399,11 +5469,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurReviewDurationRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5412,6 +5482,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5424,7 +5496,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the distinct commit authors per period."
       description: |
-        Authors counted by identity: the resolved contributor where known, otherwise the non-empty author e-mail; commits by author date. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Authors counted by identity: the resolved contributor where known, otherwise the non-empty author e-mail; commits by the UTC day of their author timestamp (the same day as `repositoryTimeSeries`; since 0.29.99 — before, by the author's local date), and a commit whose author date could not be parsed is not counted. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleCommitters`.
       security:
@@ -5445,11 +5517,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5458,6 +5530,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5470,7 +5544,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the commits per period."
       description: |
-        Distinct commit hashes counted by author date. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Distinct commit hashes counted by the UTC day of their author timestamp (the same day as `repositoryTimeSeries`; since 0.29.99 — before, by the author's local date); a commit whose author date could not be parsed is not counted. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleCodeChanges`.
       security:
@@ -5491,11 +5565,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5504,6 +5578,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5516,7 +5592,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the lines added and removed per period."
       description: |
-        Sums of the per-file line counts of the commits authored in each bucket. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Sums of the per-file line counts of the commits authored in each bucket. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleCodeChangesLines`.
       security:
@@ -5537,11 +5613,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurCodeChangesLinesRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5550,6 +5626,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5562,7 +5640,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns each contributor's activity counts in the window."
       description: |
-        One row per contributor, most active first: commits (distinct hashes), issues opened, pull requests opened, issue comments and pull request comments, with their `total`. Only activity attributed to a resolved contributor counts. These are counts per person, unlike `/contributions/identities` (a roster). The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. Cost: five aggregates over the repository's commits, issues, pull requests and messages, uncached. An empty result is `null`, not `[]`.
+        One row per contributor, most active first: commits (distinct hashes), issues opened, pull requests opened, issue comments and pull request comments, with their `total`. Only activity attributed to a resolved contributor counts. These are counts per person, unlike `/contributions/identities` (a roster). The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. Cost: five aggregates over the repository's commits, issues, pull requests and messages, uncached. An empty result is `[]`.
 
         Handler: `handleContributors`.
       security:
@@ -5582,11 +5660,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurContributorRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5595,6 +5673,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5607,7 +5687,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the first-time contributors per period."
       description: |
-        Each resolved contributor counted once, in the bucket of their first commit or first issue, whichever came first. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Each resolved contributor counted once, in the bucket of their first commit (by the UTC day of its author timestamp, since 0.29.99) or first issue, whichever came first. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleContributorsNew`.
       security:
@@ -5628,11 +5708,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5641,6 +5721,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5653,7 +5735,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the star count at each metadata snapshot."
       description: |
-        One row per stored metadata snapshot (the latest and the earlier ones kept in history), oldest first; `period` and the window do not apply. An empty result is `null`, not `[]`.
+        One row per stored metadata snapshot (the latest and the earlier ones kept in history), oldest first; `period` and the window do not apply. An empty result is `[]`.
 
         Handler: `handleStars`.
       security:
@@ -5671,11 +5753,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5684,6 +5766,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5722,7 +5806,7 @@ paths:
                   stars:
                     type: integer
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5731,6 +5815,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5743,7 +5829,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the fork count at each metadata snapshot."
       description: |
-        One row per stored metadata snapshot (the latest and the earlier ones kept in history), oldest first. An empty result is `null`, not `[]`.
+        One row per stored metadata snapshot (the latest and the earlier ones kept in history), oldest first. An empty result is `[]`.
 
         Handler: `handleForks`.
       security:
@@ -5761,11 +5847,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5774,6 +5860,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5812,7 +5900,7 @@ paths:
                   forks:
                     type: integer
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5821,6 +5909,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5831,9 +5921,9 @@ paths:
     get:
       operationId: augurWatchers
       tags: ["Augur metrics"]
-      summary: "Returns the watcher count of the latest metadata snapshot."
+      summary: "Returns the watcher count over time, from the metadata snapshots."
       description: |
-        Reads only the latest snapshot, not the history, so the series has at most one row (unlike `stars` and `forks`). Rows carry `watchers` where the other series carry `value`. An empty result is `null`, not `[]`.
+        One row per metadata snapshot (the history and the current one, oldest first; since 0.29.99 — before, only the latest snapshot, so one row at most). Rows carry `watchers` where the `stars` and `forks` series carry `value` (Augur's own name). A snapshot without a date is left out. An empty result is `[]`.
 
         Handler: `handleWatchers`.
       security:
@@ -5844,14 +5934,14 @@ paths:
         - $ref: '#/components/parameters/RepoID'
       responses:
         "200":
-          description: "At most one row."
+          description: "One row per dated snapshot, oldest first."
           headers:
             X-Aveloxis-Added-To-Group:
               $ref: '#/components/headers/AddedToGroup'
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   type: object
                   required: [date, watchers, repo_name]
@@ -5864,7 +5954,7 @@ paths:
                     repo_name:
                       type: string
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5873,6 +5963,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5911,7 +6003,7 @@ paths:
                   watchers:
                     type: integer
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5920,6 +6012,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5959,7 +6053,7 @@ paths:
                   primary_language:
                     type: string
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -5968,6 +6062,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -5980,7 +6076,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the repository's dependencies with their libyear."
       description: |
-        With neither `license` nor `scope`, every stored dependency row, ordered by name. With either, the rows the licenses table aggregates (GitHub Actions rows excluded), so a license bucket counting N lists exactly N rows. An empty result is `null`, not `[]`.
+        With neither `license` nor `scope`, every stored dependency row, ordered by name. With either, the rows the licenses table aggregates (GitHub Actions rows excluded), so a license bucket counting N lists exactly N rows. An empty result is `[]`.
 
         Handler: `handleDeps`.
       security:
@@ -6020,13 +6116,13 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurDependencyRow'
         "304":
           $ref: '#/components/responses/NotModified'
         "400":
-          description: "`repoID` is not an integer, or `scope` is neither `all` nor `runtime`."
+          description: "`repoID` is not a positive integer, or `scope` is neither `all` nor `runtime`."
           content:
             text/plain:
               schema:
@@ -6035,6 +6131,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -6047,7 +6145,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the repository's dependencies with their libyear, under Augur's libyear name."
       description: |
-        The same answer as `deps`. With neither `license` nor `scope`, every stored dependency row, ordered by name. With either, the rows the licenses table aggregates (GitHub Actions rows excluded), so a license bucket counting N lists exactly N rows. An empty result is `null`, not `[]`.
+        The same answer as `deps`. With neither `license` nor `scope`, every stored dependency row, ordered by name. With either, the rows the licenses table aggregates (GitHub Actions rows excluded), so a license bucket counting N lists exactly N rows. An empty result is `[]`.
 
         Handler: `handleDeps`.
       security:
@@ -6087,13 +6185,13 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurDependencyRow'
         "304":
           $ref: '#/components/responses/NotModified'
         "400":
-          description: "`repoID` is not an integer, or `scope` is neither `all` nor `runtime`."
+          description: "`repoID` is not a positive integer, or `scope` is neither `all` nor `runtime`."
           content:
             text/plain:
               schema:
@@ -6102,6 +6200,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -6114,7 +6214,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the messages posted per period."
       description: |
-        Every stored message of the repository (issue, pull request and review comments) counted by its timestamp. The window defaults to the year before now (`begin_date`) through now (`end_date`); a date that does not parse as `YYYY-MM-DD` is ignored and the default used. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `null`, not `[]`.
+        Every stored message of the repository (issue, pull request and review comments) counted by its timestamp. The window is `begin_date` through `end_date`, both inclusive UTC days (since 0.29.99; before, `end_date` ended at that day's midnight), by default the year before today through today. A date that does not parse as `YYYY-MM-DD` is a `400`. `period` buckets by `day`, `week`, `month` or `year`; it defaults to `month`, and any other value is read as `month` (no `400`). An empty result is `[]`.
 
         Handler: `handleRepoMessages`.
       security:
@@ -6135,11 +6235,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurMetricRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -6148,6 +6248,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -6160,7 +6262,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the repository's releases, newest first."
       description: |
-        Ordered by publication time, unpublished last. An empty result is `null`, not `[]`.
+        Ordered by publication time, unpublished last. An empty result is `[]`.
 
         Handler: `handleReleases`.
       security:
@@ -6178,11 +6280,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurReleaseRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -6191,6 +6293,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -6203,7 +6307,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the code size and complexity per language."
       description: |
-        From the stored scc results, one row per language, most code lines first. An empty result is `null`, not `[]`.
+        From the stored scc results, one row per language, most code lines first. An empty result is `[]`.
 
         Handler: `handleProjectLanguages`.
       security:
@@ -6221,11 +6325,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurComplexityRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -6234,6 +6338,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -6246,7 +6352,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the code size and complexity per language, under Augur's project-files name."
       description: |
-        The same answer as `project-languages`. From the stored scc results, one row per language, most code lines first. An empty result is `null`, not `[]`.
+        The same answer as `project-languages`. From the stored scc results, one row per language, most code lines first. An empty result is `[]`.
 
         Handler: `handleProjectLanguages`.
       security:
@@ -6264,11 +6370,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurComplexityRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -6277,6 +6383,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -6289,7 +6397,7 @@ paths:
       tags: ["Augur metrics"]
       summary: "Returns the code size and complexity per language, under Augur's project-lines name."
       description: |
-        The same answer as `project-languages`. From the stored scc results, one row per language, most code lines first. An empty result is `null`, not `[]`.
+        The same answer as `project-languages`. From the stored scc results, one row per language, most code lines first. An empty result is `[]`.
 
         Handler: `handleProjectLanguages`.
       security:
@@ -6307,11 +6415,11 @@ paths:
           content:
             application/json:
               schema:
-                type: [array, "null"]
+                type: array
                 items:
                   $ref: '#/components/schemas/AugurComplexityRow'
         "400":
-          description: "`repoID` is not an integer (`invalid repo_id`)."
+          description: "`repoID` is not a positive integer (`invalid repo_id`)."
           content:
             text/plain:
               schema:
@@ -6320,6 +6428,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/RepoOutOfScope'
+        "404":
+          $ref: '#/components/responses/RepoNotFound'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -6356,7 +6466,7 @@ components:
       name: repoID
       in: path
       required: true
-      description: A repository's id (`repo_id`). A value that is not an integer is a `400`.
+      description: A repository's id (`repo_id`). A value that is not a positive integer is a `400`; an id no repository has is a `404` on every repository route (since 0.29.99).
       schema:
         type: integer
         format: int64
@@ -6389,7 +6499,8 @@ components:
       required: false
       description: |
         First UTC day of the window (`YYYY-MM-DD`, inclusive). A value that
-        does not parse falls back to the default instead of failing.
+        does not parse is a `400` (since 0.29.99; it fell back to the
+        default before).
       schema:
         type: string
         format: date
@@ -6399,7 +6510,7 @@ components:
       required: false
       description: |
         Last UTC day of the window (`YYYY-MM-DD`, inclusive: the whole day
-        counts). A value that does not parse falls back to the default. A
+        counts). A value that does not parse is a `400` (since 0.29.99). A
         window whose `since` is not before `until` is a `400`.
       schema:
         type: string
@@ -6408,7 +6519,7 @@ components:
       name: begin_date
       in: query
       required: false
-      description: Augur's window start (`YYYY-MM-DD`). Default one year ago; a value that does not parse is read as the default.
+      description: Augur's window start, an inclusive UTC day (`YYYY-MM-DD`). Default a year before today; a value that does not parse is a `400` (since 0.29.99).
       schema:
         type: string
         format: date
@@ -6416,7 +6527,7 @@ components:
       name: end_date
       in: query
       required: false
-      description: Augur's window end (`YYYY-MM-DD`), read as midnight UTC at the start of that day. Default now; a value that does not parse is read as the default.
+      description: Augur's window end, an inclusive UTC day (`YYYY-MM-DD`; the whole day counts, since 0.29.99). Default today; a value that does not parse is a `400`.
       schema:
         type: string
         format: date
@@ -6652,7 +6763,7 @@ components:
     TimeSeriesResult:
       type: object
       required: [repo_id, repo_name, repo_owner, commits, prs_opened, prs_merged, issues]
-      description: Each series lists only the weeks with activity, oldest first; a series with no activity is `null`.
+      description: Each series lists only the weeks with activity, oldest first; a series with no activity is `[]`.
       properties:
         repo_id:
           type: integer
@@ -6662,20 +6773,20 @@ components:
         repo_owner:
           type: string
         commits:
-          type: [array, "null"]
+          type: array
           description: Distinct commits per week by author time.
           items:
             $ref: '#/components/schemas/WeeklyDataPoint'
         prs_opened:
-          type: [array, "null"]
+          type: array
           items:
             $ref: '#/components/schemas/WeeklyDataPoint'
         prs_merged:
-          type: [array, "null"]
+          type: array
           items:
             $ref: '#/components/schemas/WeeklyDataPoint'
         issues:
-          type: [array, "null"]
+          type: array
           items:
             $ref: '#/components/schemas/WeeklyDataPoint'
     LicenseCount:
@@ -7068,11 +7179,11 @@ components:
         transitive:
           type: boolean
         versions:
-          type: [array, "null"]
+          type: array
           items:
             type: string
         version_detail:
-          type: [array, "null"]
+          type: array
           items:
             $ref: '#/components/schemas/PackageRepoVersion'
     NewRepo:
@@ -7161,7 +7272,7 @@ components:
         entity:
           $ref: '#/components/schemas/CompareEntity'
         points:
-          type: [array, "null"]
+          type: array
           items:
             $ref: '#/components/schemas/WeeklyPoint'
           description: Densified buckets from the entity's own start (see `data_start`) to `until`. Series of one answer may differ in length; align them by `bucket`.
@@ -7334,7 +7445,7 @@ components:
           type: string
           enum: [full, partial, none]
         ecosystems:
-          type: [array, "null"]
+          type: array
           items:
             $ref: '#/components/schemas/LockfileEcosystemCertainty'
     LockfileEcosystemCertainty:
@@ -7639,7 +7750,7 @@ components:
         repos:
           $ref: '#/components/schemas/RepoAllocationStatus'
         requests:
-          type: [array, "null"]
+          type: array
           description: Each counted window of the caller's quotas (quotas that are off or zero are left out); `null` when there are none.
           items:
             type: object
@@ -8228,6 +8339,12 @@ components:
               - $ref: '#/components/schemas/CapacityRefusal'
     NotFound:
       description: No such resource.
+      content:
+        text/plain:
+          schema:
+            type: string
+    RepoNotFound:
+      description: No repository has this id (`repo not found`). Every repository route answers it before deciding the caller's scope (since 0.29.99; an unknown id was a `403` for tokens and sessions before), so it says nothing about the caller.
       content:
         text/plain:
           schema:

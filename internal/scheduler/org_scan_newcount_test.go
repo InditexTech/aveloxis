@@ -4,6 +4,7 @@
 package scheduler
 
 import (
+	"github.com/aveloxis/aveloxis/internal/srctest"
 	"os"
 	"strings"
 	"testing"
@@ -38,28 +39,26 @@ func TestOrgScanCountsOnlyGenuinelyNewLinks(t *testing.T) {
 	if end := strings.Index(rest[1:], "\nfunc "); end >= 0 {
 		rest = rest[:end+1]
 	}
-
-	// The old bug shape: counting on a bare nil-error check (brace directly
-	// after err == nil — the fixed form carries "&& inserted" there).
-	if strings.Contains(rest, "AddRepoToGroupByID(ctx, gid, repoID); err == nil {") {
-		t.Error("refreshUserOrgs counts newCounts on a bare err == nil from " +
-			"AddRepoToGroupByID — ON CONFLICT DO NOTHING returns nil on no-op " +
+	// Stage 1: the link runs in the one ingest, which reports the groups
+	// whose link row it INSERTED (ingestOutcome.linked); the pass counts
+	// those and nothing else.
+	ingest := srctest.StripGoComments(srctest.PackageFunc(t, "internal/scheduler", "func (s *Scheduler) ingestDiscovered("))
+	if strings.Contains(ingest, "AddOrgRepoToGroupByID(ctx, gid, repoID); err == nil {") {
+		t.Error("ingestDiscovered marks a group linked on a bare err == nil from " +
+			"AddOrgRepoToGroupByID — ON CONFLICT DO NOTHING returns nil on no-op " +
 			"links, so this counts every repo in the org as \"new\" on every " +
 			"pass (the 9.3M bogus new-repos flood, 2026-08-18 diagnosis)")
 	}
-	// The fixed shape: an inserted bool gates the counter.
-	if !strings.Contains(rest, "inserted") || !strings.Contains(rest, "newCounts[gid]++") {
-		t.Error("refreshUserOrgs must gate newCounts[gid]++ on the inserted " +
-			"bool returned by AddRepoToGroupByID")
+	if !strings.Contains(ingest, "if inserted {\n\t\t\tout.linked[gid] = true") {
+		t.Error("ingestDiscovered must mark a group linked only on the inserted bool AddOrgRepoToGroupByID returns")
 	}
-	// v0.27.92 (Copilot round on PR #178): link failures must be logged,
-	// matching the sibling call sites in refreshGitHubOrg /
-	// refreshGitLabGroup — a silently failed link means a repo never
-	// appears in the user's group with zero operator signal.
-	if !strings.Contains(rest, "failed to link discovered repo into user_repos") {
-		t.Error("refreshUserOrgs must WARN when AddRepoToGroupByID fails, " +
-			"using the same \"failed to link discovered repo into user_repos\" " +
-			"message as refreshGitHubOrg/refreshGitLabGroup so one grep " +
-			"covers all three link paths")
+	if !strings.Contains(rest, "for gid := range out.linked {\n\t\t\t\t\tnewCounts[gid]++") {
+		t.Error("refreshUserOrgs must count newCounts[gid]++ over ingestOutcome.linked only")
+	}
+	// v0.27.92 (Copilot round on PR #178): link failures must be logged —
+	// a silently failed link means a repo never appears in the user's
+	// group with zero operator signal; one message, one site, one grep.
+	if !strings.Contains(ingest, "failed to link discovered repo into user_repos") {
+		t.Error("ingestDiscovered must WARN when AddOrgRepoToGroupByID fails (\"failed to link discovered repo into user_repos\")")
 	}
 }

@@ -502,7 +502,7 @@ Platform is auto-detected from the URL. GitLab nested subgroups are supported:
 https://gitlab.com/group/subgroup/project  ->  owner="group/subgroup", repo="project"
 ```
 
-Self-hosted GitLab instances are recognized if the hostname contains "gitlab" or is listed in `gitlab_hosts` in the config.
+Self-hosted GitLab instances are recognized if the hostname contains "gitlab" or the repository URL lies under the configured instance's web URL (`gitlab.base_url`).
 
 ### `aveloxis add-key` — Store API keys
 

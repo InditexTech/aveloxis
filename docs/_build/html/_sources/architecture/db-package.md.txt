@@ -54,9 +54,7 @@ Several operations support batching via `pgx.Batch` to reduce network round-trip
 | `UpsertPRLabels` | Batch label upsert via `pgx.Batch` |
 | `UpsertPRAssignees` | Batch via `pgx.Batch` |
 | `UpsertPRReviewers` | Batch via `pgx.Batch` |
-| `InsertRepoDependencyBatch` | Batch dependency insert via `pgx.Batch` |
-| `InsertRepoLibyearBatch` | Batch libyear insert via `pgx.Batch` |
-| `InsertRepoLaborBatch` | Batch code complexity insert via `pgx.Batch` |
+| `ReplaceRepoLaborSnapshot` | Rotate-and-insert of the repo_labor snapshot in one transaction |
 | `InsertContributorRepoBatch` | Batch breadth events via `pgx.Batch` |
 | `StagingWriter.Stage/Flush` | Buffers staging inserts, flushes every 500 rows |
 

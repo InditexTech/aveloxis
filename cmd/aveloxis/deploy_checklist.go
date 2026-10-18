@@ -596,6 +596,7 @@ var deployChecklists = map[string][]deployStep{
 	// v0.29.98 (2026-10-17, stage 0.5 of summary/59): test infrastructure
 	// (package-scope source lookups), the web server file split, templates
 	// embedded, the dead-code sweep. No schema change.
+	"0.29.99": v02999DeployChecklist,
 	"0.29.98": v02998DeployChecklist,
 	"0.29.97": v02997DeployChecklist,
 	"0.29.96": v02996DeployChecklist,
@@ -631,6 +632,21 @@ var deployChecklists = map[string][]deployStep{
 // ALTER): repository answers are cached until the repository changes; it
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
+
+// v02999DeployChecklist is 0.29.98's ladder with a note on the start step:
+// stage 1b of summary/59 changes API answers (the contract changes are
+// listed for clients in docs/guide/api.md), no schema change.
+var v02999DeployChecklist = func() []deployStep {
+	prev := v02998DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.99: no schema change; the API's answers change (stage 1b of the admin-console program, listed under \"Changes for API clients\" in docs/guide/api.md): an unknown repository id is a 404 on every repository route and an id of 0 or less a 400; a date that does not parse is a 400; Augur's end_date includes its day and the commit metrics count by the UTC day of the author timestamp; empty lists are []; the Augur catalog is scoped for API tokens; /watchers carries the snapshot history; /repos/stats?ids= refuses an entry that is not an id and its rows carry archived, forked_from and last_activity_at; the searches match % and _ literally. The repository-page cache keys on the version, so every stored answer and ETag is replaced by the restart. aveloxis-gui's check-setup.sh requires this version (MIN_API_VERSION). " + out[i].desc
+		}
+	}
+	return out
+}()
 
 // v02998DeployChecklist is 0.29.97's ladder with a note on the start step.
 var v02998DeployChecklist = func() []deployStep {

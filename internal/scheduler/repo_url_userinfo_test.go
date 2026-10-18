@@ -14,8 +14,9 @@ import (
 // downstream of prelim's HEAD request (which sends userinfo as basic auth)
 // and of seven log sites that wrote the stored URL verbatim. The refusal
 // belongs where the row is loaded: runJob refuses before RunPrelim and fails
-// the job; the two periodic loops that probe stored URLs (the rename check
-// and the gone recheck) refuse before their probe. Ordering pins: both
+// the job; the periodic loop that probes stored URLs (the gone recheck;
+// the rename check is gone since stage 1 of summary/59, N3) refuses before
+// its probe. Ordering pins: both
 // indexes must exist and the refusal must come first.
 func TestStoredRepoURLIsRefusedBeforeAnyProbe(t *testing.T) {
 	src := srctest.Read(t, "internal/scheduler/scheduler.go")
@@ -24,7 +25,6 @@ func TestStoredRepoURLIsRefusedBeforeAnyProbe(t *testing.T) {
 		name, body, probe, arm string
 	}{
 		{"runJob", srctest.FuncBody(t, src, "func (s *Scheduler) runJob("), "collector.RunPrelim(ctx, s.store, repo, s.logger)", "s.failJob(ctx, job.RepoID, uerr.Error())"},
-		{"checkForRenames", srctest.FuncBody(t, src, "func (s *Scheduler) checkForRenames("), "collector.RunPrelim(ctx, s.store, &repo, s.logger)", "continue"},
 		{"runGoneRecheck", srctest.FuncBody(t, gone, "func (s *Scheduler) runGoneRecheck("), "goneProbe(ctx, c.GitURL)", "stampChecked(c)"},
 	} {
 		body := srctest.StripGoComments(tc.body)

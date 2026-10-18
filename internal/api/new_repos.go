@@ -4,7 +4,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -53,13 +52,12 @@ func (s *Server) handleNewRepos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := json.Marshal(map[string]any{
+	body, ok := s.marshalBody(w, r, "handleNewRepos", map[string]any{
 		"days":  days,
 		"fleet": fleet,
 		"mine":  mine,
 	})
-	if err != nil {
-		s.serverError(w, r, "handleNewRepos", err)
+	if !ok {
 		return
 	}
 	s.respCache.put(key, body)

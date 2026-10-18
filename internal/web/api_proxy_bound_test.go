@@ -57,7 +57,7 @@ func TestAPIProxyUnderTheBound(t *testing.T) {
 	webLogs := &syncBuf{}
 	run := func(apiURL string) (*http.Response, time.Duration) {
 		logger := slog.New(slog.NewTextHandler(webLogs, nil))
-		s := New(nil, config.WebConfig{APIInternalURL: apiURL}, nil, "", logger)
+		s := New(nil, config.WebConfig{APIInternalURL: apiURL}, "", logger)
 		s.sessions["proxy-test"] = &Session{UserID: 1, LoginName: "proxy-test", ExpiresAt: time.Now().Add(time.Hour)}
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
@@ -108,7 +108,7 @@ func TestAPIProxyUnderTheBound(t *testing.T) {
 // 15 s ResponseHeaderTimeout survived, because the chain test's 500 ms bound
 // never let a 15 s wait race it. The proxy's transport must set none.
 func TestAPIProxyHasNoWaitOfItsOwn(t *testing.T) {
-	s := New(nil, config.WebConfig{APIInternalURL: "http://127.0.0.1:8383"}, nil, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := New(nil, config.WebConfig{APIInternalURL: "http://127.0.0.1:8383"}, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rp, ok := s.apiProxy.(*httputil.ReverseProxy)
 	if !ok {
 		t.Fatalf("apiProxy is %T; this pin reads its transport", s.apiProxy)

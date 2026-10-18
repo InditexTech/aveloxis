@@ -421,7 +421,7 @@ func writeAuthError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	// Deliberate manual encode: WriteHeader already ran (non-200), so
-	// jsonResponse's header set would be ineffective here.
+	// writeJSON's header set would be ineffective here.
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 

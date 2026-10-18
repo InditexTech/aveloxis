@@ -475,8 +475,8 @@ func (s *PostgresStore) ListQueuePage(ctx context.Context, limit, offset int, se
 		// use the trigram index even when it existed.
 		whereClause = fmt.Sprintf(` WHERE q.repo_id IN (
 			SELECT repo_id FROM aveloxis_data.repos
-			WHERE (repo_owner || '/' || repo_name) ILIKE '%%' || $%d || '%%')`, argIdx)
-		args = append(args, search)
+			WHERE (repo_owner || '/' || repo_name) ILIKE $%d ESCAPE '\')`, argIdx)
+		args = append(args, LikeContains(search)) // % and _ in the term are literal (stage 1b)
 		argIdx++
 	}
 

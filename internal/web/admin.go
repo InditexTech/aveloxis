@@ -80,11 +80,11 @@ func (s *Server) decideAddRequest(ctx context.Context, requestID int64, adminID 
 	}
 	if approve {
 		if req.Kind == "org" {
-			// Registration happened in DecideAddRequest; scan now,
-			// exactly like an admin's own org add.
-			safego.Go(s.logger, "approved-org-scan", func() {
-				s.scanOrgRepos(context.Background(), req.GroupID, req.OrgURL)
-			})
+			// Registration happened in DecideAddRequest. Nothing scans here
+			// (stage 1 of summary/59, C2: the web process holds no forge
+			// keys): serve's demand probe finds the never-scanned
+			// registration on its next poll tick and lists the org with the
+			// one lister (scheduler.refreshUserOrgs).
 		} else {
 			safego.Go(s.logger, "approved-add-request", func() {
 				n, failed, err := s.store.ProcessApprovedAddRequest(context.Background(), req.RequestID)

@@ -84,7 +84,7 @@ func (s *Server) handleMeEmail(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"sent": false, "message": msg})
 		return
 	}
-	jsonResponse(w, map[string]any{"sent": true})
+	s.writeJSON(w, r, map[string]any{"sent": true})
 }
 
 // handleMeEmailConfirm — POST /api/v1/me/email/confirm {"token": "…"}:
@@ -111,12 +111,12 @@ func (s *Server) handleMeEmailConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 	switch web.ConfirmAccountEmail(r.Context(), s.accounts, s.logger, strings.TrimSpace(req.Token), info.UserID) {
 	case web.ConfirmConfirmed:
-		jsonResponse(w, map[string]any{"status": "confirmed"})
+		s.writeJSON(w, r, map[string]any{"status": "confirmed"})
 	case web.ConfirmError:
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "error"})
 	default:
-		jsonResponse(w, map[string]any{"status": "invalid"})
+		s.writeJSON(w, r, map[string]any{"status": "invalid"})
 	}
 }

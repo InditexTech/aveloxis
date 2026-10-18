@@ -156,27 +156,29 @@ func (s *PostgresStore) ListForgeIDChanges(ctx context.Context, pendingOnly bool
 	return out, rows.Err()
 }
 
-// repoForgeIDChangesAdopted returns one repository's ADOPTED changes,
-// oldest first — what the repository page shows.
-func (s *PostgresStore) repoForgeIDChangesAdopted(ctx context.Context, repoID int64) ([]ForgeIDChange, error) {
+// repoForgeIDChangesAdoptedBatch is the one reader of the adopted changes
+// (stage 1b: the stats batch carries them for every id; the single-id
+// reader it replaced had no other caller): per repository, in adoption
+// order. An id without changes is absent from the map.
+func (s *PostgresStore) repoForgeIDChangesAdoptedBatch(ctx context.Context, repoIDs []int64) (map[int64][]ForgeIDChange, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT repo_id, old_forge_id, new_forge_id, first_observed_at, last_observed_at,
 		       forge_created_at, adopted_at, adopted_by, note
 		  FROM aveloxis_data.repo_forge_id_changes
-		 WHERE repo_id = $1 AND adopted_at IS NOT NULL
-		 ORDER BY adopted_at, change_id`, repoID)
+		 WHERE repo_id = ANY($1) AND adopted_at IS NOT NULL
+		 ORDER BY repo_id, adopted_at, change_id`, repoIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []ForgeIDChange
+	out := map[int64][]ForgeIDChange{}
 	for rows.Next() {
 		var c ForgeIDChange
 		if err := rows.Scan(&c.RepoID, &c.OldForgeID, &c.NewForgeID, &c.FirstObservedAt, &c.LastObservedAt,
 			&c.ForgeCreatedAt, &c.AdoptedAt, &c.AdoptedBy, &c.Note); err != nil {
 			return nil, err
 		}
-		out = append(out, c)
+		out[c.RepoID] = append(out[c.RepoID], c)
 	}
 	return out, rows.Err()
 }

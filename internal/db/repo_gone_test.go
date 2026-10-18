@@ -150,28 +150,32 @@ func TestTimestampCleanupFailsClosed(t *testing.T) {
 	}
 }
 
-// GetRepoStats surfaces gone_at + metadata_as_of, and the queueless
+// The stats reader surfaces gone_at + metadata_as_of, and the queueless
 // live-count fallback is GATED: the aggregates live in the separate
-// queuelessLiveCounts method reached only from the ErrNoRows branch —
-// the v0.27.85 cached read stays the only tracked-repo path.
+// queuelessLiveCountsBatch method, reached only for the ids the queue read
+// did not return — the v0.27.85 cached read stays the only tracked-repo
+// path. (Stage 1b: the batch is the one reader; the single-id method and
+// its ErrNoRows branch are gone.)
 func TestRepoStatsGoneSurface(t *testing.T) {
 	src := readSourceFile(t, "repo_stats.go")
 	for _, needle := range []string{
 		`json:"gone_at,omitempty"`,
 		`json:"metadata_as_of,omitempty"`,
-		"repo_gone_at FROM aveloxis_data.repos",
-		"func (s *PostgresStore) queuelessLiveCounts(",
+		"r.repo_gone_at,",
+		"func (s *PostgresStore) queuelessLiveCountsBatch(",
 	} {
 		if !strings.Contains(src, needle) {
 			t.Errorf("repo_stats.go must contain %q", needle)
 		}
 	}
-	// The fallback call must sit inside the ErrNoRows branch of the
-	// queue-cached read.
-	i := strings.Index(src, "pgx.ErrNoRows) {")
-	j := strings.Index(src, "queuelessLiveCounts(ctx, repoID, st)")
+	body := extractFunctionBody(t, "repo_stats.go", "GetRepoStatsBatch")
+	i := strings.Index(body, "if len(missing) > 0 {")
+	j := strings.Index(body, "s.queuelessLiveCountsBatch(ctx, missing, result, seen)")
 	if i < 0 || j < 0 || j < i {
-		t.Error("queuelessLiveCounts must be called from the queue-row ErrNoRows branch only")
+		t.Error("queuelessLiveCountsBatch must be called for the missing ids only")
+	}
+	if strings.Count(src, "queuelessLiveCountsBatch(ctx, ") != 1 {
+		t.Error("the live-count fallback has one call site")
 	}
 }
 
@@ -314,7 +318,7 @@ func TestRepoStatsBatchGoneParityPins(t *testing.T) {
 	src := readSourceFile(t, "repo_stats.go")
 	for _, needle := range []string{
 		"func (s *PostgresStore) queuelessLiveCountsBatch(",
-		"queuelessLiveCountsBatch(ctx, missing, result)",
+		"queuelessLiveCountsBatch(ctx, missing, result, seen)",
 		"r.repo_gone_at", // both the queue-rooted query and the fallback carry it
 	} {
 		if !strings.Contains(src, needle) {
@@ -323,7 +327,7 @@ func TestRepoStatsBatchGoneParityPins(t *testing.T) {
 	}
 	// The fallback fires ONLY for ids the queue scan didn't cover.
 	i := strings.Index(src, "if len(missing) > 0 {")
-	j := strings.Index(src, "queuelessLiveCountsBatch(ctx, missing, result)")
+	j := strings.Index(src, "queuelessLiveCountsBatch(ctx, missing, result, seen)")
 	if i < 0 || j < 0 || j < i {
 		t.Error("the batch live-count fallback must be gated on the queue-missing subset only — the v0.27.85 cached read stays the sole tracked-repo path")
 	}

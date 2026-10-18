@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Database Package (internal/db) &mdash; Aveloxis 0.29.98 documentation</title>
+  <title>Database Package (internal/db) &mdash; Aveloxis 0.29.99 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=1bbfc8fa"></script>
+      <script src="../_static/documentation_options.js?v=bfc74ce3"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -332,6 +332,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#health-check">Health Check</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#public-fleet-stats">Public fleet stats</a></li>
@@ -1877,14 +1878,8 @@
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">UpsertPRReviewers</span></code></p></td>
 <td><p>Batch via <code class="docutils literal notranslate"><span class="pre">pgx.Batch</span></code></p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">InsertRepoDependencyBatch</span></code></p></td>
-<td><p>Batch dependency insert via <code class="docutils literal notranslate"><span class="pre">pgx.Batch</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">InsertRepoLibyearBatch</span></code></p></td>
-<td><p>Batch libyear insert via <code class="docutils literal notranslate"><span class="pre">pgx.Batch</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">InsertRepoLaborBatch</span></code></p></td>
-<td><p>Batch code complexity insert via <code class="docutils literal notranslate"><span class="pre">pgx.Batch</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ReplaceRepoLaborSnapshot</span></code></p></td>
+<td><p>Rotate-and-insert of the repo_labor snapshot in one transaction</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">InsertContributorRepoBatch</span></code></p></td>
 <td><p>Batch breadth events via <code class="docutils literal notranslate"><span class="pre">pgx.Batch</span></code></p></td>

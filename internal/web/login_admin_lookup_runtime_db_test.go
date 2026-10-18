@@ -167,7 +167,7 @@ func loginWithFailedAdminLookup(t *testing.T, dsn, provider string, returning bo
 		t.Fatal(err)
 	}
 
-	s := New(store, config.WebConfig{}, nil, "", logger) // the production config: DevMode false
+	s := New(store, config.WebConfig{}, "", logger) // the production config: DevMode false
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/auth/"+provider+"/callback?code=x&state=y", nil)
 	s.completeOAuthLogin(rec, req, db.OAuthUserInfo{Login: login, Provider: provider}, provider)

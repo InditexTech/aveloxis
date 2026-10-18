@@ -6,6 +6,8 @@ package platform
 import (
 	"net/url"
 	"strings"
+
+	"github.com/aveloxis/aveloxis/internal/model"
 )
 
 // GitLabAPIBaseForHost returns the configured GitLab API base URL (the
@@ -22,6 +24,25 @@ import (
 // GitHub tokens to such hosts). Once a client exists, HTTPClient keeps every
 // keyed request on its base host — redirects, pagination continuations and
 // GraphQL endpoints included (onClientHost, v0.29.12).
+// GitLabWebBaseForAPI derives the configured GitLab instance's web base
+// URL (model.NormalizeInstanceWebBase's form) from gitlab.base_url — the API
+// URL with its /api/v4 suffix removed — and true; ("", false) when no
+// instance is configured or the URL does not name one. On this release it
+// is the ONE hint ParseRepoURLWithHints and ParseOrgRef take (stage 1 of
+// summary/59); v0.30 replaces it with the instances registry.
+func GitLabWebBaseForAPI(configuredAPIBase string) (string, bool) {
+	trimmed := strings.TrimRight(strings.TrimSpace(configuredAPIBase), "/")
+	if trimmed == "" {
+		return "", false
+	}
+	trimmed = strings.TrimSuffix(trimmed, "/api/v4")
+	base, err := model.NormalizeInstanceWebBase(trimmed)
+	if err != nil {
+		return "", false
+	}
+	return base, true
+}
+
 func GitLabAPIBaseForHost(configuredAPIBase, host string) (string, bool) {
 	if host == "" || configuredAPIBase == "" {
 		return "", false

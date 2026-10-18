@@ -123,9 +123,9 @@ func TestRepoAffiliations_SinceAfterUntil(t *testing.T) {
 // from the original query request.
 func TestParseWindowDefaults(t *testing.T) {
 	r := httptest.NewRequest("GET", "/api/v1/repos/1/contributions/identities", nil)
-	since, until, ok := parseWindow(r)
-	if !ok {
-		t.Fatal("default window should be ok")
+	since, until, err := parseWindow(r)
+	if err != nil {
+		t.Fatalf("default window: %v", err)
 	}
 	// since should be ~2 years before now; until should be zero.
 	if since.IsZero() {
@@ -143,9 +143,9 @@ func TestParseWindowDefaults(t *testing.T) {
 func TestParseWindowInclusiveUntil(t *testing.T) {
 	r := httptest.NewRequest("GET",
 		"/api/v1/repos/1/contributions/identities?since=2024-01-01&until=2024-12-31", nil)
-	since, until, ok := parseWindow(r)
-	if !ok {
-		t.Fatal("window should be ok")
+	since, until, err := parseWindow(r)
+	if err != nil {
+		t.Fatalf("window: %v", err)
 	}
 	if since.Format("2006-01-02") != "2024-01-01" {
 		t.Errorf("since = %v, want 2024-01-01", since)
@@ -157,17 +157,21 @@ func TestParseWindowInclusiveUntil(t *testing.T) {
 	}
 }
 
-// TestParseWindowInvalidSinceFallsBackToDefault pins the
-// "malformed input doesn't error" behavior — matches the existing
-// /timeseries endpoint's resilience.
-func TestParseWindowInvalidSinceFallsBackToDefault(t *testing.T) {
-	r := httptest.NewRequest("GET",
-		"/api/v1/repos/1/contributions/identities?since=garbage", nil)
-	since, _, ok := parseWindow(r)
-	if !ok {
-		t.Fatal("garbage since should fall back, not error")
+// TestParseWindowInvalidDateIsAnError pins D7 (stage 1b): a value that is
+// not a YYYY-MM-DD date is an error the handler answers with 400 — it fell
+// back to the default before, which hid a client's typo as a default
+// window. The error names the parameter and the value.
+func TestParseWindowInvalidDateIsAnError(t *testing.T) {
+	for _, q := range []string{"since=garbage", "until=2024-02-30", "since=2024-1-1", "until=2024-13-01&since=2024-01-01"} {
+		r := httptest.NewRequest("GET", "/api/v1/repos/1/contributions/identities?"+q, nil)
+		_, _, err := parseWindow(r)
+		if err == nil || !strings.Contains(err.Error(), "want YYYY-MM-DD") {
+			t.Errorf("?%s: err = %v; want the date refusal", q, err)
+		}
 	}
-	if since.IsZero() {
-		t.Error("since should fall back to 2-year default, not zero")
+	// The order rule is unchanged, and distinct from a bad date.
+	r := httptest.NewRequest("GET", "/api/v1/repos/1/contributions/identities?since=2024-06-01&until=2024-01-01", nil)
+	if _, _, err := parseWindow(r); err == nil || !strings.Contains(err.Error(), "since must be before until") {
+		t.Errorf("since after until: err = %v", err)
 	}
 }

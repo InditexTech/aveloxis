@@ -240,8 +240,8 @@ func TestCachedRepoRoutesServeFromTheCache(t *testing.T) {
 // reads from its body; TestEveryQueryReaderIsScannedOrReviewed requires
 // every other query reader to be reviewed as serving uncached routes.
 var helperFiles = map[string]string{
-	"parseWindow":              "contributions.go",
-	"parseDateRange":           "metrics.go",
+	"parseWindow":              "page_query.go",
+	"parseDateRange":           "page_query.go",
 	"parseTopContributorsArgs": "page_query.go",
 	"parseSBOMArgs":            "page_query.go",
 }

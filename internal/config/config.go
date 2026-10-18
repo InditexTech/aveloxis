@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +39,8 @@ func defaultCloneDir() string {
 
 // Config is the top-level Aveloxis configuration.
 type Config struct {
+	loadWarnings []string // LoadWarnings: removed keys the file still carries
+
 	Database DatabaseConfig `json:"database"`
 	GitHub   PlatformConfig `json:"github"`
 	GitLab   PlatformConfig `json:"gitlab"`
@@ -224,11 +227,22 @@ func (d DatabaseConfig) ConnectionStringWithAppName(name string) string {
 type PlatformConfig struct {
 	APIKeys []string `json:"api_keys"`
 	BaseURL string   `json:"base_url,omitempty"` // override for self-hosted instances
-
-	// GitLabHosts lists additional hostnames that should be recognized as
-	// GitLab instances (for self-hosted). Only relevant for GitLab config.
-	GitLabHosts []string `json:"gitlab_hosts,omitempty"`
 }
+
+// removedKeys are configuration keys that no longer exist, each with what
+// replaced it. The loader ignores unknown keys silently (json.Unmarshal),
+// so a file still carrying one is reported through LoadWarnings — an
+// operator who relied on the documented behaviour learns that it never
+// ran (stage 1 of summary/59, N15: gitlab.gitlab_hosts was read nowhere;
+// the configured gitlab.base_url names the instance a URL is classified
+// against).
+var removedKeys = map[string]string{
+	"gitlab.gitlab_hosts": "the GitLab instance is gitlab.base_url; a repository URL under its web URL is classified as GitLab (the key was never read)",
+}
+
+// LoadWarnings are the warnings Load collected about the file: one line
+// per removed key it still carries. The caller logs them at WARN.
+func (c *Config) LoadWarnings() []string { return c.loadWarnings }
 
 // WebConfig configures the web GUI and OAuth.
 type WebConfig struct {
@@ -1575,7 +1589,29 @@ func Load(path string) (*Config, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
+	cfg.loadWarnings = removedKeyWarnings(data)
 	return cfg, nil
+}
+
+// removedKeyWarnings names every removed key the raw file still carries.
+func removedKeyWarnings(data []byte) []string {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	var out []string
+	for key, replacement := range removedKeys {
+		block, field, _ := strings.Cut(key, ".")
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw[block], &fields); err != nil {
+			continue
+		}
+		if _, present := fields[field]; present {
+			out = append(out, fmt.Sprintf("config key %s is ignored — it was removed: %s", key, replacement))
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ErrNotFound is Load's answer to a config file that does not exist — the

@@ -71,7 +71,7 @@ func TestAddURLWithCredentialsIsRefusedAndNotLogged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := New(store, config.WebConfig{}, nil, "", logger)
+	s := New(store, config.WebConfig{}, "", logger)
 	s.sessions["probe"] = &Session{UserID: uid, LoginName: login, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
 	post := func(path string, form url.Values) *httptest.ResponseRecorder {
 		t.Helper()

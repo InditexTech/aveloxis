@@ -282,8 +282,9 @@ The rule:
    only; indexes, backfills and seeds are the author's responsibility and the reviewer's.
 3. **Stages are never reordered, and an existing step moves only with the step-order golden**
    (`scripts/migrate_step_order.txt`, the execution-ordered list of every step label, column add and
-   CONCURRENTLY index; its test accepts insertions and deletions of lines and fails on any reorder) **and a
-   fresh-empty-database migrate** (`TestRunMigrationsOnFreshDB`) in the same change. A "tidy" move between stages
+   CONCURRENTLY index; its test requires the file to equal today's execution order exactly, naming the first
+   position that differs — a new step is added at its line, a removed step deletes its line, a moved step fails
+   until the golden is regenerated) **and a fresh-empty-database migrate** (`TestRunMigrationsOnFreshDB`) in the same change. A "tidy" move between stages
    is a reorder.
 4. Renaming a stage function to match its subject is a later pure move (G3-proven), never part of a step change.
 
