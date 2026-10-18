@@ -73,8 +73,7 @@ var unboundedDataBodyReads = map[string]struct {
 	srctest.SiteKey("internal/mailinglist", "get"):             {1, "O5 data body: limit pending the operator decision"},
 	srctest.SiteKey("internal/mailinglist", "FetchMonth"):      {1, "O5 data body: limit pending the operator decision (a month's mbox)"},
 	srctest.SiteKey("internal/platform", "GraphQLAt"):          {1, "O5 data body: limit pending the operator decision (a GraphQL page; giant repositories)"},
-	srctest.SiteKey("internal/web", "handleGitHubCallback"):    {1, "O5 data body: limit pending the operator decision (the OAuth token and user answers)"},
-	srctest.SiteKey("internal/web", "handleGitLabCallback"):    {1, "O5 data body: limit pending the operator decision (the OAuth token and user answers)"},
+	srctest.SiteKey("internal/web", "fetchOAuthUser"):          {1, "O5 data body: limit pending the operator decision (the OAuth user answer; the one head of both callbacks since 0.29.102)"},
 	srctest.SiteKey("internal/mailinglist", "parseRFC822"):     {1, "not a network response: a mail message already parsed from bytes held in memory"},
 }
 

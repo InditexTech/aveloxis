@@ -35,6 +35,7 @@ var templateOrder = []string{
 	"monitor.html",
 	"compareSearchWidget.html",
 	"paginationNav.html",
+	"remove_confirm.html",
 }
 
 var allTemplates = func() string {

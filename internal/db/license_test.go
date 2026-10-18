@@ -83,9 +83,10 @@ func TestUnknownLicenseIsNotOSI(t *testing.T) {
 // "Unknown" license rows with a visual indicator (italic or color) so
 // they stand out from named licenses.
 func TestLicensePageShowsUnknownDistinctly(t *testing.T) {
-	tmpl := srctest.Read(t, "internal/web/templates/repo_detail.html")
-	// The license rendering JavaScript should check for "Unknown" and
-	// style it distinctly (e.g., italic, color, or a class).
+	// The license rendering JavaScript (internal/static/repo-detail.js since
+	// 0.29.102) should check for "Unknown" and style it distinctly (e.g.,
+	// italic, color, or a class).
+	tmpl := srctest.Read(t, "internal/static/repo-detail.js")
 	if !strings.Contains(tmpl, "Unknown") || !strings.Contains(tmpl, "italic") {
 		t.Error("license table should render 'Unknown' licenses with distinct styling (e.g., italic)")
 	}

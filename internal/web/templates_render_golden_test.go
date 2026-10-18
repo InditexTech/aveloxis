@@ -113,24 +113,26 @@ var renderFixtures = map[string]any{
 		"Repo":  map[string]any{"GitURL": "https://github.com/example/golden", "Name": "golden", "Owner": "example"},
 		"Stats": map[string]any{"CriticalVulns": 1, "GatheredCommits": 10, "GatheredIssues": 3, "GatheredPRs": 4, "Vulnerabilities": 5, "VulnsVersionUnknown": 2}},
 	"compare": map[string]any{"Session": goldenSess, "RepoIDs": "2,3", "Groups": []map[string]any{{"GroupID": 1, "Name": "Golden group"}}},
-	"monitor": map[string]any{"Session": goldenSess, "Page": 2, "TotalPages": 3, "Total": 3, "Query": "gold", "PageWindow": []int{1, 2, 3},
+	"monitor": map[string]any{"Session": goldenSess, "CSRF": "golden-csrf", "Page": 2, "TotalPages": 3, "Total": 3, "Query": "gold", "PageWindow": []int{1, 2, 3},
 		"Stats": map[string]int{"total": 3, "queued": 1, "collecting": 1, "draining": 1},
 		"Jobs": []map[string]any{{"RowNum": 1, "RepoID": 2, "Repo": "golden", "Owner": "example", "Plat": "GitHub", "Status": "queued", "Priority": 0,
 			"Worker": "kate-1", "Due": "Oct 17 12:30", "LastRun": "Oct 16 12:30", "ErrInfo": "",
 			"GatheredCommits": 10, "GatheredIssues": 3, "GatheredPRs": 4, "MetaCommits": 10, "MetaIssues": 3, "MetaPRs": 4}}},
 	"compareSearchWidget": map[string]any{"Prefix": "dash"},
+	"remove_confirm":      map[string]any{"Session": goldenSess, "GroupID": int64(7), "GroupName": "Golden group", "RepoID": int64(2), "RepoOwner": "example", "RepoName": "golden"},
 	"paginationNav":       map[string]any{"BasePath": "/monitor", "Page": 2, "TotalPages": 5, "PageWindow": []int{1, 2, 3, 4, 5}, "Query": "gold"},
 }
 
 // renderMarkers: text each page must contain when its fixture reaches the
 // branches the golden is meant to cover.
 var renderMarkers = map[string][]string{
-	"login":         {"/auth/github", "/auth/gitlab"},
-	"dashboard":     {"Golden group", "pending@example.org", "awaiting administrator approval"},
-	"group":         {`href="/groups/1`, "example/golden", "https://github.com/example", "badge-github", "2026-10-17 12:30", "?page=3", "repository is waiting for an administrator", "That organization is waiting for an administrator"},
-	"repo_detail":   {"/groups/1/repos/2/sbom", "version unknown"},
-	"compare":       {"2,3"},
-	"monitor":       {"golden", "kate-1", "?page=3", "/monitor/prioritize/2"},
-	"paginationNav": {"/monitor?page=3", "q=gold"},
-	"account_email": {"golden notice"},
+	"login":          {"/auth/github", "/auth/gitlab"},
+	"dashboard":      {"Golden group", "pending@example.org", "awaiting administrator approval"},
+	"group":          {`href="/groups/1`, "example/golden", "https://github.com/example", "badge-github", "2026-10-17 12:30", "?page=3", "repository is waiting for an administrator", "That organization is waiting for an administrator"},
+	"repo_detail":    {"/groups/1/repos/2/sbom", "version unknown"},
+	"compare":        {"2,3"},
+	"monitor":        {"golden", "kate-1", "?page=3", "/monitor/prioritize/2", `name="csrf_token" value="golden-csrf"`},
+	"remove_confirm": {"example/golden", "Golden group", "/groups/remove-repo", `name="repo_id" value="2"`},
+	"paginationNav":  {"/monitor?page=3", "q=gold"},
+	"account_email":  {"golden notice"},
 }

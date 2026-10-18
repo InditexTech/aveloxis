@@ -5,8 +5,10 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -18,6 +20,7 @@ import (
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 	"github.com/aveloxis/aveloxis/internal/mailer"
 	"github.com/aveloxis/aveloxis/internal/platform"
+	"golang.org/x/oauth2"
 )
 
 // oauthCallbackTimeout bounds the OAuth callback's forge round trips AS A
@@ -34,19 +37,32 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// from user A to user B without manually clearing cookies in
 	// DevTools. The /logout handler does the cookie/session cleanup;
 	// this template flag just makes the affordance discoverable.
-	s.render(w, "login", map[string]any{
+	s.render(w, r, "login", map[string]any{
 		"HasGitHub":  s.ghOAuth != nil,
 		"HasGitLab":  s.glOAuth != nil,
-		"HasSession": s.getSession(r) != nil,
+		"HasSession": s.hasSession(r),
 	})
 }
 
+// hasSession is the login page's one question of the request: a lookup
+// failure is logged and read as "no session" HERE ONLY — the page is
+// public and only decides whether to show the sign-out form.
+func (s *Server) hasSession(r *http.Request) bool {
+	sess, err := s.getSession(r)
+	if err != nil && !httpserver.RequestEnded(r.Context(), err) {
+		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "public page: session lookup failed; treated as no session", "error", err)
+	}
+	return sess != nil
+}
+
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("aveloxis_session")
-	if err == nil {
-		s.sessionMu.Lock()
-		delete(s.sessions, cookie.Value)
-		s.sessionMu.Unlock()
+	if cookie, err := r.Cookie("aveloxis_session"); err == nil {
+		// The session row and every Bearer token /auth/token minted from
+		// it (B4). A failure is logged; the cookies are cleared regardless
+		// — the browser is signed out, and the row expires on its own.
+		if err := s.store.DeleteWebSession(r.Context(), cookie.Value); err != nil && !httpserver.RequestEnded(r.Context(), err) {
+			httpserver.LogFailure(r.Context(), s.logger, slog.LevelError, err, "logout: the session row could not be deleted — the cookie is cleared; the row expires on its own and the tokens minted from it stay valid until they expire", "error", err)
+		}
 	}
 	http.SetCookie(w, s.expireCookie("aveloxis_session"))
 	// v0.20.13: also expire oauth_state defensively. A user who
@@ -106,96 +122,117 @@ func safeNextTarget(next, spaURL string) string {
 // stashNext records a login flow's ?next= destination for the callback.
 func (s *Server) stashNext(w http.ResponseWriter, r *http.Request) {
 	if next := r.URL.Query().Get("next"); next != "" {
-		http.SetCookie(w, &http.Cookie{
-			Name: "oauth_next", Value: next, Path: "/",
-			MaxAge: 300, HttpOnly: true, Secure: !s.cfg.DevMode, SameSite: http.SameSiteLaxMode,
-		})
+		http.SetCookie(w, s.cookie("oauth_next", next, 300))
 	}
 }
 
-// clearNext expires the oauth_next cookie once consumed. The expiry
-// cookie carries the same attributes as stashNext's original — the
-// house rule (HttpOnly always; Secure unless dev_mode) applies to
-// every Set-Cookie we emit, deletions included (v0.27.10).
+// clearNext expires the oauth_next cookie once consumed (the one
+// constructor's deletion form; the house rule applies to deletions too,
+// v0.27.10).
 func (s *Server) clearNext(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name: "oauth_next", Value: "", Path: "/",
-		MaxAge: -1, HttpOnly: true, Secure: !s.cfg.DevMode, SameSite: http.SameSiteLaxMode,
-	})
+	http.SetCookie(w, s.expireCookie("oauth_next"))
 }
 
-func (s *Server) handleGitHubAuth(w http.ResponseWriter, r *http.Request) {
-	if s.ghOAuth == nil {
-		http.Error(w, "GitHub OAuth not configured", http.StatusBadRequest)
+// oauthProvider is one sign-in flow's constants (0.29.102, stage 2d of
+// summary/59, WEB-14): built once in New, read by beginOAuth and
+// fetchOAuthUser. The two flows used to repeat the state check, the
+// bounded exchange, the request build, Do, ReadAll, the non-200 arm, the
+// size note and the decode line for line — every fix (the C9 body read,
+// the bound, the size note) had to be made twice.
+type oauthProvider struct {
+	name    string            // "github" / "gitlab": log attributes, phase labels, size notes
+	label   string            // "GitHub" / "GitLab": the words the browser sees
+	cfg     *oauth2.Config    // nil when the provider is not configured
+	userURL string            // the identity read after the exchange
+	headers map[string]string // request headers the forge requires
+}
+
+// beginOAuth starts a sign-in: the state nonce in its cookie, the SPA's
+// ?next= stashed, the browser sent to the provider's authorize URL.
+func (s *Server) beginOAuth(w http.ResponseWriter, r *http.Request, p *oauthProvider) {
+	if p.cfg == nil {
+		http.Error(w, p.label+" OAuth not configured", http.StatusBadRequest)
 		return
 	}
 	state := generateToken()
 	http.SetCookie(w, s.oauthStateCookie(state))
 	s.stashNext(w, r)
-	http.Redirect(w, r, s.ghOAuth.AuthCodeURL(state), http.StatusFound)
+	http.Redirect(w, r, p.cfg.AuthCodeURL(state), http.StatusFound)
 }
 
-func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
-	if s.ghOAuth == nil {
-		http.Error(w, "GitHub OAuth not configured", http.StatusBadRequest)
-		return
+// fetchOAuthUser is the shared head of both callbacks: the state check,
+// the code exchange, the identity read (built with the bounded ctx the
+// caller owns, sent with client.Do), the body read (part of the request:
+// a forge that sends the headers and stalls the body hits the bound HERE,
+// and a dropped error sent the partial body on as if the forge had sent
+// it — PR #218 review C9), the non-200 arm, the size note (a 200 is the
+// data answer; an error body is not a size — fix review V3) and the
+// decode into out. ok=false means the answer was written. The client and
+// the raw body come back for the caller's own reads and logs.
+func (s *Server) fetchOAuthUser(w http.ResponseWriter, r *http.Request, ctx context.Context, p *oauthProvider, out any) (client *http.Client, body []byte, ok bool) {
+	if p.cfg == nil {
+		http.Error(w, p.label+" OAuth not configured", http.StatusBadRequest)
+		return nil, nil, false
 	}
-
-	// Verify state.
 	stateCookie, err := r.Cookie("oauth_state")
 	if err != nil || stateCookie.Value != r.URL.Query().Get("state") {
 		http.Error(w, "Invalid OAuth state", http.StatusBadRequest)
-		return
+		return nil, nil, false
 	}
-
-	// Exchange code for token. Bounded (batch 7c review round 3): oauth2
-	// builds on http.DefaultClient, which has no timeout, so a stalled forge
-	// held the callback for as long as the browser waited.
-	ctx, cancel := context.WithTimeout(r.Context(), oauthCallbackTimeout)
-	defer cancel()
-	token, err := s.ghOAuth.Exchange(ctx, r.URL.Query().Get("code"))
+	token, err := p.cfg.Exchange(ctx, r.URL.Query().Get("code"))
 	if err != nil {
-		s.logOAuthFailure(r.Context(), "github", "exchange", err)
+		s.logOAuthFailure(r.Context(), p.name, "exchange", err)
 		http.Error(w, "OAuth exchange failed", http.StatusInternalServerError)
-		return
+		return nil, nil, false
 	}
-
-	// Get user info from GitHub.
-	client := s.ghOAuth.Client(ctx, token)
-	userReq, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user", nil)
+	client = p.cfg.Client(ctx, token)
+	userReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.userURL, nil)
 	if err != nil {
-		s.logger.Error("building the GitHub user request failed", "error", err)
+		s.logger.Error("building the OAuth user request failed", "provider", p.name, "error", err)
 		http.Error(w, "Failed to get user info", http.StatusInternalServerError)
-		return
+		return nil, nil, false
 	}
-	userReq.Header.Set("X-GitHub-Api-Version", platform.GitHubAPIVersion) // every GitHub REST request pins the version (worklist item 15)
+	for k, v := range p.headers {
+		userReq.Header.Set(k, v)
+	}
 	resp, err := client.Do(userReq)
 	if err != nil {
-		s.logOAuthFailure(r.Context(), "github", "user", err)
+		s.logOAuthFailure(r.Context(), p.name, "user", err)
 		http.Error(w, "Failed to get user info", http.StatusInternalServerError)
-		return
+		return nil, nil, false
 	}
 	defer resp.Body.Close()
-	// The body read is part of the user request: a forge that sends the
-	// headers and stalls the body hits the callback bound HERE, and a
-	// dropped error sent the partial body on to the decode as if the forge
-	// had sent it (PR #218 review C9).
-	body, err := io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	if err != nil {
-		s.logOAuthFailure(r.Context(), "github", "user", err)
+		s.logOAuthFailure(r.Context(), p.name, "user", err)
 		http.Error(w, "Failed to get user info", http.StatusInternalServerError)
-		return
+		return nil, nil, false
 	}
-
 	if resp.StatusCode != http.StatusOK {
-		s.logger.Error("github /user returned non-200",
-			"status", resp.StatusCode, "body", platform.TruncateForLog(body, 200))
-		http.Error(w, "GitHub user fetch failed", http.StatusBadGateway)
-		return
+		s.logger.Error("OAuth /user returned non-200",
+			"provider", p.name, "status", resp.StatusCode, "body", platform.TruncateForLog(body, 200))
+		http.Error(w, p.label+" user fetch failed", http.StatusBadGateway)
+		return nil, nil, false
 	}
-	// A 200 is the data answer; an error body is not a size (fix review V3).
-	platform.NoteResponseSize(s.logger, "oauth-github-user", userReq.URL.String(), int64(len(body)))
+	platform.NoteResponseSize(s.logger, "oauth-"+p.name+"-user", p.userURL, int64(len(body)))
+	if err := json.Unmarshal(body, out); err != nil {
+		s.logger.Error("OAuth /user response unmarshal failed", "provider", p.name, "error", err)
+		http.Error(w, p.label+" user payload invalid", http.StatusBadGateway)
+		return nil, nil, false
+	}
+	return client, body, true
+}
 
+func (s *Server) handleGitHubAuth(w http.ResponseWriter, r *http.Request) {
+	s.beginOAuth(w, r, s.github)
+}
+
+func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
+	// Bounded (batch 7c review round 3): oauth2 builds on http.DefaultClient,
+	// which has no timeout, so a stalled forge held the callback for as long
+	// as the browser waited. One bound for the exchange, /user and /user/emails.
+	ctx, cancel := context.WithTimeout(r.Context(), oauthCallbackTimeout)
+	defer cancel()
 	var ghUser struct {
 		ID        int64  `json:"id"`
 		Login     string `json:"login"`
@@ -203,9 +240,8 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		Email     string `json:"email"`
 		AvatarURL string `json:"avatar_url"`
 	}
-	if err := json.Unmarshal(body, &ghUser); err != nil {
-		s.logger.Error("github /user response unmarshal failed", "error", err)
-		http.Error(w, "GitHub user payload invalid", http.StatusBadGateway)
+	client, body, ok := s.fetchOAuthUser(w, r, ctx, s.github, &ghUser)
+	if !ok {
 		return
 	}
 	if strings.TrimSpace(ghUser.Login) == "" {
@@ -327,21 +363,18 @@ func (s *Server) completeOAuthLogin(w http.ResponseWriter, r *http.Request, info
 		}
 	}
 
-	// Read fresh admin flag — set to TRUE for the first-ever user
-	// (auto-promotion in SignInOAuthUser) and stays whatever the admin
-	// user-management page set it to thereafter. A failed lookup is logged
-	// and the session is a non-admin one: the user can sign in again once
-	// the store answers (worklist follow-up 6).
-	isAdmin, err := s.store.IsUserAdmin(r.Context(), userID)
-	if httpserver.RequestEnded(r.Context(), err) {
-		return // the browser left mid-callback: nothing to serve, not a failure
-	}
+	// No privilege is read here (0.29.102, D-1): the gate reads the users
+	// row on every request, so the first user's auto-promotion and every
+	// later change on the user-management page apply at once.
+	sessToken, err := s.createSession(r.Context(), userID)
 	if err != nil {
-		s.logger.Error("admin flag lookup failed at login — session created as non-admin", "user_id", userID, "error", err)
+		if !httpserver.RequestEnded(r.Context(), err) {
+			s.serverError(w, r, "completeOAuthLogin", fmt.Errorf("create web session for user %d: %w", userID, err))
+		}
+		return
 	}
-
-	sessToken := s.createSession(userID, info.Login, info.AvatarURL, info.Provider, isAdmin)
 	http.SetCookie(w, s.sessionCookie(sessToken))
+	http.SetCookie(w, s.cookie(csrfCookieName, rand.Text(), int(db.WebSessionLifetime.Seconds()))) // the form token (stage 2f)
 	dest := s.postLoginRedirect(r)
 	s.clearNext(w)
 	http.Redirect(w, r, dest, http.StatusFound)
@@ -401,80 +434,12 @@ func fetchGitHubPrimaryEmail(reqCtx, ctx context.Context, client *http.Client, l
 }
 
 func (s *Server) handleGitLabAuth(w http.ResponseWriter, r *http.Request) {
-	if s.glOAuth == nil {
-		http.Error(w, "GitLab OAuth not configured", http.StatusBadRequest)
-		return
-	}
-	state := generateToken()
-	http.SetCookie(w, s.oauthStateCookie(state))
-	s.stashNext(w, r)
-	http.Redirect(w, r, s.glOAuth.AuthCodeURL(state), http.StatusFound)
+	s.beginOAuth(w, r, s.gitlab)
 }
 
 func (s *Server) handleGitLabCallback(w http.ResponseWriter, r *http.Request) {
-	if s.glOAuth == nil {
-		http.Error(w, "GitLab OAuth not configured", http.StatusBadRequest)
-		return
-	}
-
-	stateCookie, err := r.Cookie("oauth_state")
-	if err != nil || stateCookie.Value != r.URL.Query().Get("state") {
-		http.Error(w, "Invalid OAuth state", http.StatusBadRequest)
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(r.Context(), oauthCallbackTimeout) // bounded, see the GitHub callback
 	defer cancel()
-	token, err := s.glOAuth.Exchange(ctx, r.URL.Query().Get("code"))
-	if err != nil {
-		s.logOAuthFailure(r.Context(), "gitlab", "exchange", err)
-		http.Error(w, "OAuth exchange failed", http.StatusInternalServerError)
-		return
-	}
-
-	glBase := s.cfg.GitLabBaseURL
-	if glBase == "" {
-		glBase = "https://gitlab.com"
-	}
-	client := s.glOAuth.Client(ctx, token)
-	// The bound must travel on the REQUEST: oauth2's client copies
-	// http.DefaultClient's zero Timeout and uses ctx to refresh a token
-	// and to select the base client (oauth2.HTTPClient), never as a
-	// per-request deadline, so a plain client.Get ran unbounded (batch 7c
-	// review round 4).
-	userReq, err := http.NewRequestWithContext(ctx, http.MethodGet, glBase+"/api/v4/user", nil)
-	if err != nil {
-		s.logger.Error("building the GitLab user request failed", "error", err)
-		http.Error(w, "Failed to get user info", http.StatusInternalServerError)
-		return
-	}
-	resp, err := client.Do(userReq)
-	if err != nil {
-		s.logOAuthFailure(r.Context(), "gitlab", "user", err)
-		http.Error(w, "Failed to get user info", http.StatusInternalServerError)
-		return
-	}
-	defer resp.Body.Close()
-	// The body read is part of the user request: a forge that sends the
-	// headers and stalls the body hits the callback bound HERE, and a
-	// dropped error sent the partial body on to the decode as if the forge
-	// had sent it (PR #218 review C9).
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		s.logOAuthFailure(r.Context(), "gitlab", "user", err)
-		http.Error(w, "Failed to get user info", http.StatusInternalServerError)
-		return
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		s.logger.Error("gitlab /user returned non-200",
-			"status", resp.StatusCode, "body", platform.TruncateForLog(body, 200))
-		http.Error(w, "GitLab user fetch failed", http.StatusBadGateway)
-		return
-	}
-	// A 200 is the data answer; an error body is not a size (fix review V3).
-	platform.NoteResponseSize(s.logger, "oauth-gitlab-user", glBase+"/api/v4/user", int64(len(body)))
-
 	var glUser struct {
 		ID        int64  `json:"id"`
 		Username  string `json:"username"`
@@ -482,9 +447,8 @@ func (s *Server) handleGitLabCallback(w http.ResponseWriter, r *http.Request) {
 		Email     string `json:"email"`
 		AvatarURL string `json:"avatar_url"`
 	}
-	if err := json.Unmarshal(body, &glUser); err != nil {
-		s.logger.Error("gitlab /user response unmarshal failed", "error", err)
-		http.Error(w, "GitLab user payload invalid", http.StatusBadGateway)
+	_, body, ok := s.fetchOAuthUser(w, r, ctx, s.gitlab, &glUser)
+	if !ok {
 		return
 	}
 	if strings.TrimSpace(glUser.Username) == "" {
@@ -499,7 +463,7 @@ func (s *Server) handleGitLabCallback(w http.ResponseWriter, r *http.Request) {
 		Name:       glUser.Name,
 		AvatarURL:  glUser.AvatarURL,
 		GLUserID:   glUser.ID,
-		GLHost:     glBase, // the instance that answered; the store normalizes it (GitLabOAuthHost)
+		GLHost:     s.cfg.GitLabBaseURL, // the instance that answered (New took the one base); the store normalizes it (GitLabOAuthHost)
 		GLUsername: glUser.Username,
 		Provider:   "gitlab",
 		SignupAddr: s.SignupAddress(r), // v0.29.89: for the sign-up quota

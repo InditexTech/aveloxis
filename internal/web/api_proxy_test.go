@@ -28,7 +28,7 @@ func TestTemplatesHaveNoHardcodedLocalhostAPI(t *testing.T) {
 		"https://127.0.0.1:8383",
 	}
 	for _, f := range forbidden {
-		if strings.Contains(allTemplates, f) {
+		if strings.Contains(pageSources(t), f) {
 			t.Errorf("templates contain hardcoded API host %q — use relative /api/v1/... URLs instead so the browser always fetches from the page's own origin (same-origin, no CORS, works behind nginx/TLS)", f)
 		}
 	}
@@ -38,7 +38,7 @@ func TestTemplatesHaveNoHardcodedLocalhostAPI(t *testing.T) {
 // call /api/v1/repos/search — the endpoint that drives the autocomplete
 // dropdown. Without a search fetch, the dropdown stays empty.
 func TestTemplatesUseRelativeAPIFetches(t *testing.T) {
-	if !strings.Contains(allTemplates, "/api/v1/repos/search") {
+	if !strings.Contains(pageScripts(t)["repo-search.js"], "/api/v1/repos/search") {
 		t.Error("templates must call /api/v1/repos/search for the compare autocomplete dropdown")
 	}
 	// At least one API fetch must be wired. More thorough shape checks live
@@ -79,9 +79,10 @@ func TestAPIProxyForwardsToInternalURL(t *testing.T) {
 	}
 
 	// Authenticated request: must proxy.
-	token := s.createSession(1, "tester", "", "github", false)
+	token := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: time.Now().Add(time.Hour)})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/repos/search?q=av", nil)
 	req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+	csrf(req) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
 
@@ -107,10 +108,11 @@ func TestAPIProxyReturns502WhenBackendDown(t *testing.T) {
 	// Point at a port nothing is listening on. 127.0.0.1:1 is almost always
 	// closed; the proxy should fail immediately.
 	s := newTestServerWithAPIURL(t, "http://127.0.0.1:1")
-	token := s.createSession(1, "tester", "", "github", false)
+	token := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: time.Now().Add(time.Hour)})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/repos/search?q=a", nil)
 	req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+	csrf(req) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 
 	done := make(chan struct{})
@@ -143,8 +145,9 @@ func TestAPIProxyDefaultURLFallback(t *testing.T) {
 // hits a non-/api route, it will nil-deref and we'll fix the test.
 func newTestServerWithAPIURL(t *testing.T, apiURL string) *Server {
 	t.Helper()
-	return New(nil, config.WebConfig{
+	s := New(nil, config.WebConfig{
 		Addr:           ":0",
 		APIInternalURL: apiURL,
 	}, "", slog.Default())
+	return s
 }

@@ -76,10 +76,17 @@ type OAuthUserInfo struct {
 // ID is an identity only on its own instance (final review round 2 F4: two
 // self-hosted instances number their users from 1, so moving
 // web.gitlab_base_url handed instance B's user 7 instance A's user 7).
+// It is NOT model.NormalizeInstanceWebBase (which drops www., a default
+// port and collapses the path): the stored key is frozen on every account
+// row since 0.29.69, and a respelling of web.gitlab_base_url is documented
+// as a move to another instance (configuration.md); the two rules meet on
+// one input only at config.Load, which admits by the model's rule and
+// stores by this one (0.29.101 round 1, declined: a new spelling would
+// re-key every GitLab account).
 func GitLabOAuthHost(base string) string {
 	h := strings.TrimRight(strings.ToLower(strings.TrimSpace(base)), "/")
 	if h == "" {
-		return "https://gitlab.com"
+		return platform.PublicGitLabWebBase
 	}
 	return h
 }

@@ -95,9 +95,10 @@ func TestAdminAddRequestReapproveResumesProcessing(t *testing.T) {
 	// row for every decision (stage 1 of summary/59), and the requester
 	// must stay a non-admin for its adds to pend.
 	adminUID := seedAdminAccount(t, store, login+"-admin")
-	s.sessions["admin"] = &Session{UserID: adminUID, LoginName: login + "-admin", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
+	plantSession(t, s, "admin", &Session{UserID: adminUID, LoginName: login + "-admin", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
 	r := httptest.NewRequest(http.MethodPost, "/admin/add-requests/"+strconv.FormatInt(out.RequestID, 10)+"/approve", nil)
 	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin"})
+	csrf(r) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 	if w.Code != http.StatusFound {
@@ -128,6 +129,7 @@ func TestAdminAddRequestReapproveResumesProcessing(t *testing.T) {
 	}
 	rr := httptest.NewRequest(http.MethodPost, "/admin/add-requests/"+strconv.FormatInt(rejected.RequestID, 10)+"/approve", nil)
 	rr.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin"})
+	csrf(rr) // the session's form token (stage 2f)
 	rw := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rw, rr)
 	if rw.Code != http.StatusFound {
@@ -200,11 +202,12 @@ func TestAdminOrgReapproveDoesNotRescan(t *testing.T) {
 	// row for every decision (stage 1 of summary/59), and the requester
 	// must stay a non-admin for its adds to pend.
 	adminUID := seedAdminAccount(t, store, login+"-admin")
-	s.sessions["admin"] = &Session{UserID: adminUID, LoginName: login + "-admin", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
+	plantSession(t, s, "admin", &Session{UserID: adminUID, LoginName: login + "-admin", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
 	approve := func() {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodPost, "/admin/add-requests/"+strconv.FormatInt(out.RequestID, 10)+"/approve", nil)
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		if w.Code != http.StatusFound {

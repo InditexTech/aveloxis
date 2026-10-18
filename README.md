@@ -371,7 +371,6 @@ A minimal example to get started; see `aveloxis.example.json` for an all-fields 
   "web": {
     "addr": ":8082",
     "base_url": "http://localhost:8082",
-    "session_secret": "change-me-to-a-random-string",
     "dev_mode": false,
     "github_client_id": "your-github-oauth-app-client-id",
     "github_client_secret": "your-github-oauth-app-client-secret"
@@ -700,13 +699,13 @@ The web GUI (`aveloxis web`) provides a browser-based interface for managing rep
 - **Breadcrumb navigation:** Home / Group Name hierarchy. 25-per-page pagination with 5-page sliding window and case-insensitive search.
 - **Org tracking:** When a user adds an org, a scheduler task scans it every 4 hours, discovers new repos, and queues them automatically.
 - **URL validation:** All URLs are validated before adding. GitHub and GitLab URLs require owner/repo path. Other URLs are accepted as git-only repos.
-- **Session management:** Sessions are in-memory with 24-hour expiry. Restarting `aveloxis web` clears all sessions.
+- **Session management:** sessions are rows of the database (hashed; 24-hour expiry). Restarting `aveloxis web` signs nobody out; signing out ends the API tokens that sign-in minted.
 
 The web GUI runs as a separate process from `aveloxis serve` — they share the same database but do not need to run on the same host. **Note:** `aveloxis web` does NOT run migrations. Use `aveloxis migrate` or `aveloxis serve` for that.
 
 ### Interactive Visualizations
 
-The web GUI includes built-in interactive visualizations powered by [Chart.js](https://www.chartjs.org/), loaded from CDN with no build step. Requires the REST API (`aveloxis api`) to be running alongside `aveloxis web`.
+The web GUI includes built-in interactive visualizations powered by [Chart.js](https://www.chartjs.org/), served by the web process itself (vendored since 0.29.102; no CDN, no build step). Requires the REST API (`aveloxis api`) to be running alongside `aveloxis web`.
 
 **Repository detail page** — clicking a repo name in a group opens `/groups/{gid}/repos/{rid}` with:
 - **4 weekly time-series charts:** Commits/week, PRs Opened/week, PRs Merged/week, Issues/week (last 2 years by default)

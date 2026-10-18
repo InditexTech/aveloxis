@@ -5,7 +5,7 @@
 <div class="nav-user">
 {{if .Session.AvatarURL}}<img src="{{.Session.AvatarURL}}" alt="">{{end}}
 <span>{{.Session.LoginName}}</span>
-<a href="/logout">Logout</a>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="nav-link">Logout</button></form>
 </div>
 </div>
 <div class="breadcrumb"><span class="current">Home</span>{{if .Session.IsAdmin}}<span class="sep">|</span><a href="/monitor">Monitor</a>{{end}}</div>
@@ -25,6 +25,7 @@
 <div class="card">
 <h2>Your Groups</h2>
 <form method="POST" action="/groups/new" class="form-row">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
 <input type="text" name="name" placeholder="New group name..." required>
 <button type="submit" class="btn btn-primary">Create Group</button>
 </form>

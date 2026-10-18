@@ -103,7 +103,9 @@ func requestFor(pattern string) *http.Request {
 		}
 		return "1"
 	})
-	if strings.HasSuffix(path, "/") && path != "/" {
+	if path == "/static/" {
+		path += "app.css" // the asset handler answers names, not ids
+	} else if strings.HasSuffix(path, "/") && path != "/" {
 		path += "1"
 	}
 	return httptest.NewRequest(method, path, nil)
@@ -140,12 +142,12 @@ func TestRouteMatrixGatesEveryRegisteredRoute(t *testing.T) {
 			}
 		}
 		// A signed-in non-administrator, with a session of its own.
-		token := "route-matrix-" + strconv.Itoa(i)
-		s.sessionMu.Lock()
-		s.sessions[token] = &Session{UserID: 1, LoginName: "matrix", IsAdmin: false, ExpiresAt: time.Now().Add(time.Hour)}
-		s.sessionMu.Unlock()
+		token := plantSession(t, s, "route-matrix-"+strconv.Itoa(i), &Session{UserID: 1, LoginName: "matrix", IsAdmin: false, ExpiresAt: time.Now().Add(time.Hour)})
 		r := requestFor(rt.pattern)
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+		if r.Method == http.MethodPost {
+			csrf(r) // a signed-in form carries its token (stage 2f); the guard is pinned apart
+		}
 		code, loc, reached := serve(h, r)
 		if code == http.StatusNotFound {
 			t.Errorf("%s: the generated request did not match its route (404) — the matrix exercised nothing for it (review B6)", rt.pattern)

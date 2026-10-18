@@ -14,7 +14,7 @@ import (
 
 // TestMonitorRouteRegistered verifies the web server registers a /monitor route.
 func TestMonitorRouteRegistered(t *testing.T) {
-	if !strings.Contains(srctest.PackageFunc(t, "internal/web", "func (s *Server) Handler("), `"/monitor"`) {
+	if !strings.Contains(srctest.PackageFunc(t, "internal/web", "func (s *Server) Handler("), `"GET /monitor"`) {
 		t.Error("Handler must register a /monitor route for the integrated monitor dashboard")
 	}
 }

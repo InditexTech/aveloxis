@@ -23,22 +23,21 @@ import (
 // address is stored as email_pending, a click-to-confirm link is mailed
 // (v0.20.4), and the user redirects to /dashboard; users.email changes
 // only when the link is followed.
-func (s *Server) handleAccountEmail(w http.ResponseWriter, r *http.Request) {
-	sess := s.getSession(r)
-
-	if r.Method == http.MethodPost {
-		if msg := s.admin.SubmitAccountEmail(r.Context(), sessionActor(sess), sess.LoginName, r.FormValue("email"), linkOrigin(r)); msg != "" {
-			s.render(w, "account_email", map[string]any{
-				"Session": sess,
-				"Error":   msg,
-			})
-			return
-		}
-		http.Redirect(w, r, "/dashboard", http.StatusFound)
+func (s *Server) handleAccountEmailSubmit(w http.ResponseWriter, r *http.Request, sess *Session) {
+	if msg := s.admin.SubmitAccountEmail(r.Context(), sessionActor(sess), sess.LoginName, r.FormValue("email"), linkOrigin(r)); msg != "" {
+		s.render(w, r, "account_email", map[string]any{
+			"Session": sess,
+			"Error":   msg,
+		})
 		return
 	}
+	http.Redirect(w, r, "/dashboard", http.StatusFound)
+}
 
-	// GET: show the form. If the user already has a confirmed email,
+// handleAccountEmailForm shows the form (GET /account/email).
+func (s *Server) handleAccountEmailForm(w http.ResponseWriter, r *http.Request, sess *Session) {
+
+	// If the user already has a confirmed email,
 	// they don't need to be here — bounce them back to dashboard.
 	email, err := s.store.GetUserEmail(r.Context(), sess.UserID)
 	if err != nil {
@@ -57,7 +56,7 @@ func (s *Server) handleAccountEmail(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Query().Get("error") == "1":
 		notice = "We couldn't confirm your email just now. Try the link again, or enter your email to get a new one."
 	}
-	s.render(w, "account_email", map[string]any{
+	s.render(w, r, "account_email", map[string]any{
 		"Session": sess,
 		"Error":   notice,
 	})
@@ -70,8 +69,7 @@ func (s *Server) handleAccountEmail(w http.ResponseWriter, r *http.Request) {
 // link stays usable; another account's still-live link is logged at WARN);
 // a database failure redirects to ?error=1 with the transaction rolled
 // back, so the link still works. The form explains both.
-func (s *Server) handleEmailConfirm(w http.ResponseWriter, r *http.Request) {
-	sess := s.getSession(r)
+func (s *Server) handleEmailConfirm(w http.ResponseWriter, r *http.Request, sess *Session) {
 	switch s.admin.ConfirmAccountEmail(r.Context(), sessionActor(sess), r.URL.Query().Get("token")) {
 	case admin.ConfirmConfirmed:
 		http.Redirect(w, r, "/dashboard", http.StatusFound)

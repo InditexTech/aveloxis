@@ -857,6 +857,38 @@ func migrateStage3ScancodeDistribution(ctx context.Context, pg *PostgresStore, l
 	// already scanned) are not treated as incomplete on first
 	// startup. Only NEW scans under v0.25.0+ can mark this false.
 	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_data.repos", "distribution_scan_complete", "BOOLEAN DEFAULT TRUE")
+	// 0.29.102 (stage 2c of summary/59): web sessions in user_session_tokens
+	// (kind, parent_token) and confirmation links hashed at rest.
+	addWebSessionColumns(ctx, pg, logger, errs)
+	deleteUnhashedEmailConfirmations(ctx, pg, logger, errs)
+}
+
+// addWebSessionColumns (0.29.102, N12/B2/B4): the session kind ('api' on
+// every existing row — they are all Bearer tokens) and the parent session
+// of a token /auth/token minted, with the partial index the sign-out
+// delete reads. The columns go ahead of the index (SR-8).
+func addWebSessionColumns(ctx context.Context, pg *PostgresStore, logger *slog.Logger, errs *[]error) {
+	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.user_session_tokens", "kind", "TEXT NOT NULL DEFAULT 'api'")
+	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.user_session_tokens", "parent_token", "TEXT REFERENCES aveloxis_ops.user_session_tokens(token) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED")
+	execCreateIndexConcurrently(ctx, pg, logger, errs, "aveloxis_ops", "idx_user_session_tokens_parent",
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_session_tokens_parent
+		 ON aveloxis_ops.user_session_tokens (parent_token) WHERE parent_token IS NOT NULL`)
+}
+
+// deleteUnhashedEmailConfirmations (0.29.102, DBS-14): every migrate
+// deletes confirmation rows an older binary stored raw (no "sha256$"
+// tag). A link lives a day, so the owner asks for a new one; a raw value
+// is never re-hashed into a credential a backup already shows.
+func deleteUnhashedEmailConfirmations(ctx context.Context, pg *PostgresStore, logger *slog.Logger, errs *[]error) {
+	tag, err := pg.pool.Exec(ctx, `DELETE FROM aveloxis_ops.email_confirmations WHERE token NOT LIKE $1`, tokenHashTag+"%")
+	if err != nil {
+		logger.Error("schema migration error", "step", "remove unhashed e-mail confirmation tokens", "error", err)
+		*errs = append(*errs, fmt.Errorf("unhashed email confirmations: %w", err))
+		return
+	}
+	if n := tag.RowsAffected(); n > 0 {
+		logger.Warn("removed e-mail confirmation links an older binary stored unhashed — their owners request a new link", "rows", n)
+	}
 }
 
 // migrateStage4DedupAndIndexes — commit dedup, repo-name cleanup, case-insensitive unique, performance indexes.

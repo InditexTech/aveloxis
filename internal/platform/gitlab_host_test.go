@@ -34,6 +34,13 @@ func TestGitLabAPIBaseForURL(t *testing.T) {
 		{"no configured instance", "", "https://gitlab.com/gnome", "", false},
 		{"unparseable configured base", "://nope", "https://gitlab.com/gnome", "", false},
 		{"configured base without a host", "/api/v4", "https://gitlab.com/gnome", "", false},
+		// 0.29.101: the GitLab REST client appends nothing to the base, so a
+		// base without the /api/v4 suffix sends every REST call to the wrong
+		// path (GraphQL alone would be right): no instance, no keyed client.
+		{"configured base without the API suffix", "https://gitlab.example.org", "https://gitlab.example.org/gnome", "", false},
+		{"configured base with a path prefix but no API suffix", "https://example.org/gitlab", "https://example.org/gitlab/g", "", false},
+		{"the API suffix is lower-case", "https://gitlab.example.org/API/V4", "https://gitlab.example.org/gnome", "", false},
+		{"the API suffix is a path segment", "https://gitlab.example.org/xapi/v4", "https://gitlab.example.org/gnome", "", false},
 		{"URL without a host", "https://gitlab.com/api/v4", "/gnome", "", false},
 		{"URL without a path names nothing", "https://gitlab.com/api/v4", "https://gitlab.com/", "", false},
 		{"credentials in the URL are refused", "https://gitlab.com/api/v4", "https://user:pw@gitlab.com/gnome", "", false},

@@ -95,11 +95,12 @@ func TestPageLookupErrorsAreNotNotFound(t *testing.T) {
 	t.Cleanup(served.Close)
 	var logs strings.Builder
 	s := New(served, config.WebConfig{}, "", slog.New(slog.NewTextHandler(&logs, nil)))
-	s.sessions["probe-token"] = &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)}
+	plantSession(t, s, "probe-token", &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)})
 	get := func(path string) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodGet, path, nil)
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w

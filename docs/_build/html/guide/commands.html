@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Commands Reference &mdash; Aveloxis 0.29.100 documentation</title>
+  <title>Commands Reference &mdash; Aveloxis 0.29.102 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=8e993c7f"></script>
+      <script src="../_static/documentation_options.js?v=1d19320c"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -332,6 +332,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="api.html#health-check">Health Check</a></li>
@@ -1507,7 +1508,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../contributing/adding-a-visualization.html#how-visualizations-work-today">How visualizations work today</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/adding-a-visualization.html#walkthrough-add-a-contributor-activity-chart">Walkthrough: add a “contributor activity” chart</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-1-make-sure-the-data-is-available">Step 1 — make sure the data is available</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-2-find-the-right-template">Step 2 — find the right template</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-2-find-the-right-template-and-its-script">Step 2 — find the right template and its script</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-3-add-the-canvas-the-fetch">Step 3 — add the canvas + the fetch</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-4-handle-the-data-shape-mismatch">Step 4 — handle the data-shape mismatch</a></li>
 </ul>
@@ -1925,52 +1926,47 @@ aveloxis<span class="w"> </span>serve<span class="w"> </span>--workers<span clas
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;http://localhost:8082&quot;</span></code></p></td>
 <td><p>External URL used to construct OAuth callback URLs.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.session_secret</span></code></p></td>
-<td><p>string</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
-<td><p>Reserved; not read today (sessions are random in-process tokens). Set a random string anyway.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.dev_mode</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.dev_mode</span></code></p></td>
 <td><p>bool</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>Local HTTP development: cookies without <code class="docutils literal notranslate"><span class="pre">Secure</span></code>, loopback confirmation links. Never in production.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.api_internal_url</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.api_internal_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;http://127.0.0.1:8383&quot;</span></code></p></td>
 <td><p>Where <code class="docutils literal notranslate"><span class="pre">web</span></code> proxies <code class="docutils literal notranslate"><span class="pre">/api/*</span></code>; must follow <code class="docutils literal notranslate"><span class="pre">api.addr</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>The origin of a separate front end whose <code class="docutils literal notranslate"><span class="pre">?next=</span></code> the login flow may honor; empty otherwise.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.auto_approve_add_limit</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.auto_approve_add_limit</span></code></p></td>
 <td><p>int</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
 <td><p>Ordinary users’ repository batches up to this size are approved automatically; <code class="docutils literal notranslate"><span class="pre">0</span></code> means every addition waits for an admin; organizations always do.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_id</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_id</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>GitHub OAuth app client ID.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_secret</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_secret</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>GitHub OAuth app client secret.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_id</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_id</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>GitLab OAuth app client ID (Application ID).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_secret</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_secret</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>GitLab OAuth app client secret.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_base_url</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_base_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;https://gitlab.com&quot;</span></code></p></td>
 <td><p>GitLab instance URL for self-hosted instances.</p></td>
@@ -1994,7 +1990,7 @@ aveloxis<span class="w"> </span>serve<span class="w"> </span>--workers<span clas
 <li><p>Group detail pages display repos 25 per page with pagination controls. A case-insensitive search box filters by repo name, owner, or URL.</p></li>
 <li><p>Repos added through the web GUI are inserted into the same collection queue used by <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">add-repo</span></code>.</p></li>
 <li><p>When a user adds a GitHub org or GitLab group, a <code class="docutils literal notranslate"><span class="pre">user_org_requests</span></code> row is created. A background task scans tracked orgs every 4 hours to discover and queue new repos.</p></li>
-<li><p>Sessions are stored in-memory with a 24-hour expiry. Restarting the process clears all sessions.</p></li>
+<li><p>Sessions are rows of <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.user_session_tokens</span></code> (hashed; 24-hour expiry, since 0.29.102). Restarting the process signs nobody out.</p></li>
 <li><p>Runs as a separate process from <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code>. Both share the database.</p></li>
 </ul>
 </section>

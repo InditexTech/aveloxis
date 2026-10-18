@@ -32,30 +32,21 @@ import (
 // TestGitHubCallbackChecksHTTPStatus pins that the GitHub callback
 // rejects a non-200 response from /user. Without this, a transient
 // 401/403/5xx on the user-info fetch silently produced a zero-value
-// struct and a blank-login user row.
-func TestGitHubCallbackChecksHTTPStatus(t *testing.T) {
-	body := extractWebFunc(t, "handleGitHubCallback")
-	if !strings.Contains(body, "resp.StatusCode") {
-		t.Error("handleGitHubCallback must inspect resp.StatusCode from GitHub /user — a non-200 response can deliver an empty body that unmarshals to zero values")
+// TestOAuthHeadChecksStatusBeforeDecoding (0.29.102, WEB-14): both
+// callbacks share fetchOAuthUser, so the status check and the decode's
+// error arm are pinned once, in ORDER — a non-200 response can carry an
+// empty body that unmarshals to zero values (the blank-user incident).
+func TestOAuthHeadChecksStatusBeforeDecoding(t *testing.T) {
+	body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/web", "func (s *Server) fetchOAuthUser("))
+	status := strings.Index(body, "resp.StatusCode != http.StatusOK")
+	decode := strings.Index(body, "json.Unmarshal(body, out); err != nil")
+	if status < 0 || decode < 0 || status > decode {
+		t.Errorf("fetchOAuthUser must refuse a non-200 before decoding and check the decode error (status at %d, decode at %d)", status, decode)
 	}
-}
-
-// TestGitHubCallbackChecksUnmarshalError pins that json.Unmarshal's
-// error is checked. The pre-fix source threw away the error with a
-// bare `json.Unmarshal(body, &ghUser)` — malformed JSON silently
-// produced a zero-value struct.
-func TestGitHubCallbackChecksUnmarshalError(t *testing.T) {
-	body := extractWebFunc(t, "handleGitHubCallback")
-	// Look for either an explicit Unmarshal error check or a Decoder
-	// pattern. Both are acceptable; what's not acceptable is the
-	// bare `json.Unmarshal(body, &ghUser)` discard pattern.
-	if strings.Contains(body, "json.Unmarshal(body, &ghUser)\n") &&
-		!strings.Contains(body, "json.Unmarshal(body, &ghUser); err") &&
-		!strings.Contains(body, "json.Unmarshal(body, &ghUser); jerr") {
-		// The unmarshal call exists with no error capture — confirm
-		// SOMEWHERE the error is checked. The simplest check is for
-		// "Unmarshal" combined with "err" in close proximity.
-		t.Error("handleGitHubCallback must check the json.Unmarshal error — silently discarding it lets malformed JSON from GitHub /user produce a zero-value user struct")
+	for _, h := range []string{"handleGitHubCallback", "handleGitLabCallback"} {
+		if !strings.Contains(srctest.PackageFunc(t, "internal/web", "func (s *Server) "+h+"("), "s.fetchOAuthUser(w, r, ctx, s.") {
+			t.Errorf("%s does not read its identity through fetchOAuthUser", h)
+		}
 	}
 }
 
@@ -86,25 +77,6 @@ func TestGitHubCallbackRejectsEmptyLogin(t *testing.T) {
 		(strings.Contains(preUpsert, "ghUser.Login") && strings.Contains(preUpsert, "TrimSpace"))
 	if !hasCheck {
 		t.Error("handleGitHubCallback must verify ghUser.Login is non-empty BEFORE calling UpsertOAuthUser — an empty Login on /user response is the root cause of the blank-user incident")
-	}
-}
-
-// TestGitLabCallbackChecksHTTPStatus mirrors the GitHub check for
-// the GitLab /api/v4/user fetch. GitLab self-hosted instances behind
-// a misbehaving proxy were observed returning 502 with empty bodies.
-func TestGitLabCallbackChecksHTTPStatus(t *testing.T) {
-	body := extractWebFunc(t, "handleGitLabCallback")
-	if !strings.Contains(body, "resp.StatusCode") {
-		t.Error("handleGitLabCallback must inspect resp.StatusCode from GitLab /api/v4/user")
-	}
-}
-
-// TestGitLabCallbackChecksUnmarshalError mirrors the GitHub check.
-func TestGitLabCallbackChecksUnmarshalError(t *testing.T) {
-	body := extractWebFunc(t, "handleGitLabCallback")
-	if strings.Contains(body, "json.Unmarshal(body, &glUser)\n") &&
-		!strings.Contains(body, "json.Unmarshal(body, &glUser); err") {
-		t.Error("handleGitLabCallback must check the json.Unmarshal error — silently discarding it lets malformed JSON from GitLab /api/v4/user produce a zero-value user struct")
 	}
 }
 

@@ -72,13 +72,14 @@ func TestAddURLWithCredentialsIsRefusedAndNotLogged(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(store, config.WebConfig{}, "", logger)
-	s.sessions["probe"] = &Session{UserID: uid, LoginName: login, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
+	plantSession(t, s, "probe", &Session{UserID: uid, LoginName: login, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
 	post := func(path string, form url.Values) *httptest.ResponseRecorder {
 		t.Helper()
 		form.Set("group_id", fmt.Sprint(gid))
 		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w
@@ -87,6 +88,7 @@ func TestAddURLWithCredentialsIsRefusedAndNotLogged(t *testing.T) {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodGet, path, nil)
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w

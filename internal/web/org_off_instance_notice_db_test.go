@@ -79,9 +79,10 @@ func TestOrgOffTheGitLabInstanceNoticeNamesTheInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(store, config.WebConfig{}, "", logger).WithGitLabAPIBase("https://code.example.invalid/api/v4")
-	s.sessions["probe-token"] = &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)}
+	plantSession(t, s, "probe-token", &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)})
 	serve := func(r *http.Request) *httptest.ResponseRecorder {
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w

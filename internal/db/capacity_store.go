@@ -13,7 +13,6 @@ package db
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -1318,8 +1317,8 @@ func (s *PostgresStore) readSignupPolicy(ctx context.Context) (signupPolicy, err
 // it on first use (32 bytes from crypto/rand), inside the creating
 // transaction.
 func signupSecretForDay(ctx context.Context, tx pgx.Tx, day time.Time) ([]byte, error) {
-	fresh := make([]byte, 32)
-	if _, err := rand.Read(fresh); err != nil {
+	fresh, err := newSecretBytes()
+	if err != nil {
 		return nil, fmt.Errorf("sign-up quota: secret: %w", err)
 	}
 	d := capacity.UTCDate(day)

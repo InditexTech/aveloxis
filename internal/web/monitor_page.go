@@ -17,8 +17,7 @@ import (
 
 const monitorPageSize = 200
 
-func (s *Server) handleMonitor(w http.ResponseWriter, r *http.Request) {
-	sess := s.getSession(r)
+func (s *Server) handleMonitor(w http.ResponseWriter, r *http.Request, sess *Session) {
 
 	// Parse pagination and search.
 	page := 1
@@ -89,26 +88,6 @@ func (s *Server) handleMonitor(w http.ResponseWriter, r *http.Request) {
 		s.logger.Warn("monitor page: repository stats unavailable", "rows", len(repoIDs), "error", err)
 	}
 
-	type monitorRow struct {
-		RowNum          int
-		RepoID          int64
-		Owner           string
-		Repo            string
-		Plat            string
-		Status          string
-		Priority        int
-		Due             string
-		LastRun         string
-		Worker          string
-		ErrInfo         string
-		GatheredIssues  int
-		MetaIssues      int
-		GatheredPRs     int
-		MetaPRs         int
-		GatheredCommits int
-		MetaCommits     int
-	}
-
 	rows := make([]monitorRow, 0, len(jobs))
 	for i, j := range jobs {
 		row := monitorRow{
@@ -153,7 +132,7 @@ func (s *Server) handleMonitor(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, row)
 	}
 
-	s.render(w, "monitor", map[string]any{
+	s.render(w, r, "monitor", map[string]any{
 		"Session":    sess,
 		"Stats":      stats,
 		"Jobs":       rows,
@@ -165,9 +144,9 @@ func (s *Server) handleMonitor(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleMonitorPrioritize(w http.ResponseWriter, r *http.Request) {
-	repoID, err := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-	if err != nil {
+func (s *Server) handleMonitorPrioritize(w http.ResponseWriter, r *http.Request, sess *Session) {
+	repoID, ok := pathID(r, "repoID")
+	if !ok {
 		http.Error(w, "invalid repo_id", http.StatusBadRequest)
 		return
 	}
@@ -181,4 +160,25 @@ func (s *Server) handleMonitorPrioritize(w http.ResponseWriter, r *http.Request)
 	}
 	// Redirect back to the monitor page.
 	http.Redirect(w, r, "/monitor", http.StatusFound)
+}
+
+// monitorRow is one queue row as the monitor page renders it.
+type monitorRow struct {
+	RowNum          int
+	RepoID          int64
+	Owner           string
+	Repo            string
+	Plat            string
+	Status          string
+	Priority        int
+	Due             string
+	LastRun         string
+	Worker          string
+	ErrInfo         string
+	GatheredIssues  int
+	MetaIssues      int
+	GatheredPRs     int
+	MetaPRs         int
+	GatheredCommits int
+	MetaCommits     int
 }

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>REST API &mdash; Aveloxis 0.29.100 documentation</title>
+  <title>REST API &mdash; Aveloxis 0.29.102 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=8e993c7f"></script>
+      <script src="../_static/documentation_options.js?v=1d19320c"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -332,6 +332,7 @@
 </ul>
 </li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#health-check">Health Check</a></li>
@@ -1507,7 +1508,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../contributing/adding-a-visualization.html#how-visualizations-work-today">How visualizations work today</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/adding-a-visualization.html#walkthrough-add-a-contributor-activity-chart">Walkthrough: add a “contributor activity” chart</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-1-make-sure-the-data-is-available">Step 1 — make sure the data is available</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-2-find-the-right-template">Step 2 — find the right template</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-2-find-the-right-template-and-its-script">Step 2 — find the right template and its script</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-3-add-the-canvas-the-fetch">Step 3 — add the canvas + the fetch</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-4-handle-the-data-shape-mismatch">Step 4 — handle the data-shape mismatch</a></li>
 </ul>
@@ -1774,6 +1775,34 @@
 </pre></div>
 </div>
 <p>The API runs as a separate process alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code> (collection) and <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> (GUI). All three share the same PostgreSQL database. It refuses to start until <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">migrate</span></code> has brought the schema to its own version.</p>
+<section id="changes-for-api-clients-in-0-29-102">
+<h2>Changes for API clients in 0.29.102<a class="headerlink" href="#changes-for-api-clients-in-0-29-102" title="Link to this heading"></a></h2>
+<p>Stage 2 of the admin-console program (release notes 0.29.102) makes the web
+GUI safe; two of its changes touch clients of the <strong>web process</strong> (<code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code>, the OAuth origin aveloxis-gui signs in through):</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/auth/token</span></code> and <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/logout</span></code> (<code class="docutils literal notranslate"><span class="pre">/auth/logout</span></code>) are POST-only.</strong>
+A GET answers <code class="docutils literal notranslate"><span class="pre">405</span></code> and changes nothing. Minting a token and ending a
+session are state changes, and a state change never rides a GET (it was
+prefetchable and linkable). aveloxis-gui sends both as POST from its
+matching release, and its <code class="docutils literal notranslate"><span class="pre">check-setup.sh</span></code> requires 0.29.102.</p></li>
+<li><p><strong>Signing out of the web GUI ends the tokens that sign-in minted.</strong> A
+token from <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/auth/token</span></code> records the browser session it came from;
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/logout</span></code> deletes the session and those tokens together (a <code class="docutils literal notranslate"><span class="pre">401</span></code>
+on the next request). A token minted from a session that merely expired
+keeps its own 30-day life, and <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/auth/logout</span></code> still ends one
+token on its own.</p></li>
+<li><p><strong>A cross-site <code class="docutils literal notranslate"><span class="pre">POST</span></code> to the web process is refused</strong> (<code class="docutils literal notranslate"><span class="pre">403</span></code>). The
+request’s <code class="docutils literal notranslate"><span class="pre">Origin</span></code> (or <code class="docutils literal notranslate"><span class="pre">Referer</span></code>) must be the web host or <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code>’s
+origin; a browser’s <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site:</span> <span class="pre">cross-site</span></code> is refused. aveloxis-gui
+on its own origin therefore needs <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code> set to that origin. A
+signed-in HTML form also carries a form token; the two GUI calls do not.</p></li>
+<li><p><strong>Every answer of the web process carries security headers</strong>: a
+Content-Security-Policy with one script source (<code class="docutils literal notranslate"><span class="pre">/static/</span></code>, which now
+serves the page scripts and Chart.js — no CDN), <code class="docutils literal notranslate"><span class="pre">frame-ancestors</span> <span class="pre">'none'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">X-Frame-Options:</span> <span class="pre">DENY</span></code>, <code class="docutils literal notranslate"><span class="pre">X-Content-Type-Options:</span> <span class="pre">nosniff</span></code> and a
+referrer policy. A page that embeds the web GUI in a frame stops working.</p></li>
+</ul>
+</section>
 <section id="changes-for-api-clients-in-0-29-99">
 <h2>Changes for API clients in 0.29.99<a class="headerlink" href="#changes-for-api-clients-in-0-29-99" title="Link to this heading"></a></h2>
 <p>Stage 1b of the admin-console program (release notes 0.29.99) changed what
@@ -2960,8 +2989,13 @@ OAuth session for a token automatically and stores it in the browser.</p>
 exchange:</p>
 <ol class="arabic">
 <li><p>Sign in to the web GUI (GitHub or GitLab OAuth) in your browser.</p></li>
-<li><p>In the same browser, visit <code class="docutils literal notranslate"><span class="pre">https://&lt;your-site&gt;/auth/token</span></code>.
-You get JSON back:</p>
+<li><p>In the same browser, mint a token with a POST to <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> (POST-only
+since 0.29.102; a GET answers <code class="docutils literal notranslate"><span class="pre">405</span></code>). The browser’s console on the site
+does it in one line — the session cookie rides along:</p>
+<div class="highlight-js notranslate"><div class="highlight"><pre><span></span><span class="nx">fetch</span><span class="p">(</span><span class="s1">&#39;/auth/token&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;POST&#39;</span><span class="p">}).</span><span class="nx">then</span><span class="p">(</span><span class="nx">r</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">json</span><span class="p">()).</span><span class="nx">then</span><span class="p">(</span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>You get JSON back:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="nt">&quot;token&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;64-hex-chars...&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;expires_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-08-13T10:00:00Z&quot;</span><span class="p">,</span>
 <span class="w"> </span><span class="nt">&quot;user_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;login&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;yourlogin&quot;</span><span class="p">}</span>
 </pre></div>
@@ -2984,7 +3018,7 @@ because the database failed (validating it, or reading its account
 flags or scope) gets a structured <strong>503</strong> with a try-again body
 (v0.29.68) — never the 401, which the GUI treats as “the token is
 gone”; retry the request.</p></li>
-<li><p>Each visit to <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> mints a <strong>new</strong> token; existing tokens
+<li><p>Each <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/auth/token</span></code> mints a <strong>new</strong> token; existing tokens
 keep working until they expire, so long-running scripts aren’t cut
 off when you log in elsewhere.</p></li>
 <li><p><strong>Signing out ends the token</strong> (v0.29.82): <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/auth/logout</span></code>

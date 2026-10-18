@@ -340,8 +340,8 @@ var adminParity = map[string]adminParityRow{
 	"ConfirmAccountEmail":       {API: "POST /api/v1/me/email/confirm", Web: "GET /account/email/confirm", CLI: "-", Why: "follows a mailed link; the CLI has no account"},
 	"EmailGate":                 {API: "-", Web: "GET /dashboard", CLI: "-", Why: "the web dashboard's redirect; the front end reads /me's fields and decides itself"},
 	"CreateGroup":               {API: "POST /api/v1/groups", Web: "POST /groups/new", CLI: "aveloxis load-numfocus-projects, load-numfocus-orgs, load-foundation-orgs, load-foundation-core-repos", Why: ""},
-	"GroupAccess":               {API: "GET /api/v1/groups/{groupID}/repos, GET /api/v1/groups/{groupID}/orgs, GET /api/v1/groups/{groupID}/pending-adds, GET /api/v1/supply-chain/*?group=", Web: "-", CLI: "-", Why: "the web's group page keeps the store's owner-only read (GetGroupDetail) until stage 2 (B5); the CLI reads no group"},
-	"AuthorizeGroupRepo":        {API: "-", Web: "GET /groups/{gid}/repos/{rid}, GET /groups/{gid}/repos/{rid}/sbom", CLI: "-", Why: "the API's repository routes are scoped by authInfo (repoScope), not by group"},
+	"GroupAccess":               {API: "GET /api/v1/groups/{groupID}/repos, GET /api/v1/groups/{groupID}/orgs, GET /api/v1/groups/{groupID}/pending-adds, GET /api/v1/supply-chain/*?group=", Web: "-", CLI: "-", Why: "the web's group page reads through the store's owner-only GetGroupDetail (one listing query with its page and search; GroupAccess would be a second read before it — left as is, recorded in stage 2); the CLI reads no group"},
+	"AuthorizeGroupRepo":        {API: "-", Web: "GET /groups/{gid}/repos/{rid}, GET /groups/{gid}/repos/{rid}/sbom, GET /groups/{gid}/repos/{rid}/remove", CLI: "-", Why: "the API's repository routes are scoped by authInfo (repoScope), not by group"},
 	"AddToGroup":                {API: "POST /api/v1/groups/{groupID}/repos (kind repo)", Web: "POST /groups/add-repo", CLI: "-", Why: "aveloxis add-repo queues collection without a group (the legacy repo group); the loaders link through the operator door (AddOperatorRepoToGroupByID)"},
 	"AddOrgToGroup":             {API: "POST /api/v1/groups/{groupID}/repos (kind org)", Web: "POST /groups/add-org", CLI: "aveloxis load-numfocus-orgs, load-foundation-orgs", Why: ""},
 	"RemoveFromGroup":           {API: "POST /api/v1/groups/{groupID}/repos/{repoID}/remove", Web: "POST /groups/remove-repo", CLI: "-", Why: "no CLI command removes a repository from a user's group"},
@@ -414,14 +414,9 @@ func TestAdminServiceParityRegistry(t *testing.T) {
 			}
 		}
 		for _, route := range splitRoutes(row.Web) {
-			method, path, _ := strings.Cut(route, " ")
-			pattern := `"` + path + `"`
-			if method == "POST" && strings.HasPrefix(path, "/admin/") {
-				pattern = `"POST ` + path + `"`
-			}
-			if strings.Contains(path, "{gid}") {
-				pattern = `"/groups/"` // the web mux's prefix route
-			}
+			// Every web route is method-and-path since 0.29.102 (WEB-8): the
+			// parity row's spelling IS the registered pattern.
+			pattern := `"` + route + `"`
 			if !strings.Contains(web, pattern) {
 				t.Errorf("parity row %s: web route %q is not registered (pattern %s)", m, route, pattern)
 			}

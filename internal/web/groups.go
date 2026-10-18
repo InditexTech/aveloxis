@@ -17,12 +17,7 @@ import (
 	"github.com/aveloxis/aveloxis/internal/platform"
 )
 
-func (s *Server) handleNewGroup(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	sess := s.getSession(r)
+func (s *Server) handleNewGroup(w http.ResponseWriter, r *http.Request, sess *Session) {
 	if _, err := s.admin.CreateGroup(r.Context(), sessionActor(sess), r.FormValue("name")); err != nil {
 		// An empty or over-long name is the form's input: the dashboard is
 		// shown again (the page's own field bounds it); a failure is logged
@@ -34,25 +29,13 @@ func (s *Server) handleNewGroup(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
 
-func (s *Server) handleGroup(w http.ResponseWriter, r *http.Request) {
-	sess := s.getSession(r)
-	// Extract group_id from URL: /groups/123 or /groups/123/repos/456/sbom
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/groups/"), "/")
-	groupID, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
+// handleGroup is the group page, GET /groups/{gid} (the repository page
+// and the SBOM download are their own routes since 0.29.102; an unknown
+// sub-path is the mux's 404, not this page).
+func (s *Server) handleGroup(w http.ResponseWriter, r *http.Request, sess *Session) {
+	groupID, ok := pathID(r, "gid")
+	if !ok {
 		http.NotFound(w, r)
-		return
-	}
-
-	// Handle SBOM download: /groups/{gid}/repos/{rid}/sbom?format=cyclonedx|spdx
-	if len(parts) >= 4 && parts[1] == "repos" && parts[3] == "sbom" {
-		s.handleSBOMDownload(w, r, sess, groupID, parts[2])
-		return
-	}
-
-	// Handle repo detail/visualization page: /groups/{gid}/repos/{rid}
-	if len(parts) >= 3 && parts[1] == "repos" {
-		s.handleRepoDetail(w, r, sess, groupID, parts[2])
 		return
 	}
 
@@ -123,7 +106,7 @@ func (s *Server) handleGroup(w http.ResponseWriter, r *http.Request) {
 		pageWindow = append(pageWindow, i)
 	}
 
-	s.render(w, "group", map[string]any{
+	s.render(w, r, "group", map[string]any{
 		"Session":    sess,
 		"Group":      group,
 		"Page":       page,
@@ -157,12 +140,7 @@ func pendingCount(q string) int {
 	return n
 }
 
-func (s *Server) handleAddRepo(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	sess := s.getSession(r)
+func (s *Server) handleAddRepo(w http.ResponseWriter, r *http.Request, sess *Session) {
 	groupID, _ := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
 
 	// Support both single URL (repo_url) and bulk paste (repo_urls, line-delimited).
@@ -219,12 +197,7 @@ func invalidFlag(invalid []string) string {
 	return "&add_error=invalid"
 }
 
-func (s *Server) handleAddOrg(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	sess := s.getSession(r)
+func (s *Server) handleAddOrg(w http.ResponseWriter, r *http.Request, sess *Session) {
 	groupID, _ := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
 	orgURL := strings.TrimSpace(r.FormValue("org_url"))
 	if orgURL == "" || groupID <= 0 {
@@ -263,12 +236,41 @@ func (s *Server) handleAddOrg(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/groups/%d", groupID), http.StatusFound)
 }
 
-func (s *Server) handleRemoveRepo(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+// handleRemoveRepoConfirm shows the "Remove X from this group?" page (GET
+// /groups/{gid}/repos/{rid}/remove; 0.29.102, D-19: the group page's
+// Remove button used a confirm() dialog). The page's form posts the
+// removal; the service's one access rule decides whether the pair exists
+// for this session (404 otherwise, as the repository page answers).
+func (s *Server) handleRemoveRepoConfirm(w http.ResponseWriter, r *http.Request, sess *Session) {
+	groupID, okG := pathID(r, "gid")
+	repoID, okR := pathID(r, "rid")
+	if !okG || !okR {
+		http.NotFound(w, r)
 		return
 	}
-	sess := s.getSession(r)
+	group, err := s.admin.AuthorizeGroupRepo(r.Context(), sessionActor(sess), groupID, repoID)
+	if err != nil {
+		if !s.refusePage(w, r, err) {
+			s.serverError(w, r, "handleRemoveRepoConfirm", err)
+		}
+		return
+	}
+	repo, err := s.store.GetRepoByID(r.Context(), repoID)
+	if err != nil {
+		s.serverError(w, r, "handleRemoveRepoConfirm", fmt.Errorf("repository %d: %w", repoID, err))
+		return
+	}
+	s.render(w, r, "remove_confirm", map[string]any{
+		"Session":   sess,
+		"GroupID":   groupID,
+		"GroupName": group.Name,
+		"RepoID":    repoID,
+		"RepoOwner": repo.Owner,
+		"RepoName":  repo.Name,
+	})
+}
+
+func (s *Server) handleRemoveRepo(w http.ResponseWriter, r *http.Request, sess *Session) {
 	groupID, _ := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
 	repoID, _ := strconv.ParseInt(r.FormValue("repo_id"), 10, 64)
 

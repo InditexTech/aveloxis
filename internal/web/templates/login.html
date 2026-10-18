@@ -13,7 +13,7 @@
 {{if .HasSession}}
 <div style="margin-top:24px;padding-top:20px;border-top:1px solid #eee;font-size:13px;color:#586069">
 You currently have an active session.
-<a href="/logout" style="margin-left:8px">Sign out &amp; clear cookies</a>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="link-button">Sign out &amp; clear cookies</button></form>
 to log in as a different user.
 </div>
 {{end}}

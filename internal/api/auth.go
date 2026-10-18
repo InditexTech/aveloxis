@@ -86,8 +86,10 @@ func resolutionOf(r *http.Request) (resolution, bool) {
 var errLookupDeferred = errors.New("token lookup deferred: the address is over its limit")
 
 // identify resolves the request's Bearer token once and records the answer
-// for the layers after it. It refuses nothing itself. A session token in
-// the cache costs nothing and a cached API token one recheck; an UNCACHED
+// for the layers after it. It refuses nothing itself. A cached token costs
+// one recheck of its row (a session token since 0.29.102 review round 2:
+// a web sign-out deletes it and the next request must be the 401; an API
+// token since 0.29.82); its owner's role and scope stay cached. An UNCACHED
 // token from an address over its limit that recently sent an invalid token
 // is not looked up (rl.deferLookup). A cached API token is never deferred
 // (Copilot review 5475865946 on PR #228): it was valid within authCacheTTL,
@@ -100,14 +102,12 @@ func (a *authenticator) identify(rl *rateLimiter, next http.Handler) http.Handle
 			res.presented = true
 			info, cached := a.cached(tok)
 			switch {
-			case cached && info.APITokenID == 0:
-				res.info = info
 			case cached && rl != nil && rl.tokenSpent(info):
 				// An enforced quota is spent: the limiter answers 429 with no store
 				// lookup (ASVS review G4); a revoked token is rechecked when
 				// its window opens again.
 				res.info = info
-			case cached: // an API token: rechecked, never deferred
+			case cached: // rechecked against its row (session or API token), never deferred
 				res.info, res.err = a.resolveToken(r.Context(), tok)
 			case rl != nil && rl.deferLookup(r):
 				res.err = errLookupDeferred
@@ -198,6 +198,18 @@ func (a *authenticator) resolveToken(ctx context.Context, token string) (authInf
 	if c, ok := a.cache[token]; ok && now.Before(c.expires) {
 		a.mu.Unlock()
 		if c.info.APITokenID == 0 {
+			// A session token is rechecked on every call too (one PK read;
+			// 0.29.102 review A1): a web sign-out deletes the tokens the
+			// session minted, and the GUI's next request must be the 401
+			// the docs promise — not up to authCacheTTL of cached identity.
+			// Its owner's role and scope stay cached.
+			if _, err := a.store.ValidateSessionToken(ctx, token); err != nil {
+				if errors.Is(err, db.ErrInvalidSessionToken) {
+					a.forget(token)
+					return authInfo{}, errInvalidToken
+				}
+				return authInfo{}, fmt.Errorf("recheck session token: %w", err)
+			}
 			return c.info, nil
 		}
 		// An API token is rechecked on every call (one indexed lookup;

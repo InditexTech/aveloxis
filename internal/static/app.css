@@ -1,0 +1,83 @@
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f6f8;color:#333;line-height:1.6}
+a{color:#0366d6;text-decoration:none}a:hover{text-decoration:underline}
+.container{max-width:1400px;margin:0 auto;padding:20px}
+.card{background:white;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,0.12);padding:24px;margin-bottom:20px}
+.nav{background:#24292e;color:white;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+.nav a{color:white}.nav-user{display:flex;align-items:center;gap:10px}
+.nav-form{display:inline;margin:0}.nav-link,.link-button{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-decoration:underline}.nav-link{color:white}.link-button{color:#0366d6;margin-left:8px}
+.nav-user img{width:28px;height:28px;border-radius:50%}
+.breadcrumb{background:#fff;border-bottom:1px solid #e1e4e8;padding:10px 20px;font-size:14px}
+.breadcrumb a{color:#586069}.breadcrumb a:hover{color:#0366d6}
+.breadcrumb span.sep{margin:0 6px;color:#d1d5da}
+.breadcrumb .current{color:#24292e;font-weight:500}
+.btn{display:inline-block;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;font-size:14px;font-weight:500}
+.btn-primary{background:#0366d6;color:white}.btn-primary:hover{background:#0256b9;text-decoration:none}
+.btn-danger{background:#d73a49;color:white;font-size:12px;padding:4px 10px}
+.btn-github{background:#24292e;color:white;padding:12px 24px;font-size:16px}
+.btn-gitlab{background:#fc6d26;color:white;padding:12px 24px;font-size:16px}
+input[type=text],input[type=url],input[type=search]{padding:8px 12px;border:1px solid #d1d5da;border-radius:6px;font-size:14px;width:100%}
+.form-row{display:flex;gap:10px;margin-top:12px}
+.form-row input{flex:1}
+.search-form{display:flex;gap:10px;margin-bottom:16px}
+.search-form input{flex:1}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #eee}
+th{font-weight:600;color:#586069;font-size:13px;text-transform:uppercase}
+.group-list{list-style:none}
+.group-list li{padding:12px 0;border-bottom:1px solid #eee}
+.group-list li:last-child{border-bottom:none}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500}
+.badge-github{background:#f1f8ff;color:#0366d6}
+.badge-gitlab{background:#fef3e8;color:#fc6d26}
+.badge-org{background:#e6ffed;color:#22863a}
+.badge-git{background:#f3e8ff;color:#7c3aed}
+.login-box{max-width:400px;margin:100px auto;text-align:center}
+.login-box h1{margin-bottom:8px;font-size:28px}
+.login-box p{color:#586069;margin-bottom:32px}
+.login-buttons{display:flex;flex-direction:column;gap:16px}
+.empty{color:#586069;font-style:italic;padding:20px 0}
+h2{font-size:20px;margin-bottom:16px}
+h3{font-size:16px;margin-bottom:12px;color:#24292e}
+.section{margin-top:24px}
+.pagination{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid #eee}
+.pagination a,.pagination span{padding:6px 12px;border-radius:4px;font-size:14px}
+.pagination a{border:1px solid #d1d5da;color:#0366d6}.pagination a:hover{background:#f6f8fa;text-decoration:none}
+.pagination span.current-page{background:#0366d6;color:white;border:1px solid #0366d6}
+.pagination span.disabled{color:#d1d5da;border:1px solid #eee}
+.result-info{color:#586069;font-size:13px;margin-bottom:12px}
+
+/* Tables reflow on narrow screens, never scroll sideways (operator rule;
+   ported from aveloxis-gui's .tbl-stack, stage 2e): the header stays for
+   screen readers, each row becomes a labelled card up to 1000 px. */
+table.tbl-stack td{overflow-wrap:anywhere}
+@media (max-width:1000px){
+.tbl-stack,.tbl-stack tbody,.tbl-stack thead{display:block}
+.tbl-stack thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
+.tbl-stack tbody tr{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 20px;padding:12px 16px;border-bottom:1px solid #eee}
+.tbl-stack tbody tr:last-child{border-bottom:none}
+table.tbl-stack tbody td{display:block;padding:0;border:0;min-width:0;text-align:left;overflow-wrap:anywhere}
+table.tbl-stack tbody td[data-label]::before{content:attr(data-label);content:attr(data-label) / "";display:block;margin-bottom:2px;font:500 10.5px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:#6a737d}
+table.tbl-stack tbody td[colspan]{flex:1 1 100%}
+}
+.search-hit{padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0}
+.search-hit:hover{background:#f6f8fa}
+.search-empty{padding:10px 12px;color:#586069;font-size:13px}
+.form-msg{margin-top:8px;color:#b91c1c;font-size:13px}
+.form-msg[hidden]{display:none}
+.confirm-box{max-width:560px;margin:40px auto}
+
+/* compare page */
+.compare-controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.repo-tag{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;font-size:13px;font-weight:500}
+.repo-tag button{background:none;border:none;cursor:pointer;color:inherit;font-size:14px;padding:0 2px}
+.mode-toggle{display:flex;border:1px solid #d1d5da;border-radius:6px;overflow:hidden}
+.mode-toggle button{padding:6px 14px;border:none;background:white;cursor:pointer;font-size:13px}
+.mode-toggle button.active{background:#0366d6;color:white}
+.date-range{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.date-range label{font-size:12px;color:#586069;font-weight:500}
+.date-range input[type=date]{padding:5px 8px;border:1px solid #d1d5da;border-radius:6px;font-size:13px;font-family:inherit}
+.date-range .preset-btn{padding:5px 10px;border:1px solid #d1d5da;border-radius:6px;background:white;cursor:pointer;font-size:12px}
+.date-range .preset-btn.active{background:#0366d6;color:white;border-color:#0366d6}
+.date-range .apply-btn{padding:5px 12px;border:1px solid #0366d6;border-radius:6px;background:#0366d6;color:white;cursor:pointer;font-size:13px;font-weight:500}
+.date-range .apply-btn:hover{background:#0255b3}

@@ -2673,7 +2673,16 @@ CREATE TABLE IF NOT EXISTS aveloxis_ops.user_session_tokens (
     user_id        INT NOT NULL REFERENCES aveloxis_ops.users(user_id) DEFERRABLE INITIALLY DEFERRED,
     created_at     BIGINT,
     expiration     BIGINT,
-    application_id TEXT REFERENCES aveloxis_ops.client_applications(id) DEFERRABLE INITIALLY DEFERRED
+    application_id TEXT REFERENCES aveloxis_ops.client_applications(id) DEFERRABLE INITIALLY DEFERRED,
+    -- 0.29.102 (stage 2c of the admin-console program): the browser
+    -- session is a row of kind 'web' (the cookie carries the raw token;
+    -- the hash is stored); a Bearer token /auth/token mints from it is kind
+    -- 'api' with the session as its parent, and dies with it at sign-out.
+    -- A session that merely expires leaves its tokens parentless.
+    kind           TEXT NOT NULL DEFAULT 'api',
+    -- The partial index on parent_token is migration-built (CONCURRENTLY,
+    -- SR-2): idx_user_session_tokens_parent.
+    parent_token   TEXT REFERENCES aveloxis_ops.user_session_tokens(token) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
 );
 -- v0.29.82: operator-issued API tokens (api_tokens.go), granted and revoked
 -- on the admin page. Each authenticates as its owner (the owner's repository

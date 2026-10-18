@@ -5,7 +5,7 @@ SPDX-License-Identifier: MIT
 
 # Adding a visualization
 
-The aveloxis web GUI uses [Chart.js](https://www.chartjs.org/) (loaded from CDN, no build step). Visualizations live inline in `internal/web/templates.go` as Go template strings with embedded `<script>` blocks.
+The aveloxis web GUI uses [Chart.js](https://www.chartjs.org/), vendored in `internal/static/vendor` and served by the web process at `/static/vendor/chart.umd.js` (no CDN, no build step). Since 0.29.102 a page carries NO inline script: the HTML is a template in `internal/web/templates/`, its script is a file in `internal/static/` served at `/static/<name>.js`, and the page hands the script its ids through `data-*` attributes. The Content-Security-Policy names the web process as the only script source, so an inline `<script>` body, an `on*=` attribute or a CDN `<script src>` does not run (and `TestTemplatesCarryNoInlineScript` fails the build).
 
 This chapter walks through adding a new chart to either the repo detail page or the comparison page.
 
@@ -21,8 +21,10 @@ Both pull data from the REST API on `:8383`. If the API isn't running, the page 
 The pattern, end to end:
 
 ```
-1. Browser loads HTML rendered by internal/web/templates.go
-2. <script> block fires fetch("http://localhost:8383/api/v1/repos/<id>/timeseries?...")
+1. Browser loads HTML rendered from internal/web/templates/<page>.html
+2. The page's <script src="/static/<page>.js"> reads its ids from a data-* element
+   and fires fetch("/api/v1/repos/<id>/timeseries?...") (same origin: the web
+   process reverse-proxies /api/ to the api process)
 3. JSON response parsed → Chart.js renders into a <canvas>
 ```
 
@@ -50,59 +52,44 @@ GET /api/v1/repos/{repoID}/contributor-timeseries?since=2025-01-01
 
 Implement the endpoint following [`adding-a-rest-endpoint.md`](adding-a-rest-endpoint.md). The store-side SQL aggregates `commits` by `date_trunc('week', cmt_author_timestamp)` and `cmt_ght_author_id`.
 
-### Step 2 — find the right template
+### Step 2 — find the right template and its script
 
-`internal/web/templates.go` defines all templates as a big set of `{{define}}` blocks. The repo detail template is named `repoDetail` (or similar — search for the URL path or for `chart-commits` to find it). The relevant section looks like:
+`internal/web/templates/repo_detail.html` is the repository page; its script is `internal/static/repo-detail.js`, loaded at the end of the page after `<div id="repo-page" data-repo-id="{{.RepoID}}" hidden></div>` (the id the script reads) and after `/static/vendor/chart.umd.js`. The page's shape:
 
-```go
-const repoDetailTemplate = `
-{{define "repoDetail"}}
-<!DOCTYPE html>
-<html>
-<head>
-  <title>{{.Repo.Owner}}/{{.Repo.Name}}</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <style> /* ... */ </style>
-</head>
-<body>
-  <h1>{{.Repo.Owner}}/{{.Repo.Name}}</h1>
-
-  <div class="chart-row">
-    <canvas id="chart-commits"></canvas>
-    <canvas id="chart-prs-opened"></canvas>
-  </div>
-  <div class="chart-row">
-    <canvas id="chart-prs-merged"></canvas>
-    <canvas id="chart-issues"></canvas>
-  </div>
-
-  <script>
-    const COLORS = {
-      commits: '#1f77b4',
-      prsOpened: '#2ca02c',
-      prsMerged: '#9467bd',
-      issues: '#d62728',
-    };
-
-    function makeChart(canvasId, label, color, data) {
-      // ... existing factory
-    }
-
-    fetch('http://localhost:8383/api/v1/repos/{{.Repo.ID}}/timeseries?since=2024-01-01')
-      .then(r => r.json())
-      .then(ts => {
-        makeChart('chart-commits', 'Commits / week', COLORS.commits, ts.commits || []);
-        makeChart('chart-prs-opened', 'PRs Opened / week', COLORS.prsOpened, ts.prs_opened || []);
-        makeChart('chart-prs-merged', 'PRs Merged / week', COLORS.prsMerged, ts.prs_merged || []);
-        makeChart('chart-issues', 'Issues / week', COLORS.issues, ts.issues || []);
-      })
-      .catch(err => console.error('chart load failed', err));
-  </script>
-</body>
-</html>
+```html
+{{define "repo_detail"}}
+{{template "head" (dict "Title" .Repo.Name)}}
+<script src="/static/vendor/chart.umd.js"></script>
+…
+<div class="chart-row">
+  <canvas id="chart-commits"></canvas>
+  <canvas id="chart-prs-opened"></canvas>
+</div>
+…
+<div id="repo-page" data-repo-id="{{.RepoID}}" hidden></div>
+<script src="/static/repo-detail.js"></script>
+</body></html>
 {{end}}
-`
 ```
+
+and the script's head:
+
+```js
+const API_BASE = '';
+const REPO_ID = Number(document.getElementById('repo-page').dataset.repoId);
+
+function makeChart(canvasId, label, color, data) { /* the existing factory */ }
+
+fetch(API_BASE + '/api/v1/repos/' + REPO_ID + '/timeseries')
+  .then(r => r.json())
+  .then(ts => {
+    makeChart('chart-commits', 'Commits / week', COLORS.commits, ts.commits || []);
+    // …
+  })
+  .catch(err => console.error('Failed to load time series:', err));
+```
+
+A control the script reacts to binds with `addEventListener` on a `data-*` attribute (`th[data-sort-col]`, `.preset-btn[data-preset]`), never an `onclick=`. Anything the script puts on the page from an API answer goes through `avxEl` / `textContent` (the H-1 rule; `TestTemplateScriptsWriteOnlyLiteralsIntoHTML` scans the page scripts).
 
 ### Step 3 — add the canvas + the fetch
 
@@ -124,7 +111,7 @@ const COLORS = {
 };
 
 // Add a second fetch (parallel to the existing one is fine — both fire when the page loads):
-fetch('http://localhost:8383/api/v1/repos/{{.Repo.ID}}/contributor-timeseries?since=2024-01-01')
+fetch(API_BASE + '/api/v1/repos/' + REPO_ID + '/contributor-timeseries?since=2024-01-01')
   .then(r => r.json())
   .then(ts => {
     makeChart('chart-contributors', 'Active contributors / week',
@@ -215,11 +202,11 @@ Add `.chart-empty` CSS for the styling.
 ## What NOT to do
 
 - **Don't add a frontend framework.** No React, no Vue, no Svelte, no Alpine. The current setup builds in milliseconds and has zero deploy complexity. Resist.
-- **Don't move chart code to a separate JS file.** The inline `<script>` blocks are easy to find, easy to debug. Go templates can include the script as a separate `{{define}}` if it grows, but not as an external file (that'd require a static file server, which is more deploy complexity).
-- **Don't hardcode the API base URL** in new code. The existing templates have `http://localhost:8383` hardcoded — a known limitation. Pass the base URL via the template data context if you can, OR follow the existing pattern and accept the limitation (and add a comment noting it for future cleanup).
+- **Don't put a script body in a template.** The page scripts are files in `internal/static/` served at `/static/`; an inline `<script>` body or an `on*=` attribute is blocked by the Content-Security-Policy and fails `TestTemplatesCarryNoInlineScript`.
+- **Don't hardcode the API base URL.** The scripts fetch relative `/api/v1/...` URLs; the web process reverse-proxies them to the api process (`web.api_internal_url`), so the page works behind nginx and TLS with no CORS.
 - **Don't skip the "no data" empty state.** A blank canvas is a worse UX than an explicit message.
 - **Don't load Chart.js per chart.** It's already loaded once at the top of each template; just reuse.
-- **Don't use third-party plugins for Chart.js** without explicit maintainer approval. Each plugin is another CDN dependency, another security surface, another version-pin to maintain.
+- **Don't load anything from a CDN.** Chart.js is vendored (`internal/static/vendor`, hash pinned by `scripts/vendored_assets_test.go`); a Chart.js plugin would be vendored the same way, and only with explicit maintainer approval — another security surface, another version-pin to maintain.
 
 ## Testing visualizations
 

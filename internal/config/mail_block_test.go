@@ -81,6 +81,11 @@ func TestLoadRefusesAnUnusableGitLabBase(t *testing.T) {
 		{"explicit empty is no instance", `{"base_url": ""}`, "", ""},
 		{"self-hosted", `{"base_url": "https://gitlab.example.org/api/v4/"}`, "", "https://gitlab.example.org/api/v4/"},
 		{"no scheme", `{"base_url": "gitlab.example.org/api/v4"}`, "gitlab.base_url", ""},
+		// 0.29.101: the REST client appends nothing to the base, so the
+		// suffix is required (deferred from the 0.29.100 round 5).
+		{"no API suffix", `{"base_url": "https://gitlab.example.org"}`, "/api/v4", ""},
+		{"two trailing slashes", `{"base_url": "https://gitlab.example.org/api/v4//"}`, "/api/v4", ""},
+		{"a path prefix without the API suffix", `{"base_url": "https://example.org/gitlab/"}`, "/api/v4", ""},
 		{"a query", `{"base_url": "https://gitlab.example.org/api/v4?x=1"}`, "gitlab.base_url", ""},
 		{"credentials", `{"base_url": "https://u:p@gitlab.example.org/api/v4"}`, "gitlab.base_url", ""},
 	} {

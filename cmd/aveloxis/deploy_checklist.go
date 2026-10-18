@@ -596,6 +596,8 @@ var deployChecklists = map[string][]deployStep{
 	// v0.29.98 (2026-10-17, stage 0.5 of summary/59): test infrastructure
 	// (package-scope source lookups), the web server file split, templates
 	// embedded, the dead-code sweep. No schema change.
+	"0.29.102": v029102DeployChecklist,
+	"0.29.101": v029101DeployChecklist,
 	"0.29.100": v029100DeployChecklist,
 	"0.29.99":  v02999DeployChecklist,
 	"0.29.98":  v02998DeployChecklist,
@@ -633,6 +635,37 @@ var deployChecklists = map[string][]deployStep{
 // ALTER): repository answers are cached until the repository changes; it
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
+
+// v029102DeployChecklist is 0.29.101's ladder with a note on the start
+// step: stage 2 of summary/59 (the web GUI made safe). The note is
+// completed as the stage lands; aveloxis-gui must be deployed with it.
+var v029102DeployChecklist = func() []deployStep {
+	prev := v029101DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.102 (stage 2 of the admin-console program): two columns and one CONCURRENTLY index on aveloxis_ops.user_session_tokens (migrate --skip-views is enough). Web sessions are database rows from this release (a restart no longer signs everyone out; a demotion takes effect at the next request; signing out of the web GUI ends the API tokens that sign-in minted); e-mail confirmation links outstanding at the deploy stop working (stored hashed now — the owner requests a new one). Deploy aveloxis-gui's matching release WITH this one — its login page and sign-out send POST to /auth/token and /logout, which answer 405 to a GET from this release on (check-setup.sh requires 0.29.102). web.session_secret is removed (a file that still carries it loads). Every POST to the web process is origin-checked: if aveloxis-gui runs on another origin, web.spa_url must name it. The pages serve their scripts and Chart.js from /static/ (no CDN) with a Content-Security-Policy and a framing refusal — a proxy that adds its own CSP must let the web process's through. " + out[i].desc
+		}
+	}
+	return out
+}()
+
+// v029101DeployChecklist is 0.29.100's ladder with a note on the start
+// step: the two GitLab URL rules tightened (gitlab.base_url must end in
+// /api/v4; web.gitlab_base_url must be the instance's web URL), no
+// schema change.
+var v029101DeployChecklist = func() []deployStep {
+	prev := v029100DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.101: no schema change. BEFORE the start, check the two GitLab URLs in aveloxis.json: gitlab.base_url must end in /api/v4 (the REST client appends paths to it as given), and web.gitlab_base_url must be the instance's web URL (https://gitlab.example.org, not its /api/v4 URL; no query, fragment or user name) — either refuses every process at start, naming the field; the defaults and any working value pass. " + out[i].desc
+		}
+	}
+	return out
+}()
 
 // v029100DeployChecklist is 0.29.99's ladder with a note on the start
 // step: stage 1 of summary/59 (the admin service, forge access, the URL

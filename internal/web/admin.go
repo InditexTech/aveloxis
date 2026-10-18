@@ -16,7 +16,6 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/aveloxis/aveloxis/internal/httpserver"
@@ -27,18 +26,17 @@ import (
 // the API: the flip, the background pass, the requester's mail). A refusal
 // is answered from refusePage's table; a failure is logged with a generic
 // body (PR #218 review C6 — the body carried the store's text).
-func (s *Server) handleApproveAddRequest(w http.ResponseWriter, r *http.Request) {
-	s.decideAddRequestPage(w, r, true)
+func (s *Server) handleApproveAddRequest(w http.ResponseWriter, r *http.Request, sess *Session) {
+	s.decideAddRequestPage(w, r, sess, true)
 }
 
-func (s *Server) handleRejectAddRequest(w http.ResponseWriter, r *http.Request) {
-	s.decideAddRequestPage(w, r, false)
+func (s *Server) handleRejectAddRequest(w http.ResponseWriter, r *http.Request, sess *Session) {
+	s.decideAddRequestPage(w, r, sess, false)
 }
 
-func (s *Server) decideAddRequestPage(w http.ResponseWriter, r *http.Request, approve bool) {
-	sess := s.getSession(r)
-	requestID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
+func (s *Server) decideAddRequestPage(w http.ResponseWriter, r *http.Request, sess *Session, approve bool) {
+	requestID, ok := pathID(r, "id")
+	if !ok {
 		http.Error(w, "invalid request id", http.StatusBadRequest)
 		return
 	}
@@ -55,7 +53,8 @@ func (s *Server) decideAddRequestPage(w http.ResponseWriter, r *http.Request, ap
 // queue (v0.27.20). The legacy pending-groups table is gone since
 // 0.29.100 (N9, stage 1g of summary/59): the migrate converted every
 // pending group at v0.27.20 and groups are born approved.
-func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request, sess *Session) {
+	tok := s.csrfToken(w, r) // the form token for this page's forms (stage 2f); before any write
 	requests, err := s.store.ListPendingAddRequests(r.Context())
 	if err != nil {
 		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "failed to list pending add-requests", "error", err)
@@ -106,15 +105,15 @@ func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request
 				sample = strings.Join(escaped, "<br>")
 			}
 			fmt.Fprintf(w, `<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td class="urls">%s</td><td>
-<form method="POST" action="/admin/add-requests/%d/approve" style="display:inline"><button class="btn approve" type="submit">Approve</button></form>
-<form method="POST" action="/admin/add-requests/%d/reject" style="display:inline"><button class="btn reject" type="submit">Reject</button></form>
+<form method="POST" action="/admin/add-requests/%d/approve" style="display:inline"><input type="hidden" name="csrf_token" value="%s"><button class="btn approve" type="submit">Approve</button></form>
+<form method="POST" action="/admin/add-requests/%d/reject" style="display:inline"><input type="hidden" name="csrf_token" value="%s"><button class="btn reject" type="submit">Reject</button></form>
 </td></tr>`,
 				q.RequestID,
 				template.HTMLEscapeString(q.UserLogin),
 				template.HTMLEscapeString(q.GroupName),
 				template.HTMLEscapeString(q.Kind),
 				count, sample,
-				q.RequestID, q.RequestID)
+				q.RequestID, tok, q.RequestID, tok)
 		}
 		fmt.Fprint(w, `</table>`)
 	}
@@ -122,10 +121,9 @@ func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request
 	fmt.Fprint(w, `</body></html>`)
 }
 
-func (s *Server) handleRejectGroup(w http.ResponseWriter, r *http.Request) {
-	sess := s.getSession(r)
-	groupID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
+func (s *Server) handleRejectGroup(w http.ResponseWriter, r *http.Request, sess *Session) {
+	groupID, ok := pathID(r, "id")
+	if !ok {
 		http.Error(w, "invalid group id", http.StatusBadRequest)
 		return
 	}
@@ -138,8 +136,8 @@ func (s *Server) handleRejectGroup(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/groups/pending", http.StatusFound)
 }
 
-func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
-	sess := s.getSession(r)
+func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request, sess *Session) {
+	tok := s.csrfToken(w, r) // the form token for this page's forms (stage 2f); before any write
 	users, err := s.store.ListUsers(r.Context())
 	if err != nil {
 		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "failed to list users", "error", err)
@@ -180,9 +178,9 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		if u.UserID == sess.UserID {
 			action = `<span class="self">(you)</span>`
 		} else if u.IsAdmin {
-			action = fmt.Sprintf(`<form method="POST" action="/admin/users/%d/admin" style="display:inline"><input type="hidden" name="admin" value="false"><button class="btn demote" type="submit">Demote</button></form>`, u.UserID)
+			action = fmt.Sprintf(`<form method="POST" action="/admin/users/%d/admin" style="display:inline"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="admin" value="false"><button class="btn demote" type="submit">Demote</button></form>`, u.UserID, tok)
 		} else {
-			action = fmt.Sprintf(`<form method="POST" action="/admin/users/%d/admin" style="display:inline"><input type="hidden" name="admin" value="true"><button class="btn promote" type="submit">Promote to admin</button></form>`, u.UserID)
+			action = fmt.Sprintf(`<form method="POST" action="/admin/users/%d/admin" style="display:inline"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="admin" value="true"><button class="btn promote" type="submit">Promote to admin</button></form>`, u.UserID, tok)
 		}
 		fmt.Fprintf(w, `<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
 			u.UserID,
@@ -194,9 +192,10 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `</table></body></html>`)
 }
 
-func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
-	userID, err := strconv.Atoi(r.PathValue("id"))
-	if err != nil {
+func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request, sess *Session) {
+	userID64, ok := pathID(r, "id")
+	userID := int(userID64)
+	if !ok || int64(userID) != userID64 {
 		http.Error(w, "invalid user id", http.StatusBadRequest)
 		return
 	}
@@ -210,7 +209,7 @@ func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
 	// atomically in the store, the last administrator's; both are answered
 	// from refusePage's table. Any other store error is logged with a
 	// generic 500 body.
-	if err := s.admin.SetUserAdmin(r.Context(), sessionActor(s.getSession(r)), userID, isAdmin); err != nil {
+	if err := s.admin.SetUserAdmin(r.Context(), sessionActor(sess), userID, isAdmin); err != nil {
 		if !s.refusePage(w, r, err) {
 			s.serverError(w, r, "handleSetUserAdmin", fmt.Errorf("set admin=%t for user %d: %w", isAdmin, userID, err))
 		}

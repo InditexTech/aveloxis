@@ -33,6 +33,7 @@ type fakeSessionStore struct {
 	apiValid    map[string]db.APITokenIdentity // v0.29.82: operator-issued API tokens
 	validates   atomic.Int64
 	actives     atomic.Int64 // APITokenActive rechecks (ASVS review G4)
+	identities  atomic.Int64 // IsUserAdmin + GetUserRepoScope reads: the cached part (0.29.102 A1)
 	onValidate  func()       // runs inside ValidateSessionToken (worklist follow-up 7: a bust racing a resolve)
 }
 
@@ -68,9 +69,11 @@ func (f *fakeSessionStore) APITokenActive(_ context.Context, token string) (bool
 	return ok, nil
 }
 func (f *fakeSessionStore) IsUserAdmin(context.Context, int) (bool, error) {
+	f.identities.Add(1)
 	return f.admin, f.adminErr
 }
 func (f *fakeSessionStore) GetUserRepoScope(context.Context, int) ([]int64, error) {
+	f.identities.Add(1)
 	return f.scope, f.scopeErr
 }
 
@@ -127,8 +130,15 @@ func TestAuthRequiredPassesValidTokenAndCaches(t *testing.T) {
 			t.Fatalf("valid token request %d must pass, got %d", i, rec.Code)
 		}
 	}
-	if got := store.validates.Load(); got != 1 {
-		t.Errorf("token must be cached after first validation (60s TTL), store hit %d times", got)
+	// The identity (role, scope) is cached for authCacheTTL: two reads for
+	// three requests. The token itself is rechecked against its row on
+	// every request (0.29.102 review A1: a web sign-out deletes it, and
+	// the next request must be the 401), so validates counts every call.
+	if got := store.identities.Load(); got != 2 {
+		t.Errorf("identity must be cached after the first resolution (60s TTL), role/scope read %d times for 3 requests", got)
+	}
+	if got := store.validates.Load(); got != 3 {
+		t.Errorf("a session token is rechecked on every request, validated %d times for 3 requests", got)
 	}
 }
 
@@ -219,7 +229,32 @@ func TestRepoHandlersEnforceScope(t *testing.T) {
 	// order). The web process must expose the token-mint endpoint.
 	routes := srctest.PackageFunc(t, "internal/web", "func (s *Server) Handler(")
 	mint := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleAuthToken(")
-	if !strings.Contains(routes, `"/auth/token"`) || !strings.Contains(mint, "CreateSessionToken(") {
+	if !strings.Contains(routes, `"POST /auth/token"`) || !strings.Contains(mint, "MintTokenForWebSession(") {
 		t.Error("web process must expose /auth/token minting DB-backed session tokens for the SPA")
+	}
+}
+
+// TestACachedSessionTokenIsRecheckedThroughTheChain (0.29.102 review round
+// 2): identify answered a cached session token from the cache alone, so
+// the per-call recheck lived only in resolveToken's uncached path and a
+// web sign-out left the GUI's token working for authCacheTTL. Through the
+// real chain: the second request after the row is gone is the 401.
+func TestACachedSessionTokenIsRecheckedThroughTheChain(t *testing.T) {
+	store := &fakeSessionStore{userID: 7, scope: []int64{42}, valid: map[string]bool{"good": true}}
+	h := authedChain(t, store, Options{RequireAuth: true, RateLimitRPS: 100, RateLimitBurst: 100}, okHandler())
+	get := func() int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/v1/repos/42/stats", nil)
+		req.RemoteAddr = "203.0.113.5:1"
+		req.Header.Set("Authorization", "Bearer good")
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := get(); code != http.StatusOK {
+		t.Fatalf("first request = %d", code)
+	}
+	store.valid["good"] = false // the web sign-out deleted the row
+	if code := get(); code != http.StatusUnauthorized {
+		t.Errorf("the request after the row was deleted = %d; want 401 at once, not after authCacheTTL", code)
 	}
 }

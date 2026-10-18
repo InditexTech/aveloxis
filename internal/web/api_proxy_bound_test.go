@@ -57,7 +57,7 @@ func TestAPIProxyUnderTheBound(t *testing.T) {
 	run := func(apiURL string) (*http.Response, time.Duration) {
 		logger := slog.New(slog.NewTextHandler(webLogs, nil))
 		s := New(nil, config.WebConfig{APIInternalURL: apiURL}, "", logger)
-		s.sessions["proxy-test"] = &Session{UserID: 1, LoginName: "proxy-test", ExpiresAt: time.Now().Add(time.Hour)}
+		plantSession(t, s, "proxy-test", &Session{UserID: 1, LoginName: "proxy-test", ExpiresAt: time.Now().Add(time.Hour)})
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
@@ -71,6 +71,7 @@ func TestAPIProxyUnderTheBound(t *testing.T) {
 			t.Fatal(err)
 		}
 		req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "proxy-test"})
+		csrf(req) // the session's form token (stage 2f)
 		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		resp, err := client.Do(req)
 		if err != nil {

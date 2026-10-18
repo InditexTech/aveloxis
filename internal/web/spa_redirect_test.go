@@ -90,9 +90,14 @@ func TestPostLoginRedirectWithoutSPAURL(t *testing.T) {
 func TestOAuthFlowCarriesNext(t *testing.T) {
 	// Each site by its own function (v0.29.98): the old whole-file counts
 	// could be met by one function twice.
+	// Both starts go through beginOAuth (0.29.102, WEB-14), the one site
+	// that stashes.
+	if !strings.Contains(srctest.PackageFunc(t, "internal/web", "func (s *Server) beginOAuth("), "s.stashNext(w, r)") {
+		t.Error("beginOAuth must stash the ?next= destination")
+	}
 	for _, h := range []string{"handleGitHubAuth", "handleGitLabAuth"} {
-		if !strings.Contains(srctest.PackageFunc(t, "internal/web", "func (s *Server) "+h+"("), "s.stashNext(w, r)") {
-			t.Errorf("%s must stash the ?next= destination", h)
+		if !strings.Contains(srctest.PackageFunc(t, "internal/web", "func (s *Server) "+h+"("), "s.beginOAuth(w, r, s.") {
+			t.Errorf("%s must start through beginOAuth", h)
 		}
 	}
 	// v0.27.42: both callbacks route through completeOAuthLogin, the

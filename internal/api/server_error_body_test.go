@@ -121,7 +121,8 @@ func TestServerErrorBodyIsGeneric(t *testing.T) {
 	if rec := get(); rec.Code != http.StatusOK {
 		t.Fatalf("priming GET /api/v1/groups = %d %s", rec.Code, rec.Body.String())
 	}
-	s.store.Close() // the token stays cached; the handler's query now fails
+	s.auth.store = authStandIn(uid, token) // the handler's store failure is the subject; the per-call token recheck (0.29.102) answers from a stand-in
+	s.store.Close()                        // the token stays cached; the handler's query now fails
 	rec := get()
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("GET /api/v1/groups over a closed pool = %d %s; want 500", rec.Code, rec.Body.String())
@@ -342,7 +343,8 @@ func TestGroupListsAreNot403OnAStoreFailure(t *testing.T) {
 			}
 		}
 	}
-	s.store.Close() // the token stays cached; the list queries now fail
+	s.auth.store = authStandIn(uid, token) // the handler's store failure is the subject; the per-call token recheck (0.29.102) answers from a stand-in
+	s.store.Close()                        // the token stays cached; the list queries now fail
 	for _, p := range []string{repos, orgs} {
 		logs.Reset()
 		rec := get(p)
@@ -409,7 +411,8 @@ func TestRepoLookupsAreNot404OnAStoreFailure(t *testing.T) {
 			t.Errorf("GET %s (nothing there) = %d %q; want 404", p, rec.Code, rec.Body.String())
 		}
 	}
-	s.store.Close() // the token stays cached; the lookups now fail
+	s.auth.store = authStandIn(uid, token) // the handler's store failure is the subject; the per-call token recheck (0.29.102) answers from a stand-in
+	s.store.Close()                        // the token stays cached; the lookups now fail
 	for _, p := range paths {
 		logs.Reset()
 		rec := get(p)
@@ -504,9 +507,18 @@ func TestSBOMDownloadAnswers404ForARepoNobodyHas(t *testing.T) {
 	if rec := get(path); rec.Code != http.StatusNotFound || strings.Contains(rec.Body.String(), "no rows") {
 		t.Errorf("SBOM of a repository nobody has = %d %q; want a plain 404", rec.Code, rec.Body.String())
 	}
+	s.auth.store = authStandIn(uid, token) // the handler's store failure is the subject; the per-call token recheck (0.29.102) answers from a stand-in
 	s.store.Close()
 	logs.Reset()
 	if rec := get(path); rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "closed pool") || !strings.Contains(logs.String(), "level=ERROR") {
 		t.Errorf("SBOM over a closed pool = %d %q (logs: %q); want a logged 500 without the store's text", rec.Code, rec.Body.String(), logs.String())
 	}
+}
+
+// authStandIn answers the authenticator's per-call token recheck (0.29.102:
+// a session token is validated against its row on every request) for a
+// test whose subject is the HANDLER's store failure: the identity was
+// resolved and cached from the live store; only the recheck comes here.
+func authStandIn(uid int, token string) *fakeSessionStore {
+	return &fakeSessionStore{userID: uid, valid: map[string]bool{token: true}}
 }

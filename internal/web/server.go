@@ -13,7 +13,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aveloxis/aveloxis/internal/admin"
@@ -36,6 +35,10 @@ type Server struct {
 	logger     *slog.Logger
 	ghOAuth    *oauth2.Config
 	glOAuth    *oauth2.Config
+	// github and gitlab are the two sign-in flows' constants around the
+	// configs above (0.29.102, WEB-14): one head for both callbacks.
+	github *oauthProvider
+	gitlab *oauthProvider
 	// ghAPIBase is the GitHub REST host those keys belong to, normalised by
 	// New through platform.GitHubAPIBaseOrPublic so it is never empty. A
 	// REQUIRED parameter of New, next to the pool, so a
@@ -46,8 +49,12 @@ type Server struct {
 	// gitlabAPIBase is gitlab.base_url (WithGitLabAPIBase): the admin
 	// service classifies an organisation on that instance as GitLab.
 	gitlabAPIBase string
-	sessionMu     sync.RWMutex
-	sessions      map[string]*Session // session token -> session
+	// lookupSession is the ONE session read of a request (0.29.102, stage
+	// 2c of summary/59): New sets it to storeSession (the session row
+	// joined to the users row — name, avatar, provider and privilege, D-1);
+	// tests without a store plant their own. db.ErrNoWebSession means no
+	// session; any other error is a 500, never "no session" (SR-5).
+	lookupSession func(ctx context.Context, raw string) (*Session, error)
 	tmpl          *template.Template
 	apiProxy      http.Handler   // reverse proxy for /api/* → cfg.APIInternalURL; nil on parse failure
 	mailer        *mailer.Mailer // gmail-backed transactional mailer; safely nil if unconfigured (v0.19.0)
@@ -58,17 +65,13 @@ type Server struct {
 	admin *admin.Service
 }
 
-// Session tracks a logged-in user.
-//
-// IsAdmin (v0.19.0) is set at session-create time from the
-// admin column on aveloxis_ops.users. Cached on the session so
-// requireAdmin doesn't need a DB roundtrip per request. Refreshed
-// only on next login — if an admin demotes a user mid-session, the
-// session retains its old IsAdmin value until the next login. That's
-// acceptable for the admin/non-admin distinction (worst case: user
-// keeps admin access for up to one session lifetime); the
-// alternative is a DB hit per request, which is what we're trying
-// to avoid in v0.18.30.
+// Session is a signed-in browser session as the gate resolved it for
+// THIS request (0.29.102): the session row (aveloxis_ops.user_session_tokens,
+// kind "web", hashed) joined to the users row, so LoginName, AvatarURL,
+// Provider and IsAdmin are the row's current values — a demotion takes
+// effect at the demoted account's next request (D-1; v0.19.0 cached the
+// flag at login for the session's lifetime). Nothing is held in the
+// process: sessions survive a restart, and a sign-out is one delete.
 type Session struct {
 	UserID    int
 	LoginName string
@@ -76,23 +79,25 @@ type Session struct {
 	Provider  string
 	IsAdmin   bool
 	ExpiresAt time.Time
+	cookie    string // the raw cookie token, for the token exchange's parent
 }
 
 // New creates a web server. The web process holds no forge keys (stage 1
 // of summary/59, C2): an org added or approved here is listed by serve.
 func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger *slog.Logger) *Server {
 	// One spelling of the GitLab base for every consumer below (the OAuth
-	// endpoints, the /api/v4/user read): a trailing slash made the token
-	// URL "//oauth/token" and every GitLab sign-in failed (found by the
-	// final review round 2's host test, 2026-09-28).
-	cfg.GitLabBaseURL = strings.TrimRight(strings.TrimSpace(cfg.GitLabBaseURL), "/")
+	// endpoints, the /api/v4/user read, the stored instance key): the
+	// config's one accessor — the trim (a trailing slash made the token
+	// URL "//oauth/token" and every GitLab sign-in failed, 2026-09-28) and
+	// the gitlab.com default live there (0.29.101).
+	cfg.GitLabBaseURL = cfg.GitLabOAuthBase()
 	s := &Server{
 		store:     store,
 		cfg:       cfg,
 		ghAPIBase: platform.GitHubAPIBaseOrPublic(ghAPIBase),
 		logger:    logger,
-		sessions:  make(map[string]*Session),
 	}
+	s.lookupSession = s.storeSession
 
 	baseURL := strings.TrimSuffix(cfg.BaseURL, "/")
 	if baseURL == "" {
@@ -123,9 +128,6 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 	// GitLab OAuth config.
 	if cfg.GitLabClientID != "" {
 		glBase := cfg.GitLabBaseURL
-		if glBase == "" {
-			glBase = "https://gitlab.com"
-		}
 		s.glOAuth = &oauth2.Config{
 			ClientID:     cfg.GitLabClientID,
 			ClientSecret: cfg.GitLabClientSecret,
@@ -137,6 +139,14 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 			RedirectURL: baseURL + "/auth/gitlab/callback",
 		}
 	}
+
+	// The two flows' constants (nil cfg = not configured). GitHub's identity
+	// read stays on api.github.com whatever github.base_url says (the
+	// v0.29.57 decision above); every GitHub REST request pins the API
+	// version (worklist item 15).
+	s.github = &oauthProvider{name: "github", label: "GitHub", cfg: s.ghOAuth, userURL: platform.PublicGitHubAPIBase + "/user",
+		headers: map[string]string{"X-GitHub-Api-Version": platform.GitHubAPIVersion}}
+	s.gitlab = &oauthProvider{name: "gitlab", label: "GitLab", cfg: s.glOAuth, userURL: cfg.GitLabBaseURL + platform.GitLabAPISuffix + "/user"}
 
 	// Build the internal API reverse proxy. The web server forwards /api/*
 	// to cfg.APIInternalURL so the browser can fetch data using relative
@@ -243,73 +253,94 @@ func (s *Server) Mailer() *mailer.Mailer { return s.mailer }
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	// Static assets.
+	// Static assets: the page assets (stylesheet, scripts, vendored
+	// Chart.js) under /static/ (stage 2e, WEB-9/B6) and the icon.
+	mux.Handle("GET /static/", static.Handler("/static/"))
 	mux.HandleFunc("GET /icon.png", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		w.Write(static.IconPNG)
 	})
 
+	// Every route is method-and-path (0.29.102, stage 2a of summary/59,
+	// WEB-8): the mux decides the method and the path shape, the handlers
+	// read path values, and a state change never rides a GET (B3) — the
+	// CSRF middleware of stage 2f sees every POST route as one set. The
+	// route matrix test reads this list from the source.
+	//
 	// Public routes. "/" must NOT be a catch-all — use GET to avoid
 	// swallowing static asset routes like /icon.png.
 	mux.HandleFunc("GET /{$}", s.handleHome)
-	mux.HandleFunc("/login", s.handleLogin)
-	mux.HandleFunc("/auth/github", s.handleGitHubAuth)
-	mux.HandleFunc("/auth/github/callback", s.handleGitHubCallback)
-	mux.HandleFunc("/auth/gitlab", s.handleGitLabAuth)
-	mux.HandleFunc("/auth/gitlab/callback", s.handleGitLabCallback)
-	mux.HandleFunc("/logout", s.handleLogout)
+	mux.HandleFunc("GET /login", s.handleLogin)
+	mux.HandleFunc("GET /auth/github", s.handleGitHubAuth)
+	mux.HandleFunc("GET /auth/github/callback", s.handleGitHubCallback)
+	mux.HandleFunc("GET /auth/gitlab", s.handleGitLabAuth)
+	mux.HandleFunc("GET /auth/gitlab/callback", s.handleGitLabCallback)
+	// Logout is a POST (B3/D-13): the pages send a form, aveloxis-gui a
+	// fetch; a GET answers 405 and changes nothing.
+	mux.HandleFunc("POST /logout", s.handleLogout)
 	// v0.27.4: alias under /auth/ so the SPA can reach logout through
 	// the same proxy prefix as the OAuth routes (nginx/dev-server only
 	// forward /auth/* and /api/*). Clears the session + oauth cookies;
 	// the SPA ignores the redirect and routes itself to login.html.
-	mux.HandleFunc("/auth/logout", s.handleLogout)
+	mux.HandleFunc("POST /auth/logout", s.handleLogout)
 	// v0.27.1: mints a DB-backed Bearer token for the separate-origin
 	// SPA (aveloxis-gui). The SPA completes OAuth on this origin (the
 	// session cookie), then exchanges it here for a token it sends as
-	// Authorization: Bearer to the api process.
-	mux.HandleFunc("/auth/token", s.requireAuth(s.handleAuthToken))
+	// Authorization: Bearer to the api process. POST-only from 0.29.102:
+	// minting is a state change (aveloxis-gui's login page sends POST).
+	mux.HandleFunc("POST /auth/token", s.requireAuth(s.handleAuthToken))
 
 	// Authenticated routes.
-	mux.HandleFunc("/dashboard", s.requireAuth(s.handleDashboard))
-	mux.HandleFunc("/account/email", s.requireAuth(s.handleAccountEmail))
-	mux.HandleFunc("/account/email/confirm", s.requireAuth(s.handleEmailConfirm))
-	mux.HandleFunc("/groups/new", s.requireAuth(s.handleNewGroup))
-	mux.HandleFunc("/groups/", s.requireAuth(s.handleGroup))
-	mux.HandleFunc("/groups/add-repo", s.requireAuth(s.handleAddRepo))
-	mux.HandleFunc("/groups/add-org", s.requireAuth(s.handleAddOrg))
-	mux.HandleFunc("/groups/remove-repo", s.requireAuth(s.handleRemoveRepo))
-	mux.HandleFunc("/compare", s.requireAuth(s.handleCompare))
+	mux.HandleFunc("GET /dashboard", s.requireAuth(s.handleDashboard))
+	mux.HandleFunc("GET /account/email", s.requireAuth(s.handleAccountEmailForm))
+	mux.HandleFunc("POST /account/email", s.requireAuth(s.handleAccountEmailSubmit))
+	mux.HandleFunc("GET /account/email/confirm", s.requireAuth(s.handleEmailConfirm))
+	mux.HandleFunc("POST /groups/new", s.requireAuth(s.handleNewGroup))
+	mux.HandleFunc("GET /groups/{gid}", s.requireAuth(s.handleGroup))
+	mux.HandleFunc("GET /groups/{gid}/repos/{rid}", s.requireAuth(s.handleRepoDetail))
+	mux.HandleFunc("GET /groups/{gid}/repos/{rid}/sbom", s.requireAuth(s.handleSBOMDownload))
+	// D-19: a server-side confirmation page, not a confirm() dialog.
+	mux.HandleFunc("GET /groups/{gid}/repos/{rid}/remove", s.requireAuth(s.handleRemoveRepoConfirm))
+	mux.HandleFunc("POST /groups/add-repo", s.requireAuth(s.handleAddRepo))
+	mux.HandleFunc("POST /groups/add-org", s.requireAuth(s.handleAddOrg))
+	mux.HandleFunc("POST /groups/remove-repo", s.requireAuth(s.handleRemoveRepo))
+	mux.HandleFunc("GET /compare", s.requireAuth(s.handleCompare))
 
 	// Monitor dashboard — integrated from the standalone monitor server.
 	// Administrators only (v0.29.91 whole-PR follow-up): the whole
 	// collection queue, and a boost that reorders everyone's collection —
 	// the API's /admin/monitor routes are administrator-only too.
-	mux.HandleFunc("/monitor", s.requireAdmin(s.handleMonitor))
+	mux.HandleFunc("GET /monitor", s.requireAdmin(s.handleMonitor))
 	mux.HandleFunc("POST /monitor/prioritize/{repoID}", s.requireAdmin(s.handleMonitorPrioritize))
 
-	// v0.19.0 admin pages. requireAdmin gates on Session.IsAdmin so
-	// non-admin users get a 403 instead of seeing other people's
-	// pending submissions or being able to toggle admin roles.
-	mux.HandleFunc("/admin/groups/pending", s.requireAdmin(s.handleAdminPendingGroups))
+	// v0.19.0 admin pages. requireAdmin decides privilege from the users
+	// row per request (0.29.102) so non-admin users get a 403 instead of
+	// seeing other people's pending submissions or toggling admin roles.
+	mux.HandleFunc("GET /admin/groups/pending", s.requireAdmin(s.handleAdminPendingGroups))
 	mux.HandleFunc("POST /admin/groups/{id}/reject", s.requireAdmin(s.handleRejectGroup))
 	// v0.27.20 per-add approval queue (summary/15): decisions on
 	// non-admin additions of not-yet-tracked repos/orgs.
 	mux.HandleFunc("POST /admin/add-requests/{id}/approve", s.requireAdmin(s.handleApproveAddRequest))
 	mux.HandleFunc("POST /admin/add-requests/{id}/reject", s.requireAdmin(s.handleRejectAddRequest))
-	mux.HandleFunc("/admin/users", s.requireAdmin(s.handleAdminUsers))
+	mux.HandleFunc("GET /admin/users", s.requireAdmin(s.handleAdminUsers))
 	mux.HandleFunc("POST /admin/users/{id}/admin", s.requireAdmin(s.handleSetUserAdmin))
 
-	// Same-origin API reverse proxy. Browser fetch calls use relative
+	// Same-origin API reverse proxy — the one method-less registration:
+	// the API's own routes decide the method. Browser fetch calls use relative
 	// /api/v1/... URLs; this handler forwards them to cfg.APIInternalURL.
 	// Gated by requireAuth so an anonymous visitor can't query collected
 	// data through the proxy. The browser sends the aveloxis_session cookie
 	// on same-origin requests, which the auth middleware validates.
 	if s.apiProxy != nil {
-		mux.Handle("/api/", s.requireAuth(s.apiProxy.ServeHTTP))
+		mux.Handle("/api/", s.requireAuth(func(w http.ResponseWriter, r *http.Request, _ *Session) {
+			s.apiProxy.ServeHTTP(w, r)
+		}))
 	}
 
-	return mux
+	// Every answer carries the security headers, and every state change
+	// passes the cross-site guard before its route (stage 2f, B1/D-10/D-11).
+	return s.securityHeaders(s.csrfGuard(mux))
 }
 
 // render executes a template and logs failures. v0.27.36 (summary/18
@@ -317,7 +348,12 @@ func (s *Server) Handler() http.Handler {
 // a template failure mid-render produced a truncated page with no log
 // signal. Headers are already sent by the time a body-write fails, so
 // logging is the only possible action — but it must happen.
-func (s *Server) render(w http.ResponseWriter, name string, data any) {
+func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, data any) {
+	// The session's form token rides into every page (stage 2f): the
+	// templates put it in each POST form as csrf_token.
+	if m, ok := data.(map[string]any); ok {
+		m["CSRF"] = s.csrfToken(w, r)
+	}
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		// No request here: a render refused after the bound is http.ErrHandlerTimeout, which RequestEnded recognises on any context.
 		httpserver.LogFailure(context.Background(), s.logger, slog.LevelError, err, "template render failed", "template", name, "error", err)

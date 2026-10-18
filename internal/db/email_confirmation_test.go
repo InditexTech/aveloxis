@@ -73,7 +73,7 @@ func TestMailerHasSendEmailConfirmation(t *testing.T) {
 // TestServerHasEmailConfirmRoute pins the new HTTP route + handler.
 func TestServerHasEmailConfirmRoute(t *testing.T) {
 	src := srctest.PackageFunc(t, "internal/web", "func (s *Server) Handler(")
-	if !strings.Contains(src, `"/account/email/confirm"`) {
+	if !strings.Contains(src, `"GET /account/email/confirm"`) {
 		t.Error("server.go must register the /account/email/confirm route " +
 			"so the confirmation links in v0.20.4 emails resolve to a " +
 			"handler that consumes the token and promotes email_pending " +

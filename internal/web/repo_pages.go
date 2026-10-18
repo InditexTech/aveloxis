@@ -17,17 +17,17 @@ import (
 )
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	// Pattern "GET /{$}" ensures this only matches exactly "/".
-	sess := s.getSession(r)
-	if sess != nil {
+	// Pattern "GET /{$}" ensures this only matches exactly "/". The one
+	// public question (hasSession): a lookup failure is logged there and
+	// sends the visitor to the login page.
+	if s.hasSession(r) {
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
 	}
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
-func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	sess := s.getSession(r)
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request, sess *Session) {
 
 	// v0.19.10 email gate, v0.20.4 pending-aware, v0.29.29
 	// confirmable-only, v0.29.30 lookup errors logged: see
@@ -61,7 +61,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.render(w, "dashboard", map[string]any{
+	s.render(w, r, "dashboard", map[string]any{
 		"Session":      sess,
 		"Groups":       groups,
 		"PendingOnly":  pendingOnly,
@@ -75,8 +75,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 // handleCompare renders the comparison page for up to 5 repos.
 // Repos are specified by ID in the query string: /compare?repos=1,2,3,4,5
-func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
-	sess := s.getSession(r)
+func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request, sess *Session) {
 
 	// Get the user's groups and their repos for the search dropdown.
 	groups, err := s.store.GetUserGroups(r.Context(), sess.UserID)
@@ -85,7 +84,7 @@ func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.render(w, "compare", map[string]any{
+	s.render(w, r, "compare", map[string]any{
 		"Session": sess,
 		"Groups":  groups,
 		"RepoIDs": compareRepoIDs(r.URL.Query().Get("repos")),
@@ -116,14 +115,15 @@ func compareRepoIDs(raw string) string {
 	return strings.Join(out, ",")
 }
 
-// handleSBOMDownload generates and returns an SBOM for a repo. The caller
-// must own the group named in the URL; whether the repo is a member of that
-// group is not checked (PR #218 review C16: the doc claimed "the group
-// containing the repo"; adding the membership check was not taken, a
-// recorded decision).
-func (s *Server) handleSBOMDownload(w http.ResponseWriter, r *http.Request, sess *Session, groupID int64, repoIDStr string) {
-	repoID, err := strconv.ParseInt(repoIDStr, 10, 64)
-	if err != nil {
+// handleSBOMDownload generates and returns an SBOM for a repo in a group
+// the session may read, through the service's one access rule (stage 1 of
+// summary/59; the repository must be in the group — PR #218 review C16's
+// "not checked" decision is reversed, pinned by
+// TestRepositoryPageAndSBOMRequireMembership).
+func (s *Server) handleSBOMDownload(w http.ResponseWriter, r *http.Request, sess *Session) {
+	groupID, okG := pathID(r, "gid")
+	repoID, okR := pathID(r, "rid")
+	if !okG || !okR {
 		http.NotFound(w, r)
 		return
 	}
@@ -177,9 +177,10 @@ func (s *Server) handleSBOMDownload(w http.ResponseWriter, r *http.Request, sess
 
 // handleRepoDetail shows the repo visualization/detail page.
 // This is the landing page when a user clicks a repo name in the group list.
-func (s *Server) handleRepoDetail(w http.ResponseWriter, r *http.Request, sess *Session, groupID int64, repoIDStr string) {
-	repoID, err := strconv.ParseInt(repoIDStr, 10, 64)
-	if err != nil {
+func (s *Server) handleRepoDetail(w http.ResponseWriter, r *http.Request, sess *Session) {
+	groupID, okG := pathID(r, "gid")
+	repoID, okR := pathID(r, "rid")
+	if !okG || !okR {
 		http.NotFound(w, r)
 		return
 	}
@@ -211,7 +212,7 @@ func (s *Server) handleRepoDetail(w http.ResponseWriter, r *http.Request, sess *
 		s.logger.Warn("repo page: stats unavailable", "repo_id", repoID, "error", err)
 	}
 
-	s.render(w, "repo_detail", map[string]any{
+	s.render(w, r, "repo_detail", map[string]any{
 		"Session": sess,
 		"Group":   group,
 		"Repo":    repo,

@@ -58,13 +58,33 @@ func TestMonitorRoutesAreAdministratorOnly(t *testing.T) {
 		}
 		return p
 	}
+	// Privilege is the users row's, read per request (0.29.102, D-1): the
+	// administrator is a real account promoted in the store.
+	userID, err := store.UpsertOAuthUser(ctx, db.OAuthUserInfo{Login: owner + "-user", Provider: "github"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminID, err := store.UpsertOAuthUser(ctx, db.OAuthUserInfo{Login: owner + "-admin", Provider: "github"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = store.Pool().Exec(context.Background(), `DELETE FROM aveloxis_ops.users WHERE user_id = ANY($1)`, []int{userID, adminID})
+	})
+	if err := store.SetUserAdmin(ctx, adminID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetUserAdmin(ctx, userID, false); err != nil {
+		t.Fatal(err)
+	}
 	s := New(store, config.WebConfig{DevMode: true}, "", logger)
-	s.sessions["user-tok"] = &Session{UserID: 1 << 30, LoginName: "user", ExpiresAt: time.Now().Add(time.Hour)}
-	s.sessions["admin-tok"] = &Session{UserID: 1<<30 + 1, LoginName: "admin", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
+	plantSession(t, s, "user-tok", &Session{UserID: userID, LoginName: "user", ExpiresAt: time.Now().Add(time.Hour)})
+	plantSession(t, s, "admin-tok", &Session{UserID: adminID, LoginName: "admin", ExpiresAt: time.Now().Add(time.Hour)})
 	h := s.Handler()
 	call := func(method, path, tok string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, nil)
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: tok})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		return w

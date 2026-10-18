@@ -46,6 +46,9 @@ func NormalizeInstanceWebBase(raw string) (string, error) {
 		return "", fmt.Errorf("%w %q: missing host", ErrInvalidInstanceWebBase, raw)
 	}
 	prefix := collapsePath(strings.ToLower(u.EscapedPath()))
+	// The suffix is spelled here and in platform.GitLabAPISuffix: platform
+	// imports model, so this package cannot read the constant (0.29.101
+	// round 1); scripts.TestGitLabPublicBasesAreSpelledOnce exempts model.
 	if lower := strings.ToLower(prefix); lower == "/api/v4" || strings.HasSuffix(lower, "/api/v4") {
 		return "", fmt.Errorf("%w %q: this is an API URL (…/api/v4); give the instance's web URL, and its API URL separately", ErrInvalidInstanceWebBase, raw)
 	}

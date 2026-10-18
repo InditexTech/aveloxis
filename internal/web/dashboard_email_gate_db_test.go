@@ -65,10 +65,13 @@ func TestDashboardEmailGateThroughTheHandler(t *testing.T) {
 		if m != nil {
 			s.WithMailer(m)
 		}
-		s.sessions["probe-token"] = &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)}
+		// Planted as a literal: one subtest's store is a closed pool, and
+		// the e-mail gate, not the session gate, is the subject here.
+		plantStubSession(t, s, "probe-token", &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)})
 		r := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 		r.Host = host
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w
@@ -154,7 +157,8 @@ func TestDashboardEmailGateThroughTheHandler(t *testing.T) {
 			_ = store.ClearUserPendingEmailIf(ctx, uid, "x@example.com")
 			_, _ = store.Pool().Exec(ctx, `DELETE FROM aveloxis_ops.email_confirmations WHERE user_id = $1`, uid)
 		})
-		if _, err := store.Pool().Exec(ctx, `UPDATE aveloxis_ops.email_confirmations SET expires_at = NOW() - INTERVAL '1 minute' WHERE token = $1`, tok); err != nil {
+		_ = tok // stored hashed (0.29.102): the row is reached by its owner
+		if _, err := store.Pool().Exec(ctx, `UPDATE aveloxis_ops.email_confirmations SET expires_at = NOW() - INTERVAL '1 minute' WHERE user_id = $1`, uid); err != nil {
 			t.Fatal(err)
 		}
 		if !toForm(t, get(t, store, mailOn("https://aveloxis.io"), false, "aveloxis.io")) {
@@ -237,8 +241,8 @@ func TestAccountEmailFlowThroughTheHandler(t *testing.T) {
 				return sendErr
 			})
 		s := New(store, config.WebConfig{DevMode: devMode}, "", logger).WithMailer(m)
-		s.sessions["a"] = &Session{UserID: uidA, LoginName: logins[0], ExpiresAt: time.Now().Add(time.Hour)}
-		s.sessions["b"] = &Session{UserID: uidB, LoginName: logins[1], ExpiresAt: time.Now().Add(time.Hour)}
+		plantSession(t, s, "a", &Session{UserID: uidA, LoginName: logins[0], ExpiresAt: time.Now().Add(time.Hour)})
+		plantSession(t, s, "b", &Session{UserID: uidB, LoginName: logins[1], ExpiresAt: time.Now().Add(time.Hour)})
 		return s
 	}
 	do := func(s *Server, method, target, host, session, form string) *httptest.ResponseRecorder {
@@ -252,6 +256,7 @@ func TestAccountEmailFlowThroughTheHandler(t *testing.T) {
 		}
 		r.Host = host
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: session})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w

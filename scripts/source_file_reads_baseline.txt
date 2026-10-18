@@ -1042,7 +1042,6 @@ internal/web/admin_routes_test.go internal/web/server.go
 internal/web/monitor_search_test.go internal/db/queue.go
 internal/web/monitor_test.go internal/db/queue.go
 internal/web/oauth_email_fallback_test.go internal/db/web_store.go
-internal/web/session_safety_test.go internal/web/server.go
 scripts/convergence_contracts_test.go cmd/aveloxis/dedup_repos.go
 scripts/convergence_contracts_test.go cmd/aveloxis/heal_collection_gaps.go
 scripts/convergence_contracts_test.go cmd/aveloxis/heal_collection_gaps_run.go
@@ -1059,6 +1058,5 @@ scripts/convergence_contracts_test.go internal/db/repo_dedup.go
 scripts/convergence_contracts_test.go scripts/standing_rules.go
 scripts/email_log_redaction_test.go internal/scheduler/vuln_digest.go
 scripts/prioritize_callers_test.go internal/api/portal.go
-scripts/session_secret_docs_test.go internal/config/config.go
 scripts/url_log_redaction_test.go internal/platform/url_userinfo.go
 scripts/url_log_redaction_test.go internal/web/server.go

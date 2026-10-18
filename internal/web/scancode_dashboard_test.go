@@ -35,7 +35,7 @@ func TestRepoDetailHasCopyrightSection(t *testing.T) {
 // TestRepoDetailFetchesScancodeLicenses verifies the JS fetches the scancode
 // license endpoint from the API.
 func TestRepoDetailFetchesScancodeLicenses(t *testing.T) {
-	if !strings.Contains(allTemplates, "scancode-licenses") {
+	if !strings.Contains(pageScripts(t)["repo-detail.js"], "scancode-licenses") {
 		t.Error("repo detail template must fetch scancode-licenses API endpoint")
 	}
 }

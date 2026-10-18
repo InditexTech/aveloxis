@@ -41,17 +41,46 @@ func (s *PostgresStore) CreateSessionToken(ctx context.Context, userID int, life
 	if lifetime <= 0 {
 		lifetime = DefaultSessionTokenLifetime
 	}
+	return s.createSessionToken(ctx, userID, lifetime, sessionKindAPI, "")
+}
+
+// newSecretToken is the ONE minting of a secret the store hands out (a
+// Bearer token, a web session, an API token's body, a confirmation link):
+// 32 bytes of crypto/rand, hex (0.29.102, DBS-14 — four sites each read
+// the generator themselves).
+func newSecretToken() (string, error) {
+	raw, err := newSecretBytes()
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(raw), nil
+}
+
+// newSecretBytes is the one crypto/rand read of the store: 32 bytes, for a
+// token (newSecretToken) or a key (the sign-up quota's daily secret).
+func newSecretBytes() ([]byte, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		return "", fmt.Errorf("session token entropy: %w", err)
+		return nil, fmt.Errorf("secret entropy: %w", err)
 	}
-	token := hex.EncodeToString(raw)
-	now := time.Now().Unix()
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO aveloxis_ops.user_session_tokens (token, user_id, created_at, expiration, token_hashed)
-		VALUES ($1, $2, $3, $4, TRUE)`, hashToken(token), userID, now, now+int64(lifetime.Seconds()))
+	return raw, nil
+}
+
+// createSessionToken is the one writer of aveloxis_ops.user_session_tokens:
+// a row of the given kind, hashed, with the parent session's hash when
+// /auth/token minted it from a web session ("" otherwise, NULL). The
+// expired rows are swept after every mint.
+func (s *PostgresStore) createSessionToken(ctx context.Context, userID int, lifetime time.Duration, kind, parentHash string) (string, error) {
+	token, err := newSecretToken()
 	if err != nil {
-		return "", fmt.Errorf("create session token: %w", err)
+		return "", err
+	}
+	now := time.Now().Unix()
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO aveloxis_ops.user_session_tokens (token, user_id, created_at, expiration, token_hashed, kind, parent_token)
+		VALUES ($1, $2, $3, $4, TRUE, $5, NULLIF($6, ''))`, hashToken(token), userID, now, now+int64(lifetime.Seconds()), kind, parentHash)
+	if err != nil {
+		return "", fmt.Errorf("create %s session token: %w", kind, err)
 	}
 	// Opportunistic hygiene — keeps the table from accumulating
 	// expired rows without a dedicated ticker.
@@ -68,7 +97,7 @@ func (s *PostgresStore) ValidateSessionToken(ctx context.Context, token string) 
 	var userID int
 	err := s.pool.QueryRow(ctx, `
 		SELECT user_id FROM aveloxis_ops.user_session_tokens
-		WHERE token = $1 AND expiration > $2`, hashToken(token), time.Now().Unix()).Scan(&userID)
+		WHERE token = $1 AND kind = $3 AND expiration > $2`, hashToken(token), time.Now().Unix(), sessionKindAPI).Scan(&userID)
 	if err != nil {
 		// Only "no such row" is the sentinel (SR-5; worklist follow-up 6,
 		// review round 1): a lost connection or a cancelled context is the

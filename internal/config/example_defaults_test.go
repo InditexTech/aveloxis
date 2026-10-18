@@ -431,6 +431,7 @@ var snippetValueAccessors = map[string]snippetAccessor{
 	"monitor.RefreshSeconds":       {"MonitorRefreshSecondsOrDefault", func(c *Config) any { return c.Monitor.MonitorRefreshSecondsOrDefault() }},
 	"mail.VulnDigestMinSeverity":   {"VulnDigestMinSeverityOrDefault", func(c *Config) any { return c.Mail.VulnDigestMinSeverityOrDefault() }},
 	"mail.VulnDigestIntervalHours": {"VulnDigestInterval", func(c *Config) any { return c.Mail.VulnDigestInterval() }},
+	"web.GitLabBaseURL":            {"GitLabOAuthBase", func(c *Config) any { return c.Web.GitLabOAuthBase() }},
 }
 
 // snippetAccessorExemptions are accessor methods that deliberately
@@ -522,7 +523,6 @@ var snippetValueAllowlist = map[string]string{
 	"database.DBName":        "a placeholder database name; the compiled default is the Augur-era \"augur\"",
 	"github.APIKeys":         "placeholder tokens; there is no compiled default",
 	"gitlab.APIKeys":         "placeholder tokens; there is no compiled default",
-	"web.SessionSecret":      "a placeholder secret; there is no compiled default",
 	"web.BaseURL":            "a placeholder public URL; there is no compiled default",
 	"web.GitHubClientID":     "a placeholder OAuth app id; there is no compiled default",
 	"web.GitHubClientSecret": "a placeholder OAuth secret; there is no compiled default",

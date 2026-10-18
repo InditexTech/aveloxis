@@ -85,7 +85,6 @@ The `web` command has no CLI flags. All settings come from the `web` section of 
 |---|---|---|---|
 | `web.addr` | string | `":8082"` | Listen address for the web server. |
 | `web.base_url` | string | `"http://localhost:8082"` | External URL used to construct OAuth callback URLs. |
-| `web.session_secret` | string | `""` | Reserved; not read today (sessions are random in-process tokens). Set a random string anyway. |
 | `web.dev_mode` | bool | `false` | Local HTTP development: cookies without `Secure`, loopback confirmation links. Never in production. |
 | `web.api_internal_url` | string | `"http://127.0.0.1:8383"` | Where `web` proxies `/api/*`; must follow `api.addr`. |
 | `web.spa_url` | string | `""` | The origin of a separate front end whose `?next=` the login flow may honor; empty otherwise. |
@@ -109,7 +108,7 @@ The `web` command has no CLI flags. All settings come from the `web` section of 
 - Group detail pages display repos 25 per page with pagination controls. A case-insensitive search box filters by repo name, owner, or URL.
 - Repos added through the web GUI are inserted into the same collection queue used by `aveloxis add-repo`.
 - When a user adds a GitHub org or GitLab group, a `user_org_requests` row is created. A background task scans tracked orgs every 4 hours to discover and queue new repos.
-- Sessions are stored in-memory with a 24-hour expiry. Restarting the process clears all sessions.
+- Sessions are rows of `aveloxis_ops.user_session_tokens` (hashed; 24-hour expiry, since 0.29.102). Restarting the process signs nobody out.
 - Runs as a separate process from `aveloxis serve`. Both share the database.
 
 ### Examples

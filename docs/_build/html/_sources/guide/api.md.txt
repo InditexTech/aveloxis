@@ -8,6 +8,34 @@ aveloxis api            # listens on api.addr, 127.0.0.1:8383 by default; --addr
 
 The API runs as a separate process alongside `aveloxis serve` (collection) and `aveloxis web` (GUI). All three share the same PostgreSQL database. It refuses to start until `aveloxis migrate` has brought the schema to its own version.
 
+## Changes for API clients in 0.29.102
+
+Stage 2 of the admin-console program (release notes 0.29.102) makes the web
+GUI safe; two of its changes touch clients of the **web process** (`aveloxis
+web`, the OAuth origin aveloxis-gui signs in through):
+
+- **`POST /auth/token` and `POST /logout` (`/auth/logout`) are POST-only.**
+  A GET answers `405` and changes nothing. Minting a token and ending a
+  session are state changes, and a state change never rides a GET (it was
+  prefetchable and linkable). aveloxis-gui sends both as POST from its
+  matching release, and its `check-setup.sh` requires 0.29.102.
+- **Signing out of the web GUI ends the tokens that sign-in minted.** A
+  token from `POST /auth/token` records the browser session it came from;
+  `POST /logout` deletes the session and those tokens together (a `401`
+  on the next request). A token minted from a session that merely expired
+  keeps its own 30-day life, and `POST /api/v1/auth/logout` still ends one
+  token on its own.
+- **A cross-site `POST` to the web process is refused** (`403`). The
+  request's `Origin` (or `Referer`) must be the web host or `web.spa_url`'s
+  origin; a browser's `Sec-Fetch-Site: cross-site` is refused. aveloxis-gui
+  on its own origin therefore needs `web.spa_url` set to that origin. A
+  signed-in HTML form also carries a form token; the two GUI calls do not.
+- **Every answer of the web process carries security headers**: a
+  Content-Security-Policy with one script source (`/static/`, which now
+  serves the page scripts and Chart.js — no CDN), `frame-ancestors 'none'`,
+  `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and a
+  referrer policy. A page that embeds the web GUI in a frame stops working.
+
 ## Changes for API clients in 0.29.99
 
 Stage 1b of the admin-console program (release notes 0.29.99) changed what
@@ -1071,7 +1099,14 @@ OAuth session for a token automatically and stores it in the browser.
 exchange:
 
 1. Sign in to the web GUI (GitHub or GitLab OAuth) in your browser.
-2. In the same browser, visit `https://<your-site>/auth/token`.
+2. In the same browser, mint a token with a POST to `/auth/token` (POST-only
+   since 0.29.102; a GET answers `405`). The browser's console on the site
+   does it in one line — the session cookie rides along:
+
+   ```js
+   fetch('/auth/token', {method: 'POST'}).then(r => r.json()).then(console.log)
+   ```
+
    You get JSON back:
 
    ```json
@@ -1096,7 +1131,7 @@ Token semantics:
   flags or scope) gets a structured **503** with a try-again body
   (v0.29.68) — never the 401, which the GUI treats as "the token is
   gone"; retry the request.
-- Each visit to `/auth/token` mints a **new** token; existing tokens
+- Each `POST /auth/token` mints a **new** token; existing tokens
   keep working until they expire, so long-running scripts aren't cut
   off when you log in elsewhere.
 - **Signing out ends the token** (v0.29.82): `POST /api/v1/auth/logout`

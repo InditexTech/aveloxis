@@ -39,7 +39,6 @@
     "addr": ":8082",
     "base_url": "http://localhost:8082",
     "api_internal_url": "http://api:8383",
-    "session_secret": "change-me-in-production",
     "dev_mode": true,
     "_oauth_comment": "Create a GitHub OAuth App at https://github.com/settings/developers. Set callback URL to http://localhost:8082/auth/github/callback",
     "github_client_id": "you-client-id-here",

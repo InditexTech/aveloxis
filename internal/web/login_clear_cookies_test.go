@@ -4,6 +4,9 @@
 package web
 
 import (
+	"context"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aveloxis/aveloxis/internal/config"
+	"github.com/aveloxis/aveloxis/internal/db"
 )
 
 // newTestServer builds a minimally-functional *Server suitable
@@ -22,10 +26,11 @@ import (
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
 	s := &Server{
-		cfg:      config.WebConfig{},
-		sessions: make(map[string]*Session),
+		cfg:    config.WebConfig{},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
-	s.tmpl = parseTemplates() // the production parse (one FuncMap, v0.29.98)
+	s.lookupSession = func(context.Context, string) (*Session, error) { return nil, db.ErrNoWebSession } // no store: plantSession adds sessions
+	s.tmpl = parseTemplates()                                                                            // the production parse (one FuncMap, v0.29.98)
 	return s
 }
 
@@ -52,10 +57,11 @@ func TestLoginTemplateRendersSignOutWhenSessionPresent(t *testing.T) {
 	// so the cookie's value matches a real entry in the session
 	// map (otherwise getSession returns nil and the template
 	// branch wouldn't fire).
-	token := srv.createSession(1, "alice", "", "github", false)
+	token := plantSession(t, srv, "alice", &Session{UserID: 1, LoginName: "alice", ExpiresAt: time.Now().Add(time.Hour)})
 
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+	csrf(req) // the session's form token (stage 2f)
 	rr := httptest.NewRecorder()
 
 	srv.handleLogin(rr, req)
@@ -92,7 +98,7 @@ func TestLoginTemplateOmitsSignOutWhenNoSession(t *testing.T) {
 func TestLogoutHandlerExpiresOAuthStateCookie(t *testing.T) {
 	srv := newTestServer(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/logout", nil)
+	req := httptest.NewRequest(http.MethodPost, "/logout", nil) // POST-only since 0.29.102
 	rr := httptest.NewRecorder()
 	srv.handleLogout(rr, req)
 

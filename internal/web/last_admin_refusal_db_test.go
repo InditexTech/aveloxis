@@ -57,10 +57,28 @@ func TestDemotingTheLastAdminIsRefusedNotA500(t *testing.T) {
 
 	s := New(store, config.WebConfig{}, "", logger)
 	// A stale session: it says admin, but the database has no such row.
-	s.sessions["stale-admin"] = &Session{UserID: target + 100000, LoginName: "_avweb_stale", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
+	// A stale administrator (0.29.102): a real account whose session was
+	// opened while it was an administrator and whose row says otherwise
+	// now — the gate reads the row per request (D-1).
+	_, _ = pool.Exec(ctx, `DELETE FROM aveloxis_ops.users WHERE login_name = '_avweb_stale'`)
+	stale, err := store.UpsertOAuthUser(ctx, db.OAuthUserInfo{Login: "_avweb_stale", Provider: "github"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM aveloxis_ops.users WHERE user_id = $1`, stale)
+	})
+	if err := store.SetUserAdmin(ctx, stale, true); err != nil {
+		t.Fatal(err)
+	}
+	plantSession(t, s, "stale-admin", &Session{UserID: stale, LoginName: "_avweb_stale", ExpiresAt: time.Now().Add(time.Hour)})
+	if err := store.SetUserAdmin(ctx, stale, false); err != nil {
+		t.Fatal(err)
+	}
 	r := httptest.NewRequest(http.MethodPost, "/admin/users/"+strconv.Itoa(target)+"/admin", strings.NewReader(url.Values{"admin": {"false"}}.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "stale-admin"})
+	csrf(r) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 

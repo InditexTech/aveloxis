@@ -18,7 +18,6 @@ package db
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -148,14 +147,14 @@ func (s *PostgresStore) CreateAPIToken(ctx context.Context, g APITokenGrant) (st
 	case g.RateLimitPerDay <= 0:
 		return "", APIToken{}, fmt.Errorf("an API token's daily allowance must be positive")
 	}
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", APIToken{}, fmt.Errorf("API token entropy: %w", err)
+	body, err := newSecretToken()
+	if err != nil {
+		return "", APIToken{}, err
 	}
-	raw := APITokenPrefix + hex.EncodeToString(buf)
+	raw := APITokenPrefix + body
 	createdBy := nullIfZero(g.CreatedBy)
 	t := APIToken{UserID: g.UserID, Label: label, RateLimitPerHour: g.RateLimitPerHour, RateLimitPerDay: g.RateLimitPerDay}
-	err := s.pool.QueryRow(ctx, `
+	err = s.pool.QueryRow(ctx, `
 		INSERT INTO aveloxis_ops.api_tokens (token_hash, user_id, label, created_by, expires_at, rate_limit_per_hour, rate_limit_per_day)
 		SELECT $1, u.user_id, $3, $4, NOW() + make_interval(secs => $5), $6, $7
 		FROM aveloxis_ops.users u WHERE u.user_id = $2

@@ -40,14 +40,17 @@ func TestGitHubCallbackFallsBackToUserEmails(t *testing.T) {
 func TestServerRegistersAccountEmailRoute(t *testing.T) {
 	src := srctest.PackageFunc(t, "internal/web", "func (s *Server) Handler(")
 
-	if !strings.Contains(src, `"/account/email"`) {
+	if !strings.Contains(src, `"GET /account/email"`) || !strings.Contains(src, `"POST /account/email"`) {
 		t.Error("Handler must register the /account/email route. " +
 			"This is the Option B fallback for new users whose OAuth " +
 			"emails (both /user and /user/emails) returned nothing — " +
 			"they get prompted to enter an email manually before " +
 			"reaching the dashboard.")
 	}
-	srctest.PackageFunc(t, "internal/web", "func (s *Server) handleAccountEmail(") // the GET/POST form handler, fatal when gone
+	// The form (GET) and the submit (POST) handlers, fatal when gone (0.29.102
+	// split the one method-switching handler into two routes).
+	srctest.PackageFunc(t, "internal/web", "func (s *Server) handleAccountEmailForm(")
+	srctest.PackageFunc(t, "internal/web", "func (s *Server) handleAccountEmailSubmit(")
 }
 
 // TestDashboardEnforcesEmail pins that handleDashboard (or a middleware
