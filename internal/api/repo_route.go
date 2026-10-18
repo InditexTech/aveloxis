@@ -21,6 +21,11 @@ import (
 // positive integer.
 var errRepoIDInvalid = errors.New("invalid repo_id")
 
+// errNoRepoStateReader is repoFromPath's refusal on a Server built without
+// a store: it cannot prove a repository exists, so it refuses (500) rather
+// than skipping the check.
+var errNoRepoStateReader = errors.New("no repository state reader: the server was built without a store")
+
 // parseRepoID reads the {repoID} path value: a positive integer. 0 and
 // below name no repository (ids start at 1), so they are refused with the
 // non-integers (N22, 400) rather than probed (D5's 404).
@@ -56,7 +61,7 @@ func (s *Server) repoFromPath(w http.ResponseWriter, r *http.Request) (int64, bo
 	}
 	if marked, ok := repoAuthorizedFor(r); !ok || marked != repoID {
 		if s.repoStates == nil {
-			s.serverError(w, r, "repoFromPath", errors.New("no repository state reader: the server was built without a store"))
+			s.serverError(w, r, "repoFromPath", errNoRepoStateReader)
 			return 0, false
 		}
 		states, err := s.repoStates(r.Context(), []int64{repoID})
