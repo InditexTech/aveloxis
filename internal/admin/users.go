@@ -12,9 +12,10 @@ import (
 
 // SetUserAdmin grants or removes the administrator role. An administrator
 // never demotes their own account (ErrSelfDemotion: both GUIs hide the
-// control; only a crafted request reaches this); the store refuses to
-// demote the last administrator atomically (db.ErrLastAdmin) and answers
-// db.ErrUserNotFound for no such user. The process's RoleChanged hook runs
+// control; only a crafted request reaches this); a target outside
+// 1..MaxUserID is an InvalidInput refusal (ErrInvalidInput) before any
+// store read; the store refuses to demote the last administrator atomically
+// (db.ErrLastAdmin) and answers db.ErrUserNotFound for no such user. The process's RoleChanged hook runs
 // after the write, so the target's next request sees the role.
 func (s *Service) SetUserAdmin(ctx context.Context, a Actor, target int, admin bool) error {
 	const op = "set user admin"
@@ -23,6 +24,11 @@ func (s *Service) SetUserAdmin(ctx context.Context, a Actor, target int, admin b
 	if !admin && a.Kind != Operator && target == a.UserID {
 		s.logger.Warn("admin: self-demotion refused", "actor", a.String())
 		return ErrSelfDemotion
+	}
+	// A target the column cannot hold is refused here, whatever width the
+	// adapter parsed at (SR-18; 0.29.103 review F2).
+	if !validUserID(target) {
+		return refuseInput("user id must be a positive integer")
 	}
 	if err := s.requireAdmin(ctx, a, op); err != nil {
 		return err

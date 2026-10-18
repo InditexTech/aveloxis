@@ -12,11 +12,11 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"math"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
@@ -165,8 +165,8 @@ func (s *Server) handleAdminCapacityAccount(w http.ResponseWriter, r *http.Reque
 	var a db.CapacityAccount
 	var err error
 	if raw := r.URL.Query().Get("user_id"); raw != "" {
-		id, perr := strconv.Atoi(raw)
-		if perr != nil || id <= 0 || id > math.MaxInt32 { // users.user_id is int4 (round 6 R6-d)
+		id, perr := admin.ParseUserID(raw) // users.user_id is int4 (round 6 R6-d); the one rule since 0.29.103
+		if perr != nil {
 			writeAuthError(w, http.StatusBadRequest, "user_id must be a positive integer")
 			return
 		}
@@ -210,8 +210,8 @@ func (s *Server) handleAdminCapacityOverride(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	userID, err := strconv.Atoi(r.PathValue("userID"))
-	if err != nil || userID <= 0 || userID > math.MaxInt32 { // users.user_id is int4 (round 6 R6-d)
+	userID, err := admin.ParseUserID(r.PathValue("userID")) // users.user_id is int4 (round 6 R6-d); the one rule since 0.29.103
+	if err != nil {
 		writeAuthError(w, http.StatusBadRequest, "user id must be a positive integer")
 		return
 	}

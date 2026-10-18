@@ -193,9 +193,8 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request, sess *
 }
 
 func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request, sess *Session) {
-	userID64, ok := pathID(r, "id")
-	userID := int(userID64)
-	if !ok || int64(userID) != userID64 {
+	userID, ok := pathUserID(r, "id")
+	if !ok {
 		http.Error(w, "invalid user id", http.StatusBadRequest)
 		return
 	}

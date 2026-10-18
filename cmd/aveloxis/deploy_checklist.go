@@ -596,6 +596,12 @@ var deployChecklists = map[string][]deployStep{
 	// v0.29.98 (2026-10-17, stage 0.5 of summary/59): test infrastructure
 	// (package-scope source lookups), the web server file split, templates
 	// embedded, the dead-code sweep. No schema change.
+	// v0.29.103 (2026-10-18): one rule for a users.user_id a request
+	// names (admin.ParseUserID, int4) across the web and API admin routes
+	// (CodeQL go/incorrect-integer-conversion on PR #238). The one
+	// visible change: an id above int4 is a 400 instead of a 500. No
+	// schema change — same ladder as 0.29.102.
+	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,
 	"0.29.100": v029100DeployChecklist,

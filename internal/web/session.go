@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 )
@@ -60,6 +61,15 @@ func (s *Server) expireCookie(name string) *http.Cookie {
 func pathID(r *http.Request, name string) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue(name), 10, 64)
 	return id, err == nil && id > 0
+}
+
+// pathUserID is pathID for the user id (users.user_id, int4): the one rule
+// admin.ParseUserID applies, so the handler never narrows a 64-bit value
+// (0.29.103; CodeQL go/incorrect-integer-conversion, PR #238) and a number
+// the column cannot hold is the same 400 as a non-number.
+func pathUserID(r *http.Request, name string) (int, bool) {
+	id, err := admin.ParseUserID(r.PathValue(name))
+	return id, err == nil
 }
 
 // createSession records a signed-in user as a row of

@@ -146,7 +146,7 @@ func TestBadAdminIdsAre400BeforeTheStore(t *testing.T) {
 		"", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	h := s.Handler()
 	token := plantSession(t, s, "root", &Session{UserID: 7, LoginName: "root", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
-	for _, path := range []string{"/admin/users/x/admin", "/admin/users/0/admin", "/admin/groups/-1/reject", "/admin/add-requests/x/approve", "/monitor/prioritize/x"} {
+	for _, path := range []string{"/admin/users/x/admin", "/admin/users/0/admin", "/admin/users/99999999999999999999/admin", "/admin/users/4294967296/admin", "/admin/groups/-1/reject", "/admin/add-requests/x/approve", "/monitor/prioritize/x"} {
 		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader("admin=true"))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})

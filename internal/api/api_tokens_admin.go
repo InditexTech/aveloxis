@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 )
 
@@ -75,7 +76,7 @@ func (s *Server) handleAdminAPITokenGrant(w http.ResponseWriter, r *http.Request
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {user_id, label, lifetime_days?, rate_limit_per_hour?, rate_limit_per_day?}")
 		return
 	}
-	if body.UserID <= 0 || body.UserID > math.MaxInt32 { // users.user_id is int4 (58 §7 item 19: a larger value was a 500)
+	if body.UserID <= 0 || body.UserID > admin.MaxUserID { // users.user_id is int4 (58 §7 item 19: a larger value was a 500)
 		writeAuthError(w, http.StatusBadRequest, "user_id names the account the token authenticates as")
 		return
 	}

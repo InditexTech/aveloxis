@@ -588,7 +588,7 @@ func (s *Server) handleAdminSetUserAdmin(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	targetID, err := strconv.Atoi(r.PathValue("userID"))
+	targetID, err := admin.ParseUserID(r.PathValue("userID")) // one rule for a users.user_id (0.29.103 F2)
 	if err != nil {
 		writeAuthError(w, http.StatusBadRequest, "invalid user id")
 		return
