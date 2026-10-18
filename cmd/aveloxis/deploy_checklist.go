@@ -590,6 +590,10 @@ var deployChecklists = map[string][]deployStep{
 	// 5559632343 on PR #229 — the organization reconcile's warning names
 	// the quota that refused; the skip census prints failed tests' output
 	// and CI keeps it. No schema change.
+	// v0.29.97 (2026-10-17, hotfix): the migrate's api_token_settings seed
+	// works on a schema born on 0.29.82–0.29.88 (NOT NULL mirror column
+	// without a default). No new schema object.
+	"0.29.97": v02997DeployChecklist,
 	"0.29.96": v02996DeployChecklist,
 	"0.29.95": v02995DeployChecklist,
 	"0.29.94": v02994DeployChecklist,
@@ -623,6 +627,19 @@ var deployChecklists = map[string][]deployStep{
 // ALTER): repository answers are cached until the repository changes; it
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
+
+// v02997DeployChecklist is 0.29.96's ladder with a note on the migrate step.
+var v02997DeployChecklist = func() []deployStep {
+	prev := v02996DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.97: no new schema object. The migrate's 'v0.29.82 seed api_token_settings' step failed with SQLSTATE 23502 (null value in column default_rate_limit_per_hour) on a database whose api_token_settings table was born on 0.29.82–0.29.88 and had no row 1 yet; the step now supplies the rollback mirror and the column gets the DEFAULT 1000 schema.sql declares. A fleet whose 0.29.96 migrate logged that ERROR reruns the migrate on this version before starting; nothing else changed for the running services. A fleet already running 0.29.96 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.96's notes below in the same one migrate. " + out[i].desc
+		}
+	}
+	return out
+}()
 
 // v02996DeployChecklist is 0.29.95's ladder with a note on the start step.
 var v02996DeployChecklist = func() []deployStep {

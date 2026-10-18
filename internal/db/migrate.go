@@ -786,11 +786,7 @@ func migrateStage3ScancodeDistribution(ctx context.Context, pg *PostgresStore, l
 	// default into its quota row (once, ledgered) and keeps the old column
 	// as the rollback mirror.
 	seedCapacitySettings(ctx, pg, logger, errs)
-	// v0.29.82: the API-token defaults' one row — since 0.29.89 only the
-	// lifetime (30 days); the allowances are quotas. Never overwrites an edit.
-	execMigrationStep(ctx, pg, logger, errs, "v0.29.82 seed api_token_settings",
-		fmt.Sprintf(`INSERT INTO aveloxis_ops.api_token_settings (id, default_lifetime_days)
-		VALUES (1, %d) ON CONFLICT (id) DO NOTHING`, DefaultAPITokenLifetimeDays))
+	seedAPITokenSettings(ctx, pg, logger, errs)
 	// v0.29.89: each API token gets a daily allowance (its own value, like
 	// the hour; the default comes from the token_requests_per_day quota).
 	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.api_tokens", "rate_limit_per_day",
@@ -3141,6 +3137,28 @@ func seedCapacitySettings(ctx context.Context, pg *PostgresStore, logger *slog.L
 		UPDATE aveloxis_ops.api_token_settings s SET default_rate_limit_per_hour = q.allowed
 		FROM aveloxis_ops.capacity_quotas q
 		WHERE s.id = 1 AND q.name = 'token_requests_per_hour' AND s.default_rate_limit_per_hour IS DISTINCT FROM q.allowed`)
+}
+
+// seedAPITokenSettings (v0.29.82) seeds the API-token defaults' one row —
+// since 0.29.89 only the lifetime (30 days) is decided here; the
+// allowances are quotas. Never overwrites an edit.
+//
+// v0.29.97: the row carries the rollback mirror too. A schema born on
+// 0.29.82–0.29.88 declares default_rate_limit_per_hour NOT NULL with no
+// default (schema.sql gained DEFAULT 1000 in 0.29.89, and
+// addColumnIfMissing above is a no-op on a column that exists), so the
+// 0.29.89–0.29.96 seed — which stopped supplying the column — failed with
+// 23502 on every such fleet whose row 1 was not there yet (the operator's
+// 2026-10-17 migrate on 0.29.96). The INSERT supplies the shipped hourly
+// allowance (the mirror's own sync step then follows the stored quota on
+// every migrate), and the column gets the default schema.sql declares.
+func seedAPITokenSettings(ctx context.Context, pg *PostgresStore, logger *slog.Logger, errs *[]error) {
+	execMigrationStep(ctx, pg, logger, errs, "v0.29.97 default_rate_limit_per_hour carries the default schema.sql declares",
+		`ALTER TABLE aveloxis_ops.api_token_settings ALTER COLUMN default_rate_limit_per_hour SET DEFAULT 1000`)
+	execMigrationStep(ctx, pg, logger, errs, "v0.29.82 seed api_token_settings",
+		fmt.Sprintf(`INSERT INTO aveloxis_ops.api_token_settings (id, default_rate_limit_per_hour, default_lifetime_days)
+		VALUES (1, %d, %d) ON CONFLICT (id) DO NOTHING`,
+			capacity.Shipped[capacity.QuotaTokenRequestsPerHour].Allowed, DefaultAPITokenLifetimeDays))
 }
 
 // execMigrationStep runs a schema-changing SQL statement, logging the
