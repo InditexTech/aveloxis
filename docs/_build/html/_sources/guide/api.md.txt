@@ -251,7 +251,8 @@ Administrator sessions only, like the token routes.
   saves one quota; the api processes apply it within a minute. `409` when
   `aveloxis.json` sets the quota (DEFAULT, SHADOW or OFF), `404` for an
   unknown name, `400` for a value that is not positive or an unknown mode.
-- `POST …/capacity/contact` `{"contact_email": "…"}` sets the address
+- `POST …/capacity/contact` `{"contact_email": "…"}` (the field is
+  required since 0.29.100: `{}` used to clear the address) sets the address
   every refusal invites a heavy user to write to (empty: none offered).
 - `GET …/capacity/accounts?login=…` (or `?user_id=…`) reads one account:
   its `user_id`, `login`, `provider` (the forge of its last sign-in) and
@@ -1568,8 +1569,10 @@ Per-user:
   reflects the calling user's star state. `sort` accepts `name`
   (default), `issues`, `prs`, `commits`, `collected`, `activity`;
   `dir` accepts `asc` (default) or `desc`; unknown values fall back
-  and the response echoes the effective sort. Non-admins may only
-  read their own groups (403 otherwise).
+  and the response echoes the effective sort. The group must be the
+  caller's (an administrator's session reads any group; an API token
+  only its owner's): otherwise a `404`, the same answer as for a group
+  that does not exist (stage 1 of the admin-console refactor, 0.29.100).
 - `POST /api/v1/groups/{groupID}/repos` with
   `{"url": "https://github.com/owner/repo", "kind": "repo"}` (or
   `"kind": "org"` with an org URL) — add a repo or track an org. A
@@ -1591,12 +1594,18 @@ Per-user:
   When `web.auto_approve_add_limit` lets a batch through and some of its
   repositories cannot be added, the others are still added and the call
   fails with an error saying how many could not be; sending the same
-  URLs again retries them (v0.29.50). A group the caller does not own,
-  or a rejected group, is a `400` with the reason, and so is a URL
-  longer than 1342 bytes (v0.29.54) or one the database refuses (such as
-  one with a NUL byte; v0.29.52); repositories
-  that could not be added and any server-side failure are a `500` with a
-  plain message and no database text (v0.29.51).
+  URLs again retries them (v0.29.50). Every line is parsed as a
+  repository URL first (0.29.100): a missing scheme is supplied, GitHub,
+  GitLab and any git host are accepted, and a line that is not a
+  repository URL is reported in `invalid` (each `url: why`, credentials
+  redacted) and skipped while the rest go through; a paste with no
+  usable line is a `400`. A group the caller does not own is a `404`
+  (the same answer as a group that does not exist); a rejected group is
+  a `409`; a URL longer than 1342 bytes (v0.29.54) or one the database
+  refuses (such as one with a NUL byte; v0.29.52) is a `400`;
+  repositories that could not be added and any server-side failure are
+  a `500` with a plain message and no database text (v0.29.51). Every
+  refusal body is JSON `{"error": "…"}`.
   Org outcomes (v0.27.84): `registered: 1` means the org is tracked
   NOW — admin adds always register, and a non-admin's add of an org
   that is ALREADY registered in a group that is not rejected auto-approves (it adds zero
@@ -1620,7 +1629,9 @@ Per-user:
   POST above with `kind: "org"`). Envelope:
   `{orgs: [{org_request_id, url, name, platform, last_scanned?}]}`.
   `last_scanned` is omitted until the scheduler's org scan first
-  visits the org. Ownership-checked for non-admins (403 otherwise).
+  visits the org. The group must be the caller's (an administrator's
+  session reads any group; an API token only its owner's): otherwise a
+  `404`, the same answer as for a group that does not exist.
 
 Admin-only:
 
@@ -1634,25 +1645,29 @@ Admin-only:
   timestamp to backfill from), so for those two fields start equal
   and diverge from the next login onward.
 - `POST /api/v1/admin/users/{userID}/admin` with
-  `{"admin": true|false}` — promote/demote. Self-demotion is refused
-  (last-admin guard). A demotion that would leave no admin at all is a
+  `{"admin": true|false}` — promote/demote; the field is required
+  (0.29.100: `{}` used to demote the account). Self-demotion is refused
+  (`400`). A demotion that would leave no admin at all is a
   `409` with `refusing to demote the last admin — promote another user
-  first` (it was a `500` before PR #218 review).
-- `GET /api/v1/admin/groups/pending` — pending groups awaiting
-  approval, with requester login/email and repo/org counts.
-- `POST /api/v1/admin/groups/{groupID}/{decision}` where decision is
-  `approve` or `reject` —
-  decide a pending group. Approval bulk-enqueues the group's repos
-  for collection (same machinery as the server-rendered admin UI).
-  Legacy: new groups always create approved since v0.27.20; this
-  route remains for pre-conversion pending groups.
+  first` (it was a `500` before PR #218 review); the count and the write
+  are one locked transaction, so two demotions deciding at once cannot
+  both pass. No such user is a `404`.
+- `POST /api/v1/admin/groups/{groupID}/reject` — reject a group: the
+  group-level abuse lever (v0.27.20); it takes no further additions and
+  its organizations stop being listed; its repositories stay. `404` for a
+  group that does not exist. The legacy pending-group approval —
+  `GET /api/v1/admin/groups/pending` and the `approve` decision — is gone
+  since 0.29.100: groups have been born approved since v0.27.20 and the
+  migrate converted every pending group then; the additions queue below
+  is the approval unit.
 - `GET /api/v1/groups/{groupID}/pending-adds` — the group's own
   awaiting-approval content (v0.27.20): repo URLs from pending
   add-requests plus pending org registrations, each with
-  `request_id`, `kind`, `url`, `created_at`. Ownership-checked for
-  non-admins (a group the caller does not own is a `403`; a server-side
-  failure is a `500` without database text, v0.29.52). Envelope:
-  `{pending: [...]}`.
+  `request_id`, `kind`, `url`, `created_at`. The group must be the
+  caller's (an administrator's session reads any group): otherwise a
+  `404`, the same answer as for a group that does not exist; a
+  server-side failure is a `500` without database text (v0.29.52).
+  Envelope: `{pending: [...]}`.
 - `GET /api/v1/admin/add-requests` — the v0.27.20 per-add approval
   queue: pending additions of not-yet-collected repos/orgs by
   non-admins. Each entry carries the requester (`user_login`,
@@ -1672,7 +1687,7 @@ Admin-only:
   request was already decided (idempotent double-click). A request id that
   does not exist answers `404`. An org request that can never be registered
   answers `409` with the reason and "reject the request": an org that is
-  not on this deployment's GitHub host, a URL carrying credentials, or a
+  not on this deployment's GitHub host or GitLab instance, a URL carrying credentials, or a
   request created before v0.29.54 whose URL is longer than the registration
   index holds (2,684 bytes).
 - `GET /api/v1/admin/monitor/stats` — `{queue: {status: count}}`:
@@ -1726,7 +1741,9 @@ Reads (any authenticated user):
   user (mirrors the repo-star routes). Both idempotent; PUT on a
   nonexistent collection returns 404. Response
   `{ok, starred}`.
-- `GET /api/v1/collections/{collectionID}?page&page_size&sort&dir` —
+- `GET /api/v1/collections/{collectionID}?page&page_size&sort&dir` — (`404`
+  for a collection that does not exist, 0.29.100; `dir` is echoed as the
+  direction applied, `asc` or `desc`) —
   member groups (each with live repo count) + one page of the deduped
   repo set: `{collection_id, groups, repos, total, page, page_size,
   sort, dir}`. Page size defaults 50, caps 100. v0.27.74: rows carry
@@ -1743,7 +1760,9 @@ Reads (any authenticated user):
 - `POST /api/v1/collections/{collectionID}/copy` with `{group_id}`
   (must be the caller's) or `{group_name}` (find-or-create for the
   caller) — links every repo of the collection into that group and
-  returns `{added, group_id}` (repos already in the group no-op).
+  returns `{added, group_id}` (repos already in the group no-op); a
+  collection that does not exist is a `404` (0.29.100; it answered 200
+  and linked nothing).
   **Never enqueues collection and never creates add-requests**:
   collection repos are already tracked, and approval only ever gates
   NEW collection (v0.27.20). The caller's auth scope and home cache
@@ -1752,16 +1771,22 @@ Reads (any authenticated user):
 Admin mutations (requireAdmin):
 
 - `POST /api/v1/admin/collections` `{name, description, position}` →
-  `{collection_id}`. Name is globally UNIQUE.
+  `{collection_id}`. Name is globally UNIQUE: a taken name is a `409`
+  (0.29.100; it was a 500).
 - `POST /api/v1/admin/collections/{collectionID}` `{name,
-  description, position}` — update in place.
+  description, position}` — update in place; `404` for a collection
+  that does not exist, `409` for a taken name (0.29.100; both were 500s).
 - `POST /api/v1/admin/collections/{collectionID}/delete` — removes
-  the collection; member links cascade, member groups are untouched.
+  the collection; member links cascade, member groups are untouched;
+  `404` for a collection that does not exist (0.29.100; it answered 200).
 - `POST /api/v1/admin/collections/{collectionID}/groups`
   `{group_id}` — link an ADMIN-OWNED group (400 for a group owned by
-  a non-admin; linking an already-linked group is an idempotent ok).
+  a non-admin; `404` for a collection or a group that does not exist,
+  0.29.100; linking an already-linked group is an idempotent ok).
 - `POST /api/v1/admin/collections/{collectionID}/groups/{groupID}/remove`
-  — unlink; the group and its repos are untouched.
+  — unlink; the group and its repos are untouched; `404` for a
+  collection that does not exist. Every administrative body on these
+  routes is bounded (64 KiB) and read by one decoder (0.29.100).
 
 
 ## Window-boundary semantics (v0.27.39)

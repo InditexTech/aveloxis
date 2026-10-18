@@ -2607,7 +2607,14 @@ func (s *Scheduler) maybeScanNewOrgs(ctx context.Context) {
 	if !s.dbHealthy.Load() {
 		return
 	}
-	pending, err := s.store.HasNeverScannedOrgs(ctx, s.ghAPIBase)
+	// A GitLab row counts only while a GitLab key exists (the pass leaves
+	// it unstamped otherwise, and counting it would re-fire this probe
+	// every tick); a GitHub row's gate is the pool check in the pass.
+	glBase := ""
+	if s.gitlabKeysAvailable() {
+		glBase = s.gitlabWebBase()
+	}
+	pending, err := s.store.HasNeverScannedOrgs(ctx, s.ghAPIBase, glBase)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return // shutdown, not a failure (the v0.27.28 ClassCanceled rule)
@@ -2680,7 +2687,8 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 		groupID   int64
 	}
 	type orgScan struct {
-		name     string // first-seen casing — used in the API path
+		name     string // first-seen casing — used in the API path; a GitLab group's FULL path (N14)
+		url      string // the first-seen registration URL — names the GitLab instance
 		platform string
 		entries  []orgEntry
 	}
@@ -2721,26 +2729,46 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 			continue
 		}
 
-		// Host gate (v0.29.57, rounds 1–2 on the 5260961848 fixes): the
-		// registered URL names the org; the NAME alone does not. An org
-		// registered on a host other than the deployment's GitHub host is
-		// never enumerated here — the same name on the deployment's host
-		// is a different org. The store refuses such a registration in
-		// every writer (db.ErrOrgOffGitHubHost); this is the belt for rows
-		// that predate it. The row stays unstamped (SR-3), so this log
-		// repeats each 4-hour pass until the operator removes the row —
-		// and the never-scanned probe does not count it
-		// (db.OrgScanEligible), so it does not re-fire the demand scan.
-		if org.Platform == "github" && !platform.OrgOnGitHubHost(org.OrgURL, s.ghAPIBase) {
-			s.logger.Warn("org scan skipped — the registered URL is not on this deployment's GitHub host (the org name would be enumerated on the wrong host), or carries credentials; not enumerated",
-				"group_id", groupID, "org", org.OrgName, "org_url", platform.RedactURLUserinfo(org.OrgURL), "github_host", platform.GitHubWebHost(s.ghAPIBase))
+		// Host gate (v0.29.57, rounds 1–2 on the 5260961848 fixes; the
+		// GitLab arm since stage 1e of summary/59): the registered URL
+		// names the org; the NAME alone does not. An org registered on a
+		// host other than the deployment's GitHub host, or a group on a
+		// GitLab instance other than the configured one, is never
+		// enumerated here — the same name on the deployment's host is a
+		// different org, and GitLab keys go to one host. The store refuses
+		// such a GitHub registration in every writer (db.ErrOrgOffGitHubHost);
+		// this is the belt for rows that predate it, and the one gate for
+		// GitLab. The row stays unstamped (SR-3), so this log repeats each
+		// 4-hour pass until the operator removes the row — and the
+		// never-scanned probe does not count it (the same predicate,
+		// db.OrgScanEligible), so it does not re-fire the demand scan.
+		if !db.OrgScanEligible(org.Platform, org.OrgURL, s.ghAPIBase, s.gitlabWebBase()) {
+			s.logger.Warn("org scan skipped — the registered URL is not on this deployment's forge host (GitHub: github.base_url; GitLab: gitlab.base_url), or carries credentials; not enumerated",
+				"group_id", groupID, "org", org.OrgName, "platform", org.Platform, "org_url", platform.RedactURLUserinfo(org.OrgURL),
+				"github_host", platform.GitHubWebHost(s.ghAPIBase), "gitlab_base", s.gitlabWebBase())
 			continue
 		}
 
-		key := org.Platform + "\x00" + strings.ToLower(org.OrgName)
+		// The name the forge is asked for: GitHub's account; a GitLab
+		// group's FULL path, re-derived from the registered URL at scan
+		// time (N14) — rows written before stage 1e stored the first
+		// segment, which would enumerate the whole parent group.
+		name := org.OrgName
+		if org.Platform == "gitlab" {
+			ref, perr := platform.ParseOrgRef(org.OrgURL, platform.GitLabHints(s.gitlabAPIBase()))
+			if perr != nil {
+				// Unreachable past the gate above (it parsed the same URL);
+				// logged rather than trusted (SR-5).
+				s.logger.Warn("org scan skipped — the registered GitLab URL does not name a group", "group_id", groupID, "org_url", platform.RedactURLUserinfo(org.OrgURL), "error", perr)
+				continue
+			}
+			name = ref.Path
+		}
+
+		key := org.Platform + "\x00" + strings.ToLower(name)
 		g, ok := grouped[key]
 		if !ok {
-			g = &orgScan{name: org.OrgName, platform: org.Platform}
+			g = &orgScan{name: name, url: org.OrgURL, platform: org.Platform}
 			grouped[key] = g
 			order = append(order, key)
 		}
@@ -2749,11 +2777,15 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 
 	s.logger.Info("scanning user org requests",
 		"count", len(orgs), "distinct_orgs", len(order), "only_never_scanned", onlyNeverScanned)
-	noKeysSkipped := 0
+	noKeysSkipped, noGitLabKeysSkipped := 0, 0
 	defer func() {
 		if noKeysSkipped > 0 {
 			s.logger.Info("user org scan skipped GitHub orgs — no API keys; registrations stay unstamped until keys exist",
 				"orgs", noKeysSkipped)
+		}
+		if noGitLabKeysSkipped > 0 {
+			s.logger.Info("user org scan skipped GitLab groups — no API keys; registrations stay unstamped until keys exist",
+				"groups", noGitLabKeysSkipped)
 		}
 	}()
 	for _, key := range order {
@@ -2814,14 +2846,52 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 					newCounts[gid]++
 				}
 			}
+		case "gitlab":
+			// C4 (stage 1e of summary/59): the group's projects, subgroups
+			// included, through the one lister; the client is the configured
+			// instance's (the gate above admitted the URL's host).
+			if !s.gitlabKeysAvailable() {
+				noGitLabKeysSkipped++
+				continue // rows stay unstamped — retried when keys exist
+			}
+			// The stored spelling with the scheme the gate supplied before
+			// judging it (ParseOrgRef's WithDefaultScheme): the store has
+			// written https:// since v0.27.94, but a pending org request from
+			// before then, approved later, is registered as it was pasted —
+			// schemeless — and the builder's parse guard read that as a URL
+			// with no host: admitted by the gate, refused here, looped
+			// unstamped (round-7 review).
+			client, ok, why := s.gitlabClientForWebURL(platform.WithDefaultScheme(g.url))
+			if !ok {
+				s.logger.Warn("user org scan skipped a GitLab group — "+why, "group", g.name, "org_url", platform.RedactURLUserinfo(g.url))
+				continue // unstamped (SR-3): the gate and this disagree only on a configuration change mid-pass
+			}
+			for item, err := range client.ListGroupProjects(ctx, g.name) {
+				if err != nil {
+					listErr = err
+					break
+				}
+				listed++
+				out, ierr := s.ingestDiscovered(ctx, item.OwnerRepo(), model.PlatformGitLab, targets)
+				if errors.Is(ierr, context.Canceled) {
+					return // shutdown between repos: stamp nothing, the next pass re-enumerates
+				}
+				for gid := range out.linked {
+					newCounts[gid]++
+				}
+			}
 		default:
-			continue // no lister for this forge yet (the GitLab arm is stage 1e's C4); the row stays unstamped (SR-3)
+			continue // no lister for this forge; the row stays unstamped (SR-3)
 		}
 		if errors.Is(listErr, context.Canceled) {
 			return // shutdown mid-listing: stamp nothing
 		}
 		if errors.Is(listErr, platform.ErrNoKeys) {
-			noKeysSkipped++
+			if g.platform == "gitlab" {
+				noGitLabKeysSkipped++
+			} else {
+				noKeysSkipped++
+			}
 			continue
 		}
 		if listErr != nil {
@@ -2851,7 +2921,7 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 	// v0.27.93 self-heal: enumeration above links only what the forge
 	// listing returns. Tracked repos that entered the catalog through
 	// other paths (mailing-list loaders, foundation importers, renames,
-	// GitLab orgs — which this scan doesn't enumerate) would otherwise
+	// GitLab groups on another instance, which this scan never enumerates)
 	// stay unlinked forever (the 2026-08-18 production drift: 9 live
 	// repos stranded, incl. gitlab.com/petsc/petsc). One set-based pass
 	// per FULL cycle; the 10s demand probe (onlyNeverScanned) stays

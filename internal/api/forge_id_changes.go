@@ -5,12 +5,12 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 )
@@ -49,7 +49,7 @@ func (s *Server) handleAdminForgeIDChanges(w http.ResponseWriter, r *http.Reques
 
 // adoptNoteMaxBytes bounds the optional note (it is stored and shown to
 // operators, not rendered on the public page).
-const adoptNoteMaxBytes = 1000
+const adoptNoteMaxBytes = admin.AdoptNoteMaxBytes
 
 // adoptBodyMaxBytes bounds the raw request body. JSON may spell one byte
 // of the note as a six-byte \uXXXX escape, so a note at the limit can take
@@ -65,7 +65,7 @@ func (s *Server) handleAdminForgeIDAdopt(w http.ResponseWriter, r *http.Request)
 	}
 	repoID, err := parseRepoID(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeAuthError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// The body names the change the admin chose (review of v0.29.63:
@@ -79,49 +79,24 @@ func (s *Server) handleAdminForgeIDAdopt(w http.ResponseWriter, r *http.Request)
 	raw, rerr := io.ReadAll(io.LimitReader(r.Body, adoptBodyMaxBytes+1))
 	if rerr != nil {
 		s.logger.Warn("admin forge-ID adopt: request body unreadable", "repo_id", repoID, "error", rerr)
-		http.Error(w, "could not read the request body", http.StatusBadRequest)
+		writeAuthError(w, http.StatusBadRequest, "could not read the request body")
 		return
 	}
 	if len(raw) > adoptBodyMaxBytes {
-		http.Error(w, "request body too large", http.StatusBadRequest)
+		writeAuthError(w, http.StatusBadRequest, "request body too large")
 		return
 	}
 	if err := json.Unmarshal(raw, &body); err != nil {
-		http.Error(w, `invalid JSON body: want {"old_forge_id", "new_forge_id", "note"}`, http.StatusBadRequest)
+		writeAuthError(w, http.StatusBadRequest, `invalid JSON body: want {"old_forge_id", "new_forge_id", "note"}`)
 		return
 	}
-	if body.OldForgeID == "" || body.NewForgeID == "" {
-		http.Error(w, "old_forge_id and new_forge_id are required: they name the change to adopt", http.StatusBadRequest)
+	// Bounds, the adopter's label, the write and its audit line are the
+	// service's; a refusal is answered from the API's one table.
+	if err := s.admin.AdoptForgeID(r.Context(), s.actor(info), repoID, body.OldForgeID, body.NewForgeID, body.Note); err != nil {
+		if !s.refuse(w, info, err) {
+			s.serverError(w, r, "handleAdminForgeIDAdopt", fmt.Errorf("repo %d: %w", repoID, err))
+		}
 		return
 	}
-	if len(body.Note) > adoptNoteMaxBytes {
-		http.Error(w, "note too long", http.StatusBadRequest)
-		return
-	}
-	adoptedBy, lerr := s.store.UserLabel(r.Context(), info.UserID)
-	if lerr != nil {
-		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, lerr, "admin forge-ID adopt: admin label lookup failed — recording the user id", "user_id", info.UserID, "error", lerr)
-		adoptedBy = "user " + strconv.Itoa(info.UserID)
-	}
-	err = s.store.AdoptPendingForgeIDChange(r.Context(), repoID, body.OldForgeID, body.NewForgeID, adoptedBy, body.Note)
-	switch {
-	case errors.Is(err, db.ErrNoPendingForgeIDChange):
-		s.logger.Warn("admin forge-ID adopt refused: no such pending change", "repo_id", repoID, "old", logSafe(body.OldForgeID), "new", logSafe(body.NewForgeID), "adopted_by", adoptedBy)
-		http.Error(w, "no pending forge-ID change with that pair for this repository (already adopted, or never observed)", http.StatusNotFound)
-		return
-	case errors.Is(err, db.ErrForgeIDNotAsExpected):
-		// The stored ID is no longer this change's old ID — usually another
-		// change was adopted (the CLI, a sibling row, or a second admin's
-		// click on this same change). Nothing was written; the change is
-		// superseded and leaves the pending list.
-		s.logger.Warn("admin forge-ID adopt refused: superseded", "repo_id", repoID, "old", logSafe(body.OldForgeID), "new", logSafe(body.NewForgeID), "adopted_by", adoptedBy)
-		http.Error(w, "superseded: the repository no longer stores "+body.OldForgeID+" — nothing adopted; reload the list", http.StatusConflict)
-		return
-	case err != nil:
-		httpserver.LogFailure(r.Context(), s.logger, slog.LevelError, err, "admin forge-ID adopt failed", "repo_id", repoID, "error", err)
-		http.Error(w, "adoption failed", http.StatusInternalServerError)
-		return
-	}
-	s.logger.Info("forge-ID change adopted from the admin page", "repo_id", repoID, "old", logSafe(body.OldForgeID), "new", logSafe(body.NewForgeID), "adopted_by", adoptedBy)
 	s.writeJSON(w, r, map[string]any{"adopted": true, "repo_id": repoID})
 }

@@ -17,7 +17,7 @@
 //
 // Store methods (signature pinned by tests):
 //   - CreateUserGroup now sets status: 'approved' if the creator is an admin, 'pending' otherwise
-//   - ApproveGroup, RejectGroup, ListPendingGroups
+//   - RejectGroup (ApproveGroup and ListPendingGroups retired in 0.29.100, N9)
 //   - ListUsers, SetUserAdmin
 //   - First-user-is-admin auto-promotion in UpsertOAuthUser
 
@@ -119,46 +119,11 @@ func TestCreateUserGroupBranchesOnAdmin(t *testing.T) {
 	}
 }
 
-// TestApproveGroupExists pins the admin-approval store method.
-func TestApproveGroupExists(t *testing.T) {
-	src := mustReadStoreSource(t, "web_store.go")
-	if !strings.Contains(src, "func (s *PostgresStore) ApproveGroup(") {
-		t.Error("web_store.go must define ApproveGroup(ctx, groupID, adminID) — the admin-side state transition")
-	}
-}
-
-// TestApproveGroupEnqueuesRepos pins the side effect we care about:
-// approving a pending group must enqueue all its repos for collection.
-// Without this, approval is just a status flip and nothing actually
-// gets collected.
-func TestApproveGroupEnqueuesRepos(t *testing.T) {
-	src := mustReadStoreSource(t, "web_store.go")
-	body := extractBatchFunc(src, "ApproveGroup")
-	if body == "" {
-		t.Fatal("source structure changed (a skip would hide it): ApproveGroup not yet defined")
-	}
-	if !strings.Contains(body, "collection_queue") {
-		t.Error("ApproveGroup must INSERT into aveloxis_ops.collection_queue for every repo in the group's user_repos. " +
-			"Otherwise approval doesn't actually trigger collection.")
-	}
-	if !strings.Contains(body, "user_repos") {
-		t.Error("ApproveGroup must SELECT from aveloxis_ops.user_repos to find the group's repos")
-	}
-}
-
 // TestRejectGroupExists pins the rejection method.
 func TestRejectGroupExists(t *testing.T) {
 	src := mustReadStoreSource(t, "web_store.go")
 	if !strings.Contains(src, "func (s *PostgresStore) RejectGroup(") {
 		t.Error("web_store.go must define RejectGroup(ctx, groupID, adminID) for the admin to refuse a pending submission")
-	}
-}
-
-// TestListPendingGroupsExists pins the admin's view of what needs review.
-func TestListPendingGroupsExists(t *testing.T) {
-	src := mustReadStoreSource(t, "web_store.go")
-	if !strings.Contains(src, "func (s *PostgresStore) ListPendingGroups(") {
-		t.Error("web_store.go must define ListPendingGroups(ctx) — the admin approval queue")
 	}
 }
 

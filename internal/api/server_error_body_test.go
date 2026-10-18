@@ -332,13 +332,13 @@ func TestGroupListsAreNot403OnAStoreFailure(t *testing.T) {
 			t.Fatalf("priming GET %s = %d %s", p, rec.Code, rec.Body.String())
 		}
 	}
-	// Someone else's group, and a group id nobody has, are still the
-	// caller's 403 (PR #218 review C14: only the missing id was exercised,
-	// under a comment naming someone else's group).
+	// Someone else's group, and a group id nobody has, are the caller's
+	// 404 alike (N11, stage 1 of summary/59; PR #218 review C14: only the
+	// missing id was exercised, under a comment naming someone else's group).
 	for _, g := range []int64{otherGID, otherGID + 1000000} {
 		for _, p := range []string{fmt.Sprintf("/api/v1/groups/%d/repos", g), fmt.Sprintf("/api/v1/groups/%d/orgs", g)} {
-			if rec := get(p); rec.Code != http.StatusForbidden {
-				t.Errorf("GET %s, a group the caller does not own = %d; want 403", p, rec.Code)
+			if rec := get(p); rec.Code != http.StatusNotFound {
+				t.Errorf("GET %s, a group the caller does not own = %d; want 404", p, rec.Code)
 			}
 		}
 	}

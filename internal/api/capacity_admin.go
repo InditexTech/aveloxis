@@ -95,16 +95,18 @@ func (s *Server) handleAdminCapacityQuota(w http.ResponseWriter, r *http.Request
 		return
 	}
 	name := r.PathValue("name")
+	// The route's own existence first (58 §7 item 12: a bad body to an
+	// unknown quota answered 400).
+	if _, known := capacity.Shipped[name]; !known {
+		writeAuthError(w, http.StatusNotFound, "no quota named "+strconv.Quote(name))
+		return
+	}
 	var body struct {
 		Allowed *int64 `json:"allowed"`
 		Mode    string `json:"mode"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {allowed, mode}")
-		return
-	}
-	if _, known := capacity.Shipped[name]; !known {
-		writeAuthError(w, http.StatusNotFound, "no quota named "+strconv.Quote(name))
 		return
 	}
 	mode, err := capacity.ParseMode(body.Mode)
@@ -131,13 +133,14 @@ func (s *Server) handleAdminCapacityContact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var body struct {
-		ContactEmail string `json:"contact_email"`
+		ContactEmail *string `json:"contact_email"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
-		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {contact_email}")
+	// The field is required (58 §7 item 18: `{}` cleared the address).
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil || body.ContactEmail == nil {
+		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {contact_email} (an empty string clears it)")
 		return
 	}
-	err := s.store.SetCapacityContact(r.Context(), body.ContactEmail, info.UserID)
+	err := s.store.SetCapacityContact(r.Context(), *body.ContactEmail, info.UserID)
 	if errors.Is(err, db.ErrInvalidCapacitySettings) {
 		writeAuthError(w, http.StatusBadRequest, "contact_email must be an email address of at most "+strconv.Itoa(db.MaxContactEmailBytes)+" bytes, or empty")
 		return
@@ -219,7 +222,7 @@ func (s *Server) handleAdminCapacityOverride(w http.ResponseWriter, r *http.Requ
 		LinksPerDay     *int   `json:"links_per_day"`
 		Note            string `json:"note"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {repos_allowed?, requests_per_hour?, requests_per_day?, links_per_day?, note}")
 		return
 	}
@@ -314,13 +317,13 @@ func (s *Server) handleGroupRemoveRepo(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, http.StatusBadRequest, "group and repository ids must be positive integers")
 		return
 	}
-	removed, err := s.store.RemoveRepoFromGroup(r.Context(), info.UserID, groupID, repoID)
-	if errors.Is(err, db.ErrGroupNotOwned) {
-		writeAuthError(w, http.StatusNotFound, "no group of yours with that id")
-		return
-	}
+	// The service's ScopeChanged hook drops only the caller's cached scope
+	// after a removal.
+	removed, err := s.admin.RemoveFromGroup(r.Context(), s.actor(info), groupID, repoID)
 	if err != nil {
-		s.serverError(w, r, "handleGroupRemoveRepo", err)
+		if !s.refuse(w, info, err) {
+			s.serverError(w, r, "handleGroupRemoveRepo", err)
+		}
 		return
 	}
 	if !removed {
@@ -329,9 +332,6 @@ func (s *Server) handleGroupRemoveRepo(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, http.StatusNotFound, "that repository is not in that group")
 		return
 	}
-	// The caller's scope may have narrowed: drop only their cached scope.
-	s.auth.invalidateUser(info.UserID)
-	s.homeCache.invalidate(info.UserID)
 	s.writeJSON(w, r, map[string]any{"group_id": groupID, "repo_id": repoID, "removed": true})
 }
 

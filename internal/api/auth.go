@@ -290,12 +290,11 @@ func (a *authenticator) refuseStoreError(w http.ResponseWriter, r *http.Request,
 
 // invalidateAll drops every cached token validation so role and scope
 // changes take effect immediately instead of after authCacheTTL.
-// Called from the admin mutation handlers (promote/demote, group
-// approve/reject) — without this, a freshly promoted user's own
-// /api/v1/me kept answering is_admin=false for up to 60s, and a user
-// whose group was just approved kept an empty scope — and, since
-// v0.29.68, from a non-admin's add that linked or queued repositories
-// (the caller's own scope changed). Both are human-paced, so
+// Called from the API-token revoke only (stage 1 of summary/59): role and
+// scope changes go through the admin service's hooks, which drop the one
+// affected user's entry (RoleChanged, ScopeChanged) — without a flush a
+// freshly promoted user's own /api/v1/me kept answering is_admin=false
+// for up to 60s. A revoke is human-paced, so
 // re-validating every active token once is cheap.
 func (a *authenticator) invalidateAll() {
 	a.mu.Lock()

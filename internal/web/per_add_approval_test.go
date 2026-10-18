@@ -7,37 +7,36 @@
 package web
 
 import (
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
-func readWebSource(t *testing.T, name string) string {
-	t.Helper()
-	src, err := os.ReadFile(name)
-	if err != nil {
-		t.Fatalf("read %s: %v", name, err)
-	}
-	return string(src)
-}
-
 // TestHandleAddRepoBatchesThroughAddReposToGroup pins that the bulk
 // paste is ONE AddReposToGroup call (one approval unit per submit)
 // carrying the configured auto-approve limit, not a per-URL loop over
 // the legacy single-add.
 func TestHandleAddRepoBatchesThroughAddReposToGroup(t *testing.T) {
-	body := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleAddRepo(")
-	if !strings.Contains(body, "s.store.AddReposToGroup(") {
-		t.Error("handleAddRepo must route the whole paste through ONE AddReposToGroup call")
+	handler := srctest.StripGoComments(srctest.PackageFunc(t, "internal/web", "func (s *Server) handleAddRepo("))
+	if n := strings.Count(handler, "s.admin.AddToGroup("); n != 1 || !strings.Contains(handler, `strings.Split(raw, "\n")`) {
+		t.Errorf("handleAddRepo must hand the WHOLE paste to one admin.Service.AddToGroup call (found %d)", n)
 	}
-	if !strings.Contains(body, "AutoApproveAddLimitValue()") {
-		t.Error("handleAddRepo must pass the configured web.auto_approve_add_limit")
+	// The service makes one store call with the configured limit (stage 1
+	// of summary/59; the handler no longer reaches the store).
+	svc := srctest.StripGoComments(srctest.PackageFunc(t, "internal/admin", "func (s *Service) AddToGroup("))
+	if n := strings.Count(svc, "s.st.AddReposToGroup("); n != 1 || !strings.Contains(svc, "s.opts.AutoApproveAddLimit, s.glWebBase)") {
+		t.Errorf("admin.Service.AddToGroup must route the paste through ONE AddReposToGroup call carrying Options.AutoApproveAddLimit (found %d)", n)
 	}
-	if strings.Contains(body, "s.store.AddRepoToGroup(") {
-		t.Error("handleAddRepo must not fall back to per-URL AddRepoToGroup calls — " +
-			"that would split one paste into N approval units")
+	wiring := srctest.StripGoComments(srctest.PackageFunc(t, "internal/web", "func (s *Server) newAdminService("))
+	if !strings.Contains(wiring, "AutoApproveAddLimit: s.cfg.AutoApproveAddLimitValue()") {
+		t.Error("the web process must hand web.auto_approve_add_limit to the service")
+	}
+	for _, src := range []string{handler, svc} {
+		if strings.Contains(src, "AddRepoToGroup(") {
+			t.Error("a paste must not fall back to per-URL AddRepoToGroup calls — " +
+				"that would split one paste into N approval units")
+		}
 	}
 }
 
@@ -85,18 +84,15 @@ func TestAddRequestAdminRoutesRegistered(t *testing.T) {
 // goroutine from the shared decision flow (the approved org is listed by
 // serve, stage 1 of summary/59).
 func TestApprovalProcessingRunsInBackground(t *testing.T) {
-	s := readWebSource(t, "admin.go")
-	start := strings.Index(s, "func (s *Server) decideAddRequest(")
-	if start < 0 {
-		t.Fatal("decideAddRequest not found in admin.go")
+	web := srctest.StripGoComments(srctest.PackageFunc(t, "internal/web", "func (s *Server) decideAddRequestPage("))
+	if n := strings.Count(web, "s.admin.DecideAddRequest("); n != 1 {
+		t.Errorf("the web decision page must call admin.Service.DecideAddRequest once (found %d)", n)
 	}
-	body := s[start:]
-	if end := strings.Index(body[1:], "\nfunc "); end > 0 {
-		body = body[:end+1]
-	}
-	for _, needle := range []string{"safego.Go", "ProcessApprovedAddRequest", "SendAddRequestDecided"} {
+	body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/admin", "func (s *Service) DecideAddRequest(") +
+		srctest.PackageFunc(t, "internal/admin", "func (s *Service) runApprovedPass("))
+	for _, needle := range []string{"safego.Go", "ProcessApprovedAddRequest(context.Background()", "SendAddRequestDecided"} {
 		if !strings.Contains(body, needle) {
-			t.Errorf("decideAddRequest missing %q — approval must process items/scan the org "+
+			t.Errorf("admin.Service.DecideAddRequest missing %q — approval must process items "+
 				"in the background and notify the requester", needle)
 		}
 	}

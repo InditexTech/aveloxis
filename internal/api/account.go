@@ -8,24 +8,21 @@ package api
 // sign-in, or one the user confirms through a mailed link when the forge
 // gave none — is read and changed here, through the SAME submission and
 // confirmation the web process's /account/email pages use
-// (web.SubmitAccountEmail, web.ConfirmAccountEmail): one place decides
-// whether a link can be mailed and one classification of a token.
+// (admin.Service.SubmitAccountEmail, ConfirmAccountEmail): one place
+// decides whether a link can be mailed and one classification of a token.
 
 import (
 	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strings"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
-	"github.com/aveloxis/aveloxis/internal/web"
 )
 
-// accountStore is what the profile routes need from the store.
+// accountStore is what the profile routes read from the store.
 type accountStore interface {
-	web.AccountEmailStore
-	web.ConfirmEmailStore
 	GetUserAccount(ctx context.Context, userID int) (provider, email string, err error)
 	GetUserLivePendingEmail(ctx context.Context, userID int) (string, error)
 	GetUserIdentity(ctx context.Context, userID int) (login, name, avatarURL string, err error)
@@ -55,13 +52,15 @@ func (s *Server) accountFields(r *http.Request, userID int) (provider, email, pe
 // as pending and mails the confirmation link. 200 {"sent": true}; 422
 // {"sent": false, "message": "…"} with the same user-facing reason the web
 // form shows (not a deliverable address, mail not configured here, a
-// failed save or send); 503 when this server has no store.
+// failed save or send); 503 when this server has no store. The API never
+// builds a link from a request: the LinkOrigin is empty, so only
+// mail.site_url can supply the base.
 func (s *Server) handleMeEmail(w http.ResponseWriter, r *http.Request) {
 	info, ok := s.requireSession(w, r)
 	if !ok {
 		return
 	}
-	if s.accounts == nil {
+	if s.accounts == nil || s.admin == nil {
 		writeAuthError(w, http.StatusServiceUnavailable, "accounts unavailable")
 		return
 	}
@@ -77,8 +76,7 @@ func (s *Server) handleMeEmail(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleMeEmail", err)
 		return
 	}
-	policy := web.NewConfirmationPolicy(s.mailer, s.spaURL)
-	if msg := web.SubmitAccountEmail(r.Context(), s.accounts, policy, s.logger, r, info.UserID, login, req.Email); msg != "" {
+	if msg := s.admin.SubmitAccountEmail(r.Context(), s.actor(info), login, req.Email, admin.LinkOrigin{}); msg != "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		_ = json.NewEncoder(w).Encode(map[string]any{"sent": false, "message": msg})
@@ -98,7 +96,7 @@ func (s *Server) handleMeEmailConfirm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if s.accounts == nil {
+	if s.accounts == nil || s.admin == nil {
 		writeAuthError(w, http.StatusServiceUnavailable, "accounts unavailable")
 		return
 	}
@@ -109,10 +107,10 @@ func (s *Server) handleMeEmailConfirm(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, http.StatusBadRequest, `invalid JSON body: expected {"token": "…"}`)
 		return
 	}
-	switch web.ConfirmAccountEmail(r.Context(), s.accounts, s.logger, strings.TrimSpace(req.Token), info.UserID) {
-	case web.ConfirmConfirmed:
+	switch s.admin.ConfirmAccountEmail(r.Context(), s.actor(info), req.Token) {
+	case admin.ConfirmConfirmed:
 		s.writeJSON(w, r, map[string]any{"status": "confirmed"})
-	case web.ConfirmError:
+	case admin.ConfirmError:
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(map[string]any{"status": "error"})

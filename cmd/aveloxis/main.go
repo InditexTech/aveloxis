@@ -233,6 +233,7 @@ func runServe(cfgPath, monitorAddr string, workers int, useAugurKeys, allowSecon
 	if err := store.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrating database: %w", err)
 	}
+	seedCapacityContact(ctx, store, cfg, logger)
 	store.LogCapacityInForce(ctx, "serve")
 
 	ghKeys, glKeys, err := loadKeys(ctx, cfg, store, useAugurKeys, logger)
@@ -253,7 +254,9 @@ func runServe(cfgPath, monitorAddr string, workers int, useAugurKeys, allowSecon
 		// (v0.27.12 operator vulnerability digest).
 		Mail: &cfg.Mail,
 		// The gitlab block: its base_url names the one instance the
-		// GitLab keys (glKeys, above) may be sent to (v0.29.11).
+		// GitLab keys (glKeys, above) may be sent to (v0.29.11) and, since
+		// 0.29.100, the instance whose URLs classify as GitLab (the web
+		// base is the classifiers' hint).
 		GitLab: &cfg.GitLab,
 		// The github block, for the same reason (v0.29.57): its base_url
 		// names the host ghKeys may be sent to. Without it the scheduler's
@@ -516,7 +519,7 @@ func runCollect(cfgPath string, repoURLs []string, full, useAugurKeys bool) erro
 	glClient := gitlab.New(cfg.GitLab.BaseURL, glKeys, logger)
 
 	for _, repoURL := range repoURLs {
-		client, owner, repo, err := collector.ClientForRepo(repoURL, ghClient, glClient)
+		client, owner, repo, err := collector.ClientForRepo(repoURL, platform.GitLabHints(cfg.GitLab.BaseURL), ghClient, glClient)
 		if err != nil {
 			logger.Error("skipping repo", "url", platform.RedactURLUserinfo(repoURL), "error", err)
 			continue
@@ -705,8 +708,10 @@ func runAddRepo(cfgPath string, repoURLs []string, priority int) error {
 			continue
 		}
 
-		// Regular repo URL.
-		parsed, err := platform.ParseRepoURL(repoURL)
+		// Regular repo URL — under the configured GitLab instance's web URL
+		// it is a GitLab repository whatever its host name says (the
+		// classifier's hint; round-3 review of 0.29.100).
+		parsed, err := platform.ParseRepoURLWithHints(repoURL, platform.GitLabHints(cfg.GitLab.BaseURL))
 		if errors.Is(err, platform.ErrURLUserinfo) {
 			// Same refusal as the organisation arm above, same exit (round 7:
 			// a refused repo URL exited 0 while a refused org URL did not).
@@ -772,8 +777,9 @@ func runImportFromAugur(cfgPath string, priority int) error {
 	var imported, skipped, failed int
 
 	for _, ar := range augurRepos {
-		// Parse the URL to determine platform and owner/repo.
-		parsed, err := platform.ParseRepoURL(ar.RepoGit)
+		// Parse the URL to determine platform and owner/repo (the configured
+		// GitLab instance's URLs are GitLab, by the classifier's hint).
+		parsed, err := platform.ParseRepoURLWithHints(ar.RepoGit, platform.GitLabHints(cfg.GitLab.BaseURL))
 		if err != nil {
 			logger.Warn("skipping unparseable URL", "url", platform.RedactURLUserinfo(ar.RepoGit), "augur_repo_id", ar.RepoID, "error", err)
 			skipped++
@@ -1016,7 +1022,7 @@ func runPrioritize(cfgPath, target string) error {
 	defer store.Close()
 
 	// Parse as a repo URL, then look up the tracked row (never create one).
-	_, parseErr := platform.ParseRepoURL(target)
+	_, parseErr := platform.ParseRepoURLWithHints(target, platform.GitLabHints(cfg.GitLab.BaseURL))
 	if parseErr == nil {
 		repoID, err := trackedRepoID(ctx, store, target)
 		if err != nil {
@@ -1086,7 +1092,7 @@ func runRecollect(cfgPath string, targets []string) error {
 
 	var firstErr error
 	for _, target := range targets {
-		if _, parseErr := platform.ParseRepoURL(target); parseErr != nil {
+		if _, parseErr := platform.ParseRepoURLWithHints(target, platform.GitLabHints(cfg.GitLab.BaseURL)); parseErr != nil {
 			logger.Error("could not parse repo URL — skipping", "url", platform.RedactURLUserinfo(target), "error", parseErr)
 			if firstErr == nil {
 				firstErr = parseErr
@@ -1165,7 +1171,11 @@ running migrations.`,
 			// only path that applies a changed definition of theirs.
 			store.SetSupplyChainViewMode(db.MatviewsRebuild)
 			store.SetMigrateNoWait(noWait)
-			return store.Migrate(ctx)
+			if err := store.Migrate(ctx); err != nil {
+				return err
+			}
+			seedCapacityContact(ctx, store, cfg, logger)
+			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&skipViews, "skip-views", false,
@@ -2073,20 +2083,23 @@ func testMailCmd(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "test-mail <recipient>",
 		Short: "Send a test email to verify Gmail SMTP credentials",
-		Long: `Reads the mail block from aveloxis.json, runs the same
-ValidateConfig that aveloxis web uses at startup, and attempts a
-single test send to the supplied recipient. Useful immediately
-after configuring Gmail to confirm credentials work before the
-first user signs up.
+		Long: `Reads the mail block from aveloxis.json and attempts a single
+test send to the supplied recipient. Useful immediately after
+configuring Gmail to confirm credentials work before the first user
+signs up. The block's shape was already checked when aveloxis.json
+loaded: a half-filled block, a gmail_user that is not an address, a
+password that is not a 16-letter App Password or a site_url that is
+not a URL stops every command with "invalid config: mail: …" naming
+the field (0.29.100).
 
 Common failures and what they mean:
-  - "mail.gmail_user is not an email address" — gmail_user must
-    be a full address (you@gmail.com or you@yourdomain.com),
-    not a bare domain.
-  - "Google App Passwords are exactly 16 lowercase letters" —
-    you pasted a regular password. Generate an App Password at
-    https://myaccount.google.com/apppasswords (2-Step
-    Verification must be on first).
+  - "invalid config: mail: mail.gmail_user ... is not an email address"
+    — gmail_user must be a full address (you@gmail.com or
+    you@yourdomain.com), not a bare domain.
+  - "invalid config: mail: ... Google App Passwords are exactly 16
+    lowercase letters" — you pasted a regular password. Generate an App Password
+    at https://myaccount.google.com/apppasswords (2-Step Verification
+    must be on first).
   - "535 5.7.8 Username and Password not accepted" from Gmail
     itself — credentials are syntactically valid but Gmail
     rejected them. Most likely an App Password from the wrong
@@ -2098,10 +2111,9 @@ Common failures and what they mean:
 			cfg := loadConfig(*cfgPath, bootLog)
 			logger := newLogger(cfg)
 
+			// No second validation: loadConfig refused an invalid mail block
+			// already (config.Load runs mailer.ValidateConfig, 0.29.100).
 			mc := mailerConfigFrom(cfg)
-			if err := mailer.ValidateConfig(mc); err != nil {
-				return fmt.Errorf("mail config invalid — fix aveloxis.json and try again: %w", err)
-			}
 			m := mailer.New(mc, logger)
 			logger.Info("sending test email", "to", platform.RedactEmail(recipient), "from", platform.RedactEmail(mc.GmailUser))
 			if err := m.Send(recipient, "Aveloxis SMTP test",
@@ -2231,21 +2243,12 @@ func loadKeys(ctx context.Context, cfg *config.Config, store *db.PostgresStore, 
 // process — serve digest, web, api, test-mail — carries the same fields,
 // including OperatorEmail for add-request notifications).
 // TestMailerConfigFromCarriesEveryField checks every field.
-func mailerConfigFrom(cfg *config.Config) mailer.Config {
-	return mailer.Config{
-		GmailUser:        cfg.Mail.GmailUser,
-		GmailAppPassword: cfg.Mail.GmailAppPassword,
-		FromName:         cfg.Mail.FromName,
-		SiteURL:          cfg.Mail.SiteURL,
-		OperatorEmail:    cfg.Mail.OperatorEmail,
-		SPAURL:           cfg.Web.SPAURL,
-	}
-}
+func mailerConfigFrom(cfg *config.Config) mailer.Config { return cfg.MailerConfig() }
 
 // newWebServer builds `aveloxis web`'s server with its mailer attached.
 // TestProcessMailWiring checks the mailer it carries.
 func newWebServer(store *db.PostgresStore, cfg *config.Config, logger *slog.Logger) *web.Server {
-	return web.New(store, cfg.Web, cfg.GitHub.GitHubAPIBase(), logger).WithMailer(mailer.New(mailerConfigFrom(cfg), logger))
+	return web.New(store, cfg.Web, cfg.GitHub.GitHubAPIBase(), logger).WithMailer(mailer.New(mailerConfigFrom(cfg), logger)).WithGitLabAPIBase(cfg.GitLab.BaseURL)
 }
 
 // newMonitorServer, newAPIServer and newWebHTTPServer build the three
@@ -2279,6 +2282,7 @@ func apiOptions(cfg *config.Config, logger *slog.Logger) api.Options {
 		Mailer:              mailer.New(mailerConfigFrom(cfg), logger),
 		AutoApproveAddLimit: cfg.Web.AutoApproveAddLimitValue(),
 		GitHubAPIBase:       cfg.GitHub.GitHubAPIBase(),
+		GitLabAPIBase:       cfg.GitLab.BaseURL,
 		// O11 option 4 (v0.29.71): a per-repository answer is reused within
 		// its collection generation for at most one enrichment interval.
 		ResponseCacheMaxAge: cfg.Collection.EnrichIntervalDuration(),
@@ -2331,3 +2335,20 @@ func (a digestMailerAdapter) SendVulnerabilityDigest(to string, since time.Time,
 // Deliverable forwards the mailer's up-front check so the scheduler can
 // refuse to start a digest that could never be delivered (v0.29.29).
 func (a digestMailerAdapter) Deliverable(to string) error { return a.m.Deliverable(to) }
+
+// seedCapacityContact fills the capacity refusal contact from
+// mail.operator_email on a deployment whose contact was never set (C6,
+// stage 1f of summary/59: new installs take the operator's address or stay
+// empty; the migrate no longer seeds the Aveloxis project's). Runs after
+// every migrate, in serve and `aveloxis migrate`; a failure is logged, the
+// start goes on (the contact is a message's courtesy, not a gate).
+func seedCapacityContact(ctx context.Context, store *db.PostgresStore, cfg *config.Config, logger *slog.Logger) {
+	seeded, err := store.SeedCapacityContact(ctx, cfg.Mail.OperatorEmail)
+	if err != nil {
+		logger.Warn("capacity contact not seeded from mail.operator_email", "error", err)
+		return
+	}
+	if seeded {
+		logger.Info("capacity contact seeded from mail.operator_email — change it on the Capacity page (or POST /api/v1/admin/capacity/contact) if refusals should name another address")
+	}
+}

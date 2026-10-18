@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/model"
 	"github.com/aveloxis/aveloxis/internal/srctest"
@@ -456,8 +457,8 @@ func TestGroupWritesAreBounded(t *testing.T) {
 		h(w, r)
 		return w
 	}
-	if w := post(s.handleGroupCreate, "/api/v1/groups", `{"name":"`+strings.Repeat("g", MaxGroupNameLength+1)+`"}`, ""); w.Code != http.StatusBadRequest {
-		t.Fatalf("a group name over %d characters = %d, want 400", MaxGroupNameLength, w.Code)
+	if w := post(s.handleGroupCreate, "/api/v1/groups", `{"name":"`+strings.Repeat("g", admin.MaxGroupNameLength+1)+`"}`, ""); w.Code != http.StatusBadRequest {
+		t.Fatalf("a group name over %d characters = %d, want 400", admin.MaxGroupNameLength, w.Code)
 	}
 	// A short name, the body padded past the limit with another field: only
 	// the body limit refuses it (L10 on the ASVS fixes, F1: a long name was
@@ -467,13 +468,13 @@ func TestGroupWritesAreBounded(t *testing.T) {
 	if w := post(s.handleGroupCreate, "/api/v1/groups", padded, ""); w.Code != http.StatusBadRequest {
 		t.Fatalf("a body over the limit = %d, want 400", w.Code)
 	}
-	many := make([]string, maxAddURLsPerRequest+1)
+	many := make([]string, admin.MaxPasteURLs+1)
 	for i := range many {
 		many[i] = `"https://github.com/o/r` + strconv.Itoa(i) + `"`
 	}
 	w := post(s.handleGroupAddRepo, "/api/v1/groups/1/repos", `{"urls":[`+strings.Join(many, ",")+`],"kind":"repo"}`, "1")
-	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), strconv.Itoa(maxAddURLsPerRequest)) {
-		t.Fatalf("%d URLs in one add = %d %q, want 400 naming the limit", maxAddURLsPerRequest+1, w.Code, w.Body.String())
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), strconv.Itoa(admin.MaxPasteURLs)) {
+		t.Fatalf("%d URLs in one add = %d %q, want 400 naming the limit", admin.MaxPasteURLs+1, w.Code, w.Body.String())
 	}
 	huge := `{"urls":["` + strings.Repeat("x", int(groupAddBodyLimit)) + `"],"kind":"repo"}`
 	if w := post(s.handleGroupAddRepo, "/api/v1/groups/1/repos", huge, "1"); w.Code != http.StatusBadRequest {

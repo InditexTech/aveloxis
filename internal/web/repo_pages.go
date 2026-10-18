@@ -31,8 +31,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	// v0.19.10 email gate, v0.20.4 pending-aware, v0.29.29
 	// confirmable-only, v0.29.30 lookup errors logged: see
-	// dashboardEmailGate.
-	needsEmailForm, pendingEmail := dashboardEmailGate(r.Context(), s.store, s.confirmationPolicy(), s.logger, r, sess.UserID)
+	// admin.Service.EmailGate.
+	needsEmailForm, pendingEmail := s.admin.EmailGate(r.Context(), sessionActor(sess), linkOrigin(r))
 	if needsEmailForm {
 		http.Redirect(w, r, "/account/email", http.StatusFound)
 		return
@@ -128,14 +128,14 @@ func (s *Server) handleSBOMDownload(w http.ResponseWriter, r *http.Request, sess
 		return
 	}
 
-	// Verify the user owns this group. Only "not yours" is a 403 (SR-5,
-	// follow-up 12): a store failure is the 500 it is.
-	if _, _, err := s.store.GetGroupDetail(r.Context(), sess.UserID, groupID, 1, 1, ""); err != nil {
-		if errors.Is(err, db.ErrGroupNotOwned) {
-			http.Error(w, "Forbidden", http.StatusForbidden)
-			return
+	// The service's one access rule: the owner or an administrator's
+	// session may read the group, and the repository must be in it (N11:
+	// "not yours", "no such group" and "not in that group" all answer 404,
+	// SR-5: a store failure is the 500 it is).
+	if _, err := s.admin.AuthorizeGroupRepo(r.Context(), sessionActor(sess), groupID, repoID); err != nil {
+		if !s.refusePage(w, r, err) {
+			s.serverError(w, r, "handleSBOMDownload", err)
 		}
-		s.serverError(w, r, "handleSBOMDownload", err)
 		return
 	}
 
@@ -184,14 +184,12 @@ func (s *Server) handleRepoDetail(w http.ResponseWriter, r *http.Request, sess *
 		return
 	}
 
-	// Verify group ownership: only "not yours" is a 403 (SR-5, follow-up 12).
-	group, _, err := s.store.GetGroupDetail(r.Context(), sess.UserID, groupID, 1, 1, "")
-	if errors.Is(err, db.ErrGroupNotOwned) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
+	// The service's one access rule (as handleSBOMDownload).
+	group, err := s.admin.AuthorizeGroupRepo(r.Context(), sessionActor(sess), groupID, repoID)
 	if err != nil {
-		s.serverError(w, r, "handleRepoDetail", err)
+		if !s.refusePage(w, r, err) {
+			s.serverError(w, r, "handleRepoDetail", err)
+		}
 		return
 	}
 

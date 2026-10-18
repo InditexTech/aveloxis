@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 	"github.com/aveloxis/aveloxis/internal/platform"
@@ -22,14 +23,13 @@ func (s *Server) handleNewGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess := s.getSession(r)
-	name := strings.TrimSpace(r.FormValue("name"))
-	if name == "" {
-		http.Redirect(w, r, "/dashboard", http.StatusFound)
-		return
-	}
-
-	if _, err := s.store.CreateUserGroup(r.Context(), sess.UserID, name); err != nil {
-		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "failed to create group", "error", err)
+	if _, err := s.admin.CreateGroup(r.Context(), sessionActor(sess), r.FormValue("name")); err != nil {
+		// An empty or over-long name is the form's input: the dashboard is
+		// shown again (the page's own field bounds it); a failure is logged
+		// and the dashboard shown, as before (the page cannot say more).
+		if _, refused := admin.Classify(err); !refused {
+			httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "failed to create group", "error", err)
+		}
 	}
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
@@ -80,7 +80,12 @@ func (s *Server) handleGroup(w http.ResponseWriter, r *http.Request) {
 		for i, r := range group.Repos {
 			repoIDs[i] = r.RepoID
 		}
-		if stats, err := s.store.GetRepoStatsBatch(r.Context(), repoIDs); err == nil {
+		stats, err := s.store.GetRepoStatsBatch(r.Context(), repoIDs)
+		if err != nil {
+			// The page renders without the counts; said so (D-17: the error
+			// was dropped without a line).
+			httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "group page: repository stats unreadable — counts left empty", "group_id", groupID, "error", err)
+		} else {
 			for i := range group.Repos {
 				if st, ok := stats[group.Repos[i].RepoID]; ok {
 					group.Repos[i].GatheredIssues = st.GatheredIssues
@@ -136,6 +141,9 @@ func (s *Server) handleGroup(w http.ResponseWriter, r *http.Request) {
 		"Pending":    pendingCount(r.URL.Query().Get("pending")),
 		"OrgPending": r.URL.Query().Get("org_pending"),
 		"GitHubHost": platform.GitHubWebHost(s.ghAPIBase),
+		// The configured GitLab instance, for the off-instance notice
+		// (round-4 review of 0.29.100).
+		"GitLabInstance": db.GitLabInstanceLabel(s.gitlabWebBase()),
 	})
 }
 
@@ -162,67 +170,41 @@ func (s *Server) handleAddRepo(w http.ResponseWriter, r *http.Request) {
 	if raw == "" {
 		raw = r.FormValue("repo_url") // backward compat with old single-URL form
 	}
-
-	var invalid []string
-	if raw != "" && groupID > 0 {
-		var urls []string
-		for _, line := range strings.Split(raw, "\n") {
-			repoURL := strings.TrimSpace(line)
-			if repoURL == "" {
-				continue
-			}
-			// Validate the URL before adding.
-			v := ValidateRepoURL(repoURL)
-			if !v.Valid {
-				// Logged below; a refused credential must not be written to
-				// the log by the line that refuses it (fix-review round 1).
-				invalid = append(invalid, fmt.Sprintf("%s: %s", platform.RedactURLUserinfo(repoURL), v.Error))
-				continue
-			}
-			urls = append(urls, v.URL)
+	if raw == "" || groupID <= 0 {
+		http.Redirect(w, r, fmt.Sprintf("/groups/%d", groupID), http.StatusFound)
+		return
+	}
+	// v0.27.20 per-add approval: the WHOLE paste is one call so any
+	// not-yet-tracked URLs from a non-admin become ONE pending add-request
+	// (one approval unit), while tracked repos link instantly. The service
+	// parses every line, refuses the paste the store refuses, and notifies
+	// the operator of a pending request.
+	out, err := s.admin.AddToGroup(r.Context(), sessionActor(sess), groupID, strings.Split(raw, "\n"))
+	if err != nil {
+		if ref, ok := admin.Classify(err); ok && (ref.Kind == admin.NotOwned || ref.Kind == admin.NotFound) {
+			http.NotFound(w, r)
+			return
 		}
-
-		// v0.27.20 per-add approval: the WHOLE paste is one call so any
-		// not-yet-tracked URLs from a non-admin become ONE pending
-		// add-request (one approval unit), while tracked repos link
-		// instantly. Admins keep the direct create+enqueue path.
-		if len(urls) > 0 {
-			out, err := s.store.AddReposToGroup(r.Context(), sess.UserID, groupID, urls,
-				s.cfg.AutoApproveAddLimitValue())
-			if err != nil {
-				httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "failed to add repos to group", "group_id", groupID, "error", err)
-				if errors.Is(err, db.ErrURLTooLong) {
-					// Name the line (follow-up 14): the store refuses the
-					// whole paste and its error names none of them.
-					for _, u := range urls {
-						if u = strings.TrimSpace(u); len(u) > db.MaxAddURLBytes {
-							s.logger.Warn("repo not added — a URL is over-long", "group_id", groupID, "bytes", len(u), "url_prefix", logURL(u))
-							break
-						}
-					}
-				}
-				// Tell the user, who otherwise sees the page a success shows
-				// (Copilot review of PR #207); a rejected group gets its own
-				// notice, since trying again cannot work (round-24 review).
-				http.Redirect(w, r, fmt.Sprintf("/groups/%d?add_error=%s", groupID, addErrorFlag(err)), http.StatusFound)
-				return
-			}
-			s.logger.Info("repo add", "group_id", groupID,
-				"linked", out.Linked, "enqueued", out.Enqueued, "pending_approval", out.Pending)
-			if out.Pending > 0 {
-				s.notifyAddRequestSubmitted(out.RequestID)
-				http.Redirect(w, r, fmt.Sprintf("/groups/%d?pending=%d%s", groupID, out.Pending, invalidFlag(invalid)), http.StatusFound)
-				return
-			}
+		if _, refused := admin.Classify(err); !refused {
+			httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "failed to add repos to group", "group_id", groupID, "error", err)
 		}
-		if len(invalid) > 0 {
-			// The page says so too (round 2: the lines the validator refused
-			// were only logged, so a refused paste looked like a success).
-			s.logger.Warn("some URLs were invalid", "errors", invalid)
-		}
+		// Tell the user, who otherwise sees the page a success shows
+		// (Copilot review of PR #207); a rejected group gets its own
+		// notice, since trying again cannot work (round-24 review).
+		http.Redirect(w, r, fmt.Sprintf("/groups/%d?add_error=%s", groupID, addErrorFlag(err)), http.StatusFound)
+		return
+	}
+	if len(out.Invalid) > 0 {
+		// The page says so too (round 2: the lines the validator refused
+		// were only logged, so a refused paste looked like a success).
+		s.logger.Warn("some URLs were invalid", "group_id", groupID, "errors", out.Invalid)
+	}
+	if out.Pending > 0 {
+		http.Redirect(w, r, fmt.Sprintf("/groups/%d?pending=%d%s", groupID, out.Pending, invalidFlag(out.Invalid)), http.StatusFound)
+		return
 	}
 	loc := fmt.Sprintf("/groups/%d", groupID)
-	if len(invalid) > 0 {
+	if len(out.Invalid) > 0 {
 		loc += "?add_error=invalid"
 	}
 	http.Redirect(w, r, loc, http.StatusFound)
@@ -245,58 +227,39 @@ func (s *Server) handleAddOrg(w http.ResponseWriter, r *http.Request) {
 	sess := s.getSession(r)
 	groupID, _ := strconv.ParseInt(r.FormValue("group_id"), 10, 64)
 	orgURL := strings.TrimSpace(r.FormValue("org_url"))
-
-	if orgURL != "" && groupID > 0 {
-		// The host travels with the registration: the store refuses a
-		// GitHub org that is not on this deployment's GitHub host
-		// (db.ErrOrgOffGitHubHost) in every writer, and the page says so.
-		out, err := s.store.AddOrgToGroup(r.Context(), sess.UserID, groupID, orgURL, s.ghAPIBase)
-		switch {
-		case errors.Is(err, db.ErrOrgOffGitHubHost):
-			s.logger.Warn("org not added — its host is not this deployment's GitHub host",
-				"group_id", groupID, "org_url", logURL(orgURL), "github_host", platform.GitHubWebHost(s.ghAPIBase))
-			http.Redirect(w, r, fmt.Sprintf("/groups/%d?org_error=host", groupID), http.StatusFound)
-			return
-		case errors.Is(err, platform.ErrURLUserinfo), errors.Is(err, db.ErrURLTooLong), db.IsRejectedValue(err):
-			// A value the database refused (SQLSTATE class 22, e.g. a NUL
-			// byte) is the user's input too, as addErrorFlag reads it on the
-			// repo path (PR #218 review C4).
-			// The user's input, fixable by the user: say so on the page, as
-			// the repo path (add_error=invalid) and the portal (400) do
-			// (fix-review round 1: the store's refusal fell through to a plain
-			// redirect, so a credentialed org URL was silently not added). The
-			// URL is logged redacted and truncated, as the host arm logs it
-			// (follow-up 14: the over-long WARN named nothing).
-			s.logger.Warn("org not added — invalid URL", "group_id", groupID, "error", err,
-				"org_url", logURL(orgURL), "bytes", len(orgURL))
-			http.Redirect(w, r, fmt.Sprintf("/groups/%d?org_error=invalid", groupID), http.StatusFound)
-			return
-		case errors.Is(err, db.ErrGroupRejected):
-			// Trying again cannot work: say why (the repo paste and the
-			// portal already do; review round 1 of the batch).
-			s.logger.Warn("org not added — the group is rejected", "group_id", groupID)
-			http.Redirect(w, r, fmt.Sprintf("/groups/%d?org_error=rejected", groupID), http.StatusFound)
-			return
-		case err != nil:
-			// Say so (worklist follow-up 11): this redirected as a success.
-			httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "failed to add org to group", "group_id", groupID, "error", err)
-			http.Redirect(w, r, fmt.Sprintf("/groups/%d?org_error=1", groupID), http.StatusFound)
-			return
-		case out.Registered:
-			// Registered (an admin's add, or a non-admin's auto-approved add of
-			// an org already registered in a group that is not rejected —
-			// including this group, when the add inserted nothing). Nothing
-			// scans here (stage 1 of summary/59, C2: the web process holds no
-			// forge keys): serve's demand probe finds the never-scanned
-			// registration on its next poll tick.
-		default:
-			// v0.27.20: a non-admin's add of a NEW org pends on an
-			// add-request — nothing scans until an admin approves.
-			s.notifyAddRequestSubmitted(out.RequestID)
-			http.Redirect(w, r, fmt.Sprintf("/groups/%d?org_pending=1", groupID), http.StatusFound)
+	if orgURL == "" || groupID <= 0 {
+		http.Redirect(w, r, fmt.Sprintf("/groups/%d", groupID), http.StatusFound)
+		return
+	}
+	// The hosts travel with the registration: the service refuses an
+	// organization that is not on this deployment's GitHub host or GitLab
+	// instance, a URL that is invalid, and a rejected group — each its own
+	// notice on the page.
+	out, err := s.admin.AddOrgToGroup(r.Context(), sessionActor(sess), groupID, orgURL)
+	if err != nil {
+		if ref, ok := admin.Classify(err); ok && (ref.Kind == admin.NotOwned || ref.Kind == admin.NotFound) {
+			http.NotFound(w, r)
 			return
 		}
+		if _, refused := admin.Classify(err); !refused {
+			// Say so (worklist follow-up 11): this redirected as a success.
+			httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "failed to add org to group", "group_id", groupID, "error", err)
+		}
+		http.Redirect(w, r, fmt.Sprintf("/groups/%d?org_error=%s", groupID, orgErrorFlag(err)), http.StatusFound)
+		return
 	}
+	if !out.Registered {
+		// v0.27.20: a non-admin's add of a NEW org pends on an add-request —
+		// nothing scans until an admin approves (the service notified the
+		// operator).
+		http.Redirect(w, r, fmt.Sprintf("/groups/%d?org_pending=1", groupID), http.StatusFound)
+		return
+	}
+	// Registered (an admin's add, or a non-admin's auto-approved add of an
+	// org already registered in a group that is not rejected). Nothing
+	// scans here (stage 1 of summary/59, C2: the web process holds no forge
+	// keys): serve's demand probe finds the never-scanned registration on
+	// its next poll tick.
 	http.Redirect(w, r, fmt.Sprintf("/groups/%d", groupID), http.StatusFound)
 }
 
@@ -315,13 +278,10 @@ func (s *Server) handleRemoveRepo(w http.ResponseWriter, r *http.Request) {
 		// A repository already gone from the group (another tab) redirects
 		// to the group page like a removal: the page shows the outcome the
 		// user wanted (v0.29.91 reviewed the count; nothing to say here).
-		_, err := s.store.RemoveRepoFromGroup(r.Context(), sess.UserID, groupID, repoID)
-		if errors.Is(err, db.ErrGroupNotOwned) {
-			http.NotFound(w, r)
-			return
-		}
-		if err != nil {
-			s.serverError(w, r, "handleRemoveRepo", err)
+		if _, err := s.admin.RemoveFromGroup(r.Context(), sessionActor(sess), groupID, repoID); err != nil {
+			if !s.refusePage(w, r, err) {
+				s.serverError(w, r, "handleRemoveRepo", err)
+			}
 			return
 		}
 	}

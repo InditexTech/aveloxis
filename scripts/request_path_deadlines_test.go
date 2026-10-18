@@ -31,7 +31,7 @@ func TestRequestPathDeadlinesAreReviewed(t *testing.T) {
 		// submitAccountEmail's detached pending-email clean-up,
 		// pendingEmailCleanupTimeout — its failure is a plain WARN, never
 		// through RequestEnded (NET-6 review r7 F1).
-		srctest.SiteKey("internal/web", "submitAccountEmailAddress"): 1,
+		srctest.SiteKey("internal/admin", "SubmitAccountEmail"): 1,
 		// The home-repos background refresh runs on context.Background(),
 		// outside any request; it logs its own WARN.
 		srctest.SiteKey("internal/api", "refreshHomeRepos"): 1,
@@ -54,7 +54,7 @@ func TestRequestPathDeadlinesAreReviewed(t *testing.T) {
 	root := srctest.Root(t)
 	found := map[string]int{}
 	examined := 0
-	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor"} {
+	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor", "internal/admin"} {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 				return err
@@ -102,8 +102,8 @@ func TestRequestEndIsClassifiedInOnePlace(t *testing.T) {
 		// live request is that bound's own expiry (ERROR, naming it); and
 		// submitAccountEmail's clean-up runs on WithoutCancel on purpose —
 		// the second half of committed writes (NET-6 review r7 F1).
-		srctest.SiteKey("internal/web", "logOAuthFailure"):           1,
-		srctest.SiteKey("internal/web", "submitAccountEmailAddress"): 1,
+		srctest.SiteKey("internal/web", "logOAuthFailure"):      1,
+		srctest.SiteKey("internal/admin", "SubmitAccountEmail"): 1,
 		// RunCapacity's tick steps and FlushCapacity (v0.29.91) run on the
 		// api's loop or stop context, never a request's: a cancelled one is
 		// a stop (silent); a step's own DeadlineExceeded is logged as
@@ -115,7 +115,7 @@ func TestRequestEndIsClassifiedInOnePlace(t *testing.T) {
 	root := srctest.Root(t)
 	found := map[string]int{}
 	examined := 0
-	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor"} {
+	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor", "internal/admin"} {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 				return err

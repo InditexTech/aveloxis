@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Commands Reference &mdash; Aveloxis 0.29.99 documentation</title>
+  <title>Commands Reference &mdash; Aveloxis 0.29.100 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=bfc74ce3"></script>
+      <script src="../_static/documentation_options.js?v=8e993c7f"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -2223,7 +2223,8 @@ aveloxis<span class="w"> </span>add-repo<span class="w"> </span>https://github.c
 <span class="c1"># Single GitLab repo (including nested subgroups)</span>
 aveloxis<span class="w"> </span>add-repo<span class="w"> </span>https://gitlab.com/group/subgroup/project
 
-<span class="c1"># GitHub organization (adds all repos in the org)</span>
+<span class="c1"># GitHub organization: registered as an org group; serve lists its</span>
+<span class="c1"># repositories on its next org refresh (collection.org_refresh_hours)</span>
 aveloxis<span class="w"> </span>add-repo<span class="w"> </span>https://github.com/chaoss
 
 <span class="c1"># Multiple repos at once</span>
@@ -2244,7 +2245,7 @@ aveloxis<span class="w"> </span>add-repo<span class="w"> </span>--from-augur
 <ul class="simple">
 <li><p>URLs containing <code class="docutils literal notranslate"><span class="pre">github.com</span></code> are treated as GitHub</p></li>
 <li><p>URLs containing <code class="docutils literal notranslate"><span class="pre">gitlab</span></code> in the hostname are treated as GitLab</p></li>
-<li><p>Hostnames listed in <code class="docutils literal notranslate"><span class="pre">gitlab.gitlab_hosts</span></code> in the config are treated as GitLab</p></li>
+<li><p>A URL under the configured GitLab instance’s web URL (<code class="docutils literal notranslate"><span class="pre">gitlab.base_url</span></code> without its <code class="docutils literal notranslate"><span class="pre">/api/v4</span></code>, an install under a sub-path included) is treated as GitLab; the <code class="docutils literal notranslate"><span class="pre">gitlab_hosts</span></code> key of releases before 0.29.100 was never read and is reported as ignored at start</p></li>
 </ul>
 </section>
 </section>

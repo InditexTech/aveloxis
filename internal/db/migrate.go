@@ -3078,7 +3078,7 @@ func seedCapacitySettings(ctx context.Context, pg *PostgresStore, logger *slog.L
 	err := retryOnDeadlock(ctx, logger, "v0.29.89 seed capacity", func() error {
 		if _, err := pg.pool.Exec(ctx, `
 			INSERT INTO aveloxis_ops.capacity_settings (id, contact_email)
-			VALUES (1, $1) ON CONFLICT (id) DO NOTHING`, DefaultCapacityContactEmail); err != nil {
+			VALUES (1, $1) ON CONFLICT (id) DO NOTHING`, seedCapacityContactPlaceholder); err != nil {
 			return err
 		}
 		for _, name := range capacity.QuotaNames() {

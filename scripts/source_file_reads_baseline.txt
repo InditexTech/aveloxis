@@ -1,6 +1,5 @@
 # N26: test files that read a production .go file by name — "<test file> <source file>". Shrink-only.
 cmd/aveloxis/accumulated_checklist_test.go cmd/aveloxis/deploy_checklist.go
-cmd/aveloxis/add_repo_org_link_test.go cmd/aveloxis/main.go
 cmd/aveloxis/api_addr_test.go cmd/aveloxis/main.go
 cmd/aveloxis/api_addr_test.go cmd/aveloxis/ready_signal.go
 cmd/aveloxis/backfill_identities_test.go cmd/aveloxis/backfill_identities.go
@@ -86,7 +85,6 @@ cmd/aveloxis/migrate_cntrb_ids_test.go internal/db/cntrb_id_migrate.go
 cmd/aveloxis/migrate_only_serve_and_migrate_test.go cmd/aveloxis/import_foundations.go
 cmd/aveloxis/migrate_only_serve_and_migrate_test.go cmd/aveloxis/main.go
 cmd/aveloxis/migrate_skip_views_test.go cmd/aveloxis/main.go
-cmd/aveloxis/org_scan_forge_id_test.go cmd/aveloxis/main.go
 cmd/aveloxis/probe_cli_userinfo_test.go cmd/aveloxis/main.go
 cmd/aveloxis/probe_cli_userinfo_test.go cmd/aveloxis/mark_gone_repos.go
 cmd/aveloxis/probe_cli_userinfo_test.go cmd/aveloxis/reconcile_repos.go
@@ -451,7 +449,6 @@ internal/db/aggregates_partial_failure_test.go cmd/aveloxis/main.go
 internal/db/aggregates_partial_failure_test.go internal/db/aggregates.go
 internal/db/aggregates_partial_failure_test.go internal/db/matviews.go
 internal/db/aggregates_partial_failure_test.go internal/db/supply_chain_views.go
-internal/db/allocation_bounds_test.go internal/db/collections_store.go
 internal/db/allocation_bounds_test.go internal/db/contributions.go
 internal/db/apache_lists_bridge_test.go internal/db/email_message_store.go
 internal/db/api_token_settings_atomic_test.go internal/db/api_tokens.go
@@ -870,7 +867,6 @@ internal/db/vuln_scan_stamp_db_test.go internal/db/migrate.go
 internal/db/vuln_scan_stamp_db_test.go internal/db/vulnerability_store.go
 internal/db/web_store_addrepo_test.go internal/db/add_requests.go
 internal/db/web_store_addrepo_test.go internal/db/capacity_store.go
-internal/db/web_store_addrepo_test.go internal/db/web_store.go
 internal/db/web_store_oauth_test.go internal/db/web_store.go
 internal/db/whitespace_shutdown_test.go internal/db/whitespace_store.go
 internal/db/xid_status_db_test.go internal/db/xid_status.go
@@ -945,8 +941,6 @@ internal/safego/adoption_test.go internal/scheduler/distribution_wiring.go
 internal/safego/adoption_test.go internal/scheduler/long_jobs_watchdog.go
 internal/safego/adoption_test.go internal/scheduler/mailinglist_wiring.go
 internal/safego/adoption_test.go internal/scheduler/scheduler.go
-internal/safego/adoption_test.go internal/web/admin.go
-internal/safego/adoption_test.go internal/web/groups.go
 internal/scheduler/activity_classification_test.go internal/scheduler/activity_classification.go
 internal/scheduler/activity_classification_test.go internal/scheduler/scheduler.go
 internal/scheduler/activity_history_test.go internal/scheduler/activity_history.go
@@ -987,7 +981,6 @@ internal/scheduler/global_state_ticker_test.go internal/config/config.go
 internal/scheduler/global_state_ticker_test.go internal/scheduler/scheduler.go
 internal/scheduler/gone_recheck_test.go internal/scheduler/gone_recheck.go
 internal/scheduler/gone_recheck_test.go internal/scheduler/scheduler.go
-internal/scheduler/h7_logged_failures_test.go internal/scheduler/scheduler.go
 internal/scheduler/jira_wiring_test.go internal/scheduler/jira_wiring.go
 internal/scheduler/jira_wiring_test.go internal/scheduler/scheduler.go
 internal/scheduler/job_slots_test.go internal/scheduler/scheduler.go
@@ -1011,7 +1004,6 @@ internal/scheduler/org_scan_dedup_test.go internal/scheduler/scheduler.go
 internal/scheduler/org_scan_forge_id_test.go internal/scheduler/scheduler.go
 internal/scheduler/org_scan_newcount_test.go internal/scheduler/scheduler.go
 internal/scheduler/rebuild_cancel_test.go internal/scheduler/scheduler.go
-internal/scheduler/refresh_org_user_repos_test.go internal/scheduler/scheduler.go
 internal/scheduler/repo_metadata_backfill_keyset_test.go internal/db/repo_metadata.go
 internal/scheduler/repo_metadata_fork_test.go internal/scheduler/repo_metadata_backfill.go
 internal/scheduler/repo_url_userinfo_test.go internal/collector/prelim.go
@@ -1050,7 +1042,6 @@ internal/web/admin_routes_test.go internal/web/server.go
 internal/web/monitor_search_test.go internal/db/queue.go
 internal/web/monitor_test.go internal/db/queue.go
 internal/web/oauth_email_fallback_test.go internal/db/web_store.go
-internal/web/per_add_approval_test.go internal/web/admin.go
 internal/web/session_safety_test.go internal/web/server.go
 scripts/convergence_contracts_test.go cmd/aveloxis/dedup_repos.go
 scripts/convergence_contracts_test.go cmd/aveloxis/heal_collection_gaps.go

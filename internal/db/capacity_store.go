@@ -32,9 +32,33 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// DefaultCapacityContactEmail is where a heavy user is asked to write
-// (operator 2026-10-10); editable on the Capacity page.
-const DefaultCapacityContactEmail = "aveloxis.io@gmail.com"
+// seedCapacityContactPlaceholder: the row is seeded with NO address. A new
+// install takes mail.operator_email through SeedCapacityContact (serve and
+// migrate call it); a row an administrator set, or one seeded by 0.29.89
+// with the Aveloxis project's address, is left alone (C6, stage 1f of
+// summary/59: a self-hoster must never send users to aveloxis.io).
+const seedCapacityContactPlaceholder = ""
+
+// SeedCapacityContact fills the refusal contact from mail.operator_email on
+// a deployment whose contact was never set (empty, no administrator's
+// stamp). A row an administrator saved, or 0.29.89's seed, is left alone;
+// an empty address seeds nothing. Reports whether it wrote.
+func (s *PostgresStore) SeedCapacityContact(ctx context.Context, operatorEmail string) (bool, error) {
+	operatorEmail = strings.TrimSpace(operatorEmail)
+	if operatorEmail == "" {
+		return false, nil
+	}
+	if len(operatorEmail) > MaxContactEmailBytes || !strings.Contains(operatorEmail, "@") || strings.ContainsAny(operatorEmail, "\r\n<>\"' ?&%") {
+		return false, fmt.Errorf("seed capacity contact from mail.operator_email: %w", ErrInvalidCapacitySettings)
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE aveloxis_ops.capacity_settings SET contact_email = $1, updated_at = NOW()
+		WHERE id = 1 AND contact_email = '' AND updated_by IS NULL`, operatorEmail)
+	if err != nil {
+		return false, fmt.Errorf("seed capacity contact: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
 
 // capacityConfig is a store's own capacity words, when set (tests); a
 // store without them uses this process's aveloxis.json words.
@@ -332,8 +356,20 @@ func (s *PostgresStore) SetCapacityOverride(ctx context.Context, o CapacityOverr
 		return ErrInvalidCapacitySettings
 	}
 	if o.ReposAllowed == nil && o.RequestsPerHour == nil && o.RequestsPerDay == nil && o.LinksPerDay == nil && strings.TrimSpace(o.Note) == "" {
-		_, err := s.pool.Exec(ctx, `DELETE FROM aveloxis_ops.user_capacity WHERE user_id = $1`, o.UserID)
-		return err
+		// Removing the overrides of an account that does not exist is
+		// ErrNoSuchUser, as saving them is (58 §7 item 17: it answered
+		// {saved: true}); an account with no overrides is a no-op.
+		var exists bool
+		if err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM aveloxis_ops.users WHERE user_id = $1)`, o.UserID).Scan(&exists); err != nil {
+			return fmt.Errorf("remove capacity override: %w", err)
+		}
+		if !exists {
+			return ErrNoSuchUser
+		}
+		if _, err := s.pool.Exec(ctx, `DELETE FROM aveloxis_ops.user_capacity WHERE user_id = $1`, o.UserID); err != nil {
+			return fmt.Errorf("remove capacity override: %w", err)
+		}
+		return nil
 	}
 	tag, err := s.pool.Exec(ctx, `
 		INSERT INTO aveloxis_ops.user_capacity (user_id, repos_allowed, requests_per_hour, requests_per_day, links_per_day, note, updated_at, updated_by)

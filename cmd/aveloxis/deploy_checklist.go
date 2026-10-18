@@ -596,34 +596,35 @@ var deployChecklists = map[string][]deployStep{
 	// v0.29.98 (2026-10-17, stage 0.5 of summary/59): test infrastructure
 	// (package-scope source lookups), the web server file split, templates
 	// embedded, the dead-code sweep. No schema change.
-	"0.29.99": v02999DeployChecklist,
-	"0.29.98": v02998DeployChecklist,
-	"0.29.97": v02997DeployChecklist,
-	"0.29.96": v02996DeployChecklist,
-	"0.29.95": v02995DeployChecklist,
-	"0.29.94": v02994DeployChecklist,
-	"0.29.93": v02993DeployChecklist,
-	"0.29.92": v02992DeployChecklist,
-	"0.29.91": v02991DeployChecklist,
-	"0.29.90": v02990DeployChecklist,
-	"0.29.89": v02989DeployChecklist,
-	"0.29.88": v02988DeployChecklist,
-	"0.29.87": v02987DeployChecklist,
-	"0.29.86": v02986DeployChecklist,
-	"0.29.85": v02985DeployChecklist,
-	"0.29.84": v02984DeployChecklist,
-	"0.29.83": v02983DeployChecklist,
-	"0.29.82": v02982DeployChecklist,
-	"0.29.81": v02981DeployChecklist,
-	"0.29.80": v02980DeployChecklist,
-	"0.29.79": v02979DeployChecklist,
-	"0.29.78": v02978DeployChecklist,
-	"0.29.77": v02977DeployChecklist,
-	"0.29.76": v02976DeployChecklist,
-	"0.29.75": v02975DeployChecklist,
-	"0.29.74": v02974DeployChecklist,
-	"0.29.73": v02973DeployChecklist,
-	"0.29.72": v02972DeployChecklist,
+	"0.29.100": v029100DeployChecklist,
+	"0.29.99":  v02999DeployChecklist,
+	"0.29.98":  v02998DeployChecklist,
+	"0.29.97":  v02997DeployChecklist,
+	"0.29.96":  v02996DeployChecklist,
+	"0.29.95":  v02995DeployChecklist,
+	"0.29.94":  v02994DeployChecklist,
+	"0.29.93":  v02993DeployChecklist,
+	"0.29.92":  v02992DeployChecklist,
+	"0.29.91":  v02991DeployChecklist,
+	"0.29.90":  v02990DeployChecklist,
+	"0.29.89":  v02989DeployChecklist,
+	"0.29.88":  v02988DeployChecklist,
+	"0.29.87":  v02987DeployChecklist,
+	"0.29.86":  v02986DeployChecklist,
+	"0.29.85":  v02985DeployChecklist,
+	"0.29.84":  v02984DeployChecklist,
+	"0.29.83":  v02983DeployChecklist,
+	"0.29.82":  v02982DeployChecklist,
+	"0.29.81":  v02981DeployChecklist,
+	"0.29.80":  v02980DeployChecklist,
+	"0.29.79":  v02979DeployChecklist,
+	"0.29.78":  v02978DeployChecklist,
+	"0.29.77":  v02977DeployChecklist,
+	"0.29.76":  v02976DeployChecklist,
+	"0.29.75":  v02975DeployChecklist,
+	"0.29.74":  v02974DeployChecklist,
+	"0.29.73":  v02973DeployChecklist,
+	"0.29.72":  v02972DeployChecklist,
 }
 
 // 0.29.72 has no schema change; its migrate is 0.29.71's, which a fleet
@@ -632,6 +633,23 @@ var deployChecklists = map[string][]deployStep{
 // ALTER): repository answers are cached until the repository changes; it
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
+
+// v029100DeployChecklist is 0.29.99's ladder with a note on the start
+// step: stage 1 of summary/59 (the admin service, forge access, the URL
+// classifier), no schema change; two load-time rules changed (an invalid
+// mail block, and a gitlab.base_url that is not an absolute http(s) URL of
+// the instance's API, are refused at load).
+var v029100DeployChecklist = func() []deployStep {
+	prev := v02999DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.100: no schema change. BEFORE the start, check aveloxis.json's mail block: a half-filled one (gmail_user without gmail_app_password or the reverse, a user that is not an address, a password that is not a 16-letter App Password, a site_url that is not a URL) now refuses to start every process (it used to run with mail off and a WARN); fix it or empty it. gitlab.base_url must be an absolute http(s) URL of the instance's API (the default and any working value pass). The API's answers change (stage 1 of the admin-console program, listed under \"Changes for API clients\" in docs/guide/api.md): a group that is not the caller's answers 404 on every group route, as a group that does not exist does; a rejected group refuses an add with 409; every refusal body on the group, decision, role and forge-ID routes is JSON {\"error\"}; a paste's lines that are not repository URLs come back in \"invalid\" and the rest go through; a collection that does not exist is a 404 and a duplicate collection name a 409. Administrator privilege is decided from the users row at every operation: an API token never administers, and an administrator's open session loses its power the moment the row is demoted. GitLab groups registered in user groups are now enumerated by serve (full group path; a subgroup registration lists the subgroup only) — on the configured gitlab.base_url instance, when GitLab API keys exist. The web GUI and the CLI loaders hold no forge keys for organisation listing any more (aveloxis web no longer loads API keys; add-repo <org> registers and serve lists). aveloxis-gui's check-setup.sh requires this version (MIN_API_VERSION). " + out[i].desc
+		}
+	}
+	return out
+}()
 
 // v02999DeployChecklist is 0.29.98's ladder with a note on the start step:
 // stage 1b of summary/59 changes API answers (the contract changes are

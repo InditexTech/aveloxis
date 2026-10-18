@@ -17,12 +17,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/collector"
 	"github.com/aveloxis/aveloxis/internal/db"
@@ -70,10 +72,12 @@ type Server struct {
 	autoAdds      *autoAddLimiter // v0.29.82: the per-user cap on Shared-with-Me auto-adds
 	refusals      *refusalLog     // ASVS review G5: refusals logged once a minute per user and kind
 
-	// accounts serves the profile routes (/me's account fields, the
-	// account-email submission and confirmation); the store, or a fake.
+	// accounts serves /me's account fields; the store, or a fake.
 	accounts accountStore
-	spaURL   string // web.spa_url, for the confirmation link
+	// admin is the administrative service this process adapts (stage 1 of
+	// summary/59): groups, additions, approvals, roles, forge-ID adoption
+	// and the account e-mail flow. nil in a bare test Server.
+	admin *admin.Service
 
 	// v0.27.59 (repo count) → v0.27.77 (full fleet payload): 60s
 	// stale-on-error cache for GET /public/stats — repos, commits,
@@ -133,7 +137,17 @@ func NewWithOptions(store *db.PostgresStore, logger *slog.Logger, opts Options) 
 		s.repoStates = store.RepoCacheStates
 		s.accounts = store
 	}
-	s.spaURL = opts.SPAURL
+	if store != nil {
+		adminOpts := admin.Options{GitHubAPIBase: opts.GitHubAPIBase, GitLabAPIBase: opts.GitLabAPIBase, AutoApproveAddLimit: opts.AutoApproveAddLimit, SPAURL: opts.SPAURL}
+		if opts.Mailer != nil { // a nil *Mailer must not become a non-nil interface
+			adminOpts.Mailer = opts.Mailer
+		}
+		adminLogger := logger
+		if adminLogger == nil {
+			adminLogger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		}
+		s.admin = admin.New(store, adminOpts, apiHooks{s}, adminLogger)
+	}
 	s.rewarmInterval = opts.RewarmInterval
 	s.requestTimeout = opts.RequestTimeout
 	s.frontEndSecret = opts.FrontEndSecret
@@ -200,8 +214,7 @@ func NewWithOptions(store *db.PostgresStore, logger *slog.Logger, opts Options) 
 	s.mux.HandleFunc("GET /api/v1/groups/{groupID}/orgs", s.handleGroupOrgs)
 	s.mux.HandleFunc("GET /api/v1/admin/users", s.handleAdminUsers)
 	s.mux.HandleFunc("POST /api/v1/admin/users/{userID}/admin", s.handleAdminSetUserAdmin)
-	s.mux.HandleFunc("GET /api/v1/admin/groups/pending", s.handleAdminPendingGroups)
-	s.mux.HandleFunc("POST /api/v1/admin/groups/{groupID}/{decision}", s.handleAdminGroupDecision)
+	s.mux.HandleFunc("POST /api/v1/admin/groups/{groupID}/reject", s.handleAdminGroupReject)
 	// v0.27.20 per-add approval queue (summary/15).
 	s.mux.HandleFunc("GET /api/v1/groups/{groupID}/pending-adds", s.handleGroupPendingAdds)
 	s.mux.HandleFunc("GET /api/v1/admin/forge-id-changes", s.handleAdminForgeIDChanges)               // v0.29.63

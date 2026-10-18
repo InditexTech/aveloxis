@@ -37,7 +37,7 @@ func TestAddOrgToGroupCanonicalizesScheme(t *testing.T) {
 	src := srctest.Read(t, "internal/db/web_store.go")
 	canon := srctest.FuncBody(t, src, "func CanonicalOrgURL(")
 	pre := srctest.FuncBody(t, src, "func orgURLTrimmedSchemed(")
-	if !strings.Contains(pre, `"https://" + orgURL`) || !strings.Contains(canon, "strings.ToLower(orgURLTrimmedSchemed(") {
+	if !strings.Contains(pre, `platform.WithDefaultScheme(`) || !strings.Contains(canon, "strings.ToLower(orgURLTrimmedSchemed(") {
 		t.Fatal("CanonicalOrgURL must prepend https:// to a schemeless org URL and lowercase it — a schemeless " +
 			"or differently-cased org_url row registers and scans fine but silently defeats ReconcileOrgRepoLinks, " +
 			"GetUserGroupIDsForOrgURL and the (group_id, org_url) unique key")
@@ -84,7 +84,7 @@ func TestAddOrgToGroupCanonicalizesSchemeEndToEnd(t *testing.T) {
 		t.Fatalf("seed group: %v", err)
 	}
 
-	out, err := store.AddOrgToGroup(ctx, userID, groupID, "github.com/avtest-schemeless-org", "")
+	out, err := store.AddOrgToGroup(ctx, userID, groupID, "github.com/avtest-schemeless-org", "", "")
 	if err != nil {
 		t.Fatalf("AddOrgToGroup: %v", err)
 	}

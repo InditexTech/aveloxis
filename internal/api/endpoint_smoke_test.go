@@ -130,11 +130,10 @@ var smokeRecipes = map[string]smokeRecipe{
 
 	// Admin.
 	"GET /api/v1/admin/users":                                {auth: "admin"},
-	"GET /api/v1/admin/groups/pending":                       {auth: "admin"},
 	"GET /api/v1/admin/monitor/stats":                        {auth: "admin"},
 	"GET /api/v1/admin/monitor/queue":                        {auth: "admin"},
 	"POST /api/v1/admin/users/{userID}/admin":                {auth: "admin", body: `{"admin":true}`},
-	"POST /api/v1/admin/groups/{groupID}/{decision}":         {auth: "admin"},
+	"POST /api/v1/admin/groups/{groupID}/reject":             {auth: "admin"},
 	"POST /api/v1/admin/monitor/queue/{repoID}/prioritize":   {auth: "admin"},                                                                          // v0.27.14 Boost (fixture seeds the queue row)
 	"GET /api/v1/admin/add-requests":                         {auth: "admin"},                                                                          // v0.27.20 per-add approval queue
 	"GET /api/v1/admin/forge-id-changes":                     {auth: "admin", query: "pending=1"},                                                      // v0.29.63
@@ -322,6 +321,9 @@ func TestEveryEndpointExecutes(t *testing.T) {
 		// live collection, unlink, then delete — so every mutation
 		// exercises a real state, not an already-deleted collection.
 		"POST /api/v1/admin/collections/{collectionID}/groups",
+		// 0.29.100 (58 §7 item 8): the detail answers 404 for a deleted
+		// collection, so it reads the live one, with its group linked.
+		"GET /api/v1/collections/{collectionID}",
 		"POST /api/v1/collections/{collectionID}/copy",
 		"POST /api/v1/admin/collections/{collectionID}",
 		// v0.27.70 stars ride the live collection before it's deleted.
@@ -344,11 +346,26 @@ func TestEveryEndpointExecutes(t *testing.T) {
 			done[route] = true
 		}
 	}
+	// Terminal pass: a rejected group refuses every later write to it (the
+	// add and the add-request decision answer 409), so the rejection runs
+	// after every other recipe (0.29.100: the admin reject route; in the
+	// unordered pass it hit those writes in map order).
+	last := []string{"POST /api/v1/admin/groups/{groupID}/reject"}
+	isLast := map[string]bool{}
+	for _, route := range last {
+		if _, ok := smokeRecipes[route]; !ok {
+			t.Fatalf("no smoke recipe for the terminal route %s", route)
+		}
+		isLast[route] = true
+	}
 	for route, r := range smokeRecipes {
-		if done[route] || strings.HasSuffix(route, "?") { // collision-guard placeholder
+		if done[route] || isLast[route] || strings.HasSuffix(route, "?") { // collision-guard placeholder
 			continue
 		}
 		run(route, r)
+	}
+	for _, route := range last {
+		run(route, smokeRecipes[route])
 	}
 }
 

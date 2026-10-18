@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/mailer"
 )
@@ -57,6 +58,29 @@ func (f *fakeAccountStore) ConfirmEmailToken(_ context.Context, token string, _ 
 	}
 	f.confirmed = append(f.confirmed, token)
 	return "a@example.com", nil
+}
+
+// nilAdminStore is an admin.Store whose every method panics: the e-mail
+// routes reach only the account methods fakeAccountStore provides.
+type nilAdminStore struct{ admin.Store }
+
+// fakeAdminStore is the service's store for the profile routes: the fake's
+// account methods (depth 1) over the unimplemented rest (depth 2).
+type fakeAdminStore struct {
+	nilAdminStore
+	*fakeAccountStore
+}
+
+// withAccountService wires the profile routes' fake into the server and
+// builds the service the e-mail routes call, with the mailer and spa_url
+// the test wants (nil mailer: mail not configured).
+func withAccountService(srv *Server, fake *fakeAccountStore, m *mailer.Mailer, spa string) {
+	srv.accounts = fake
+	opts := admin.Options{SPAURL: spa}
+	if m != nil {
+		opts.Mailer = m
+	}
+	srv.admin = admin.New(fakeAdminStore{fakeAccountStore: fake}, opts, nil, srv.logger)
 }
 
 func accountRequest(method, target, body string) *http.Request {
@@ -212,7 +236,7 @@ func TestMeEmailSubmission(t *testing.T) {
 	t.Run("mail not configured", func(t *testing.T) {
 		srv := newTestServer()
 		fake := &fakeAccountStore{login: "alice"}
-		srv.accounts = fake // srv.mailer is nil: not enabled
+		withAccountService(srv, fake, nil, "") // no mailer: not enabled
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, accountRequest(http.MethodPost, "/api/v1/me/email", `{"email":"a@example.com"}`))
 		m := decodeJSON(t, w)
@@ -225,7 +249,7 @@ func TestMeEmailSubmission(t *testing.T) {
 	})
 	t.Run("not deliverable", func(t *testing.T) {
 		srv := newTestServer()
-		srv.accounts = &fakeAccountStore{login: "alice"}
+		withAccountService(srv, &fakeAccountStore{login: "alice"}, nil, "")
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, accountRequest(http.MethodPost, "/api/v1/me/email", `{"email":"nope"}`))
 		if m := decodeJSON(t, w); w.Code != http.StatusUnprocessableEntity || !strings.Contains(m["message"].(string), "valid email") {
@@ -239,11 +263,10 @@ func TestMeEmailSubmission(t *testing.T) {
 		t.Run("sent spa="+c.spa, func(t *testing.T) {
 			var sent string
 			srv := newTestServer()
-			srv.mailer = mailer.New(mailer.Config{GmailUser: "someone@gmail.com", GmailAppPassword: "abcdefghijklmnop", SiteURL: "https://site.example", SPAURL: c.spa}, logger).
+			m := mailer.New(mailer.Config{GmailUser: "someone@gmail.com", GmailAppPassword: "abcdefghijklmnop", SiteURL: "https://site.example", SPAURL: c.spa}, logger).
 				WithSendFunc(func(_ string, _ smtp.Auth, _ string, _ []string, msg []byte) error { sent = string(msg); return nil })
-			srv.spaURL = c.spa
 			fake := &fakeAccountStore{login: "alice", token: "tok123"}
-			srv.accounts = fake
+			withAccountService(srv, fake, m, c.spa)
 			w := httptest.NewRecorder()
 			srv.Handler().ServeHTTP(w, accountRequest(http.MethodPost, "/api/v1/me/email", `{"email":"a@example.com"}`))
 			if m := decodeJSON(t, w); w.Code != http.StatusOK || m["sent"] != true {
@@ -275,7 +298,7 @@ func TestMeEmailConfirm(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			srv := newTestServer()
 			fake := &fakeAccountStore{confirmErr: c.storeErr}
-			srv.accounts = fake
+			withAccountService(srv, fake, nil, "")
 			w := httptest.NewRecorder()
 			srv.Handler().ServeHTTP(w, accountRequest(http.MethodPost, "/api/v1/me/email/confirm", c.body))
 			if c.wantResult == "" {

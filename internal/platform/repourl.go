@@ -163,7 +163,17 @@ func ParseRepoURLWithHints(rawURL string, gitlabWebBases []string) (RepoURL, err
 // strings.Contains(url, "github.com") checks it replaces: a URL like
 // https://mirror.example/github.com/x now classifies as generic git.
 func ParseAnyRepoURL(rawURL string) (RepoURL, error) {
-	parsed, err := ParseRepoURLWithHints(rawURL, nil)
+	return ParseAnyRepoURLWithHints(rawURL, nil)
+}
+
+// ParseAnyRepoURLWithHints is ParseAnyRepoURL with the configured GitLab
+// instance's web base(s) (GitLabWebHints): a URL under one is a GitLab
+// repository whatever its host name says — the rule the org scan already
+// applies (round-3 review of 0.29.100: a paste of code.example.org/g/p
+// stored a git-only row while the scan of that instance ingested the same
+// project as GitLab, and a stored row's platform is never rewritten).
+func ParseAnyRepoURLWithHints(rawURL string, gitlabWebBases []string) (RepoURL, error) {
+	parsed, err := ParseRepoURLWithHints(rawURL, gitlabWebBases)
 	if err == nil {
 		return parsed, nil
 	}
@@ -202,9 +212,7 @@ func ParseOrgURL(rawURL string) (host, orgName string, err error) {
 	if rawURL == "" {
 		return "", "", fmt.Errorf("%w: empty URL", ErrInvalidRepoURL)
 	}
-	if !strings.Contains(rawURL, "://") {
-		rawURL = "https://" + rawURL
-	}
+	rawURL = WithDefaultScheme(rawURL)
 	// Refused before url.Parse (whose error quotes the input): this is the
 	// ONE parser behind OrgOnGitHubHost, so both periodic org refreshes and
 	// the eligibility predicate refuse a registered URL carrying credentials

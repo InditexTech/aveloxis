@@ -112,7 +112,7 @@ func TestApprovedAddRequestsToRetry(t *testing.T) {
 	if ids, err := store.ApprovedAddRequestsToRetry(ctx, time.Hour); err != nil || slices.Contains(ids, rejReq) {
 		t.Errorf("a rejected group's request must not be listed for retry: %v, %v", ids, err)
 	}
-	if _, _, err := store.ProcessApprovedAddRequest(ctx, rejReq); !errors.Is(err, ErrGroupRejected) {
+	if _, _, err := store.ProcessApprovedAddRequest(ctx, rejReq, ""); !errors.Is(err, ErrGroupRejected) {
 		t.Errorf("processing a rejected group's request = %v, want ErrGroupRejected", err)
 	}
 	var tracked int
@@ -122,7 +122,7 @@ func TestApprovedAddRequestsToRetry(t *testing.T) {
 	}
 
 	// The retry is the ordinary approved pass: it processes the stuck item.
-	processed, _, err := store.ProcessApprovedAddRequest(ctx, stuck)
+	processed, _, err := store.ProcessApprovedAddRequest(ctx, stuck, "")
 	if err != nil || processed != 1 {
 		t.Fatalf("retrying the stuck request: processed %d, err %v", processed, err)
 	}
@@ -182,7 +182,7 @@ func TestRejectedGroupTakesNoApprovalOrMoreItems(t *testing.T) {
 	if err := store.RejectGroup(ctx, gid, uid); err != nil {
 		t.Fatal(err)
 	}
-	if _, changed, err := store.DecideAddRequest(ctx, pend, uid, true, ""); !errors.Is(err, ErrGroupRejected) || changed {
+	if _, changed, err := store.DecideAddRequest(ctx, pend, uid, true, "", ""); !errors.Is(err, ErrGroupRejected) || changed {
 		t.Errorf("approving a rejected group's pending request = changed %v, %v; want ErrGroupRejected", changed, err)
 	}
 	var status string
@@ -213,7 +213,7 @@ func TestRejectedGroupTakesNoApprovalOrMoreItems(t *testing.T) {
 	if _, err := store.pool.Exec(ctx, `CREATE TRIGGER `+trigger+` BEFORE INSERT ON aveloxis_data.repos FOR EACH ROW EXECUTE FUNCTION aveloxis_data.`+trigger+`()`); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.ProcessApprovedAddRequest(ctx, req2); !errors.Is(err, ErrGroupRejected) {
+	if _, _, err := store.ProcessApprovedAddRequest(ctx, req2, ""); !errors.Is(err, ErrGroupRejected) {
 		t.Errorf("a pass whose group was rejected mid-way = %v, want ErrGroupRejected", err)
 	}
 	var secondTracked, secondStamped int

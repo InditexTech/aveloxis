@@ -15,6 +15,8 @@ package db
 import (
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 func TestAddReposToGroupUsesSharedResolvers(t *testing.T) {
@@ -37,14 +39,28 @@ func TestAddReposToGroupUsesSharedResolvers(t *testing.T) {
 	}
 }
 
-// AddRepoToGroup must stay a thin wrapper over AddReposToGroup so the
-// CLI importers and the batch path can never diverge on approval
-// semantics.
-func TestAddRepoToGroupDelegatesToBatch(t *testing.T) {
-	body := extractFunctionBody(t, "web_store.go", "AddRepoToGroup")
-	if !strings.Contains(body, "s.AddReposToGroup(") {
-		t.Error("AddRepoToGroup must delegate to AddReposToGroup — two parallel add " +
-			"implementations WILL diverge on the per-add approval rule.")
+// TestNoSecondRepoAddPath: the single-URL wrapper AddRepoToGroup, once a
+// thin delegate kept for the CLI importers, was deleted in 0.29.100 (round-3
+// review: the importers add through the admin service, and a wrapper
+// without the instance hint was a second add path). The invariant it
+// stood for is pinned at its stronger level: in the store, only the batch
+// add and the two approval passes reach ensureRepoCollectedInGroup, and
+// no wrapper of that name exists — two parallel add implementations WILL
+// diverge on the per-add approval rule.
+func TestNoSecondRepoAddPath(t *testing.T) {
+	src := srctest.StripGoComments(srctest.PackageSource(t, "internal/db", 10))
+	if strings.Contains(src, "AddRepoToGroup(") {
+		t.Error("a single-URL AddRepoToGroup exists again in internal/db — add through admin.Service.AddToGroup, which calls the batch AddReposToGroup")
+	}
+	callers := map[string]bool{"AddReposToGroup": true, "processAddRequest": true, "processAutoApproved": true}
+	examined := 0
+	for _, fn := range []string{"AddReposToGroup", "processAddRequest", "processAutoApproved"} {
+		if strings.Contains(srctest.StripGoComments(extractFunctionBody(t, "add_requests.go", fn)), "ensureRepoCollectedInGroup(") {
+			examined++
+		}
+	}
+	if n := strings.Count(src, "s.ensureRepoCollectedInGroup("); n != examined || examined < 2 {
+		t.Errorf("ensureRepoCollectedInGroup is called from %d sites; %d are the batch add and the approval passes (%v) — any other caller is a second add path", n, examined, callers)
 	}
 }
 

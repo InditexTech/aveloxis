@@ -4,10 +4,11 @@
 package scheduler
 
 import (
-	"github.com/aveloxis/aveloxis/internal/srctest"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // TestOrgScanCountsOnlyGenuinelyNewLinks pins the 2026-08-18 miscount fix.

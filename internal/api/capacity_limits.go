@@ -172,7 +172,7 @@ func (p *capacityPolicy) tokenQuotas(info authInfo) []capacity.RateQuota {
 func (p *capacityPolicy) contact() string {
 	snap, known := p.get()
 	if !known {
-		return db.DefaultCapacityContactEmail
+		return "" // no address until the policy is read (the message says so)
 	}
 	return snap.contact
 }

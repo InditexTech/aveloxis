@@ -15,7 +15,7 @@
 //     "site_url": "https://your-host.example"
 //   }
 //
-// SendWelcome and SendGroupApproved are the two MVP templates. Both
+// SendWelcome and SendAddRequestDecided are the two MVP templates. Both
 // run through the same Send method, which means a future template
 // just adds a new public function.
 
@@ -50,14 +50,6 @@ func TestSendWelcomeExists(t *testing.T) {
 	src := mustReadMailerSource(t, "mailer.go")
 	if !strings.Contains(src, "func (m *Mailer) SendWelcome(") {
 		t.Error("mailer.go must define SendWelcome — sent on first signup")
-	}
-}
-
-// TestSendGroupApprovedExists pins the approval-notification template.
-func TestSendGroupApprovedExists(t *testing.T) {
-	src := mustReadMailerSource(t, "mailer.go")
-	if !strings.Contains(src, "func (m *Mailer) SendGroupApproved(") {
-		t.Error("mailer.go must define SendGroupApproved — sent when an admin approves a pending group")
 	}
 }
 

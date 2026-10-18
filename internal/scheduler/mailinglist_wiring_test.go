@@ -4,12 +4,12 @@
 package scheduler
 
 import (
-	"github.com/aveloxis/aveloxis/internal/srctest"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/aveloxis/aveloxis/internal/mailinglist"
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // TestSchedulerConfigHasMailingListFields — Config must carry the v0.25.7

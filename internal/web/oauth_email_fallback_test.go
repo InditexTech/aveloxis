@@ -55,10 +55,10 @@ func TestServerRegistersAccountEmailRoute(t *testing.T) {
 // users.email = "". Without this, the user reaches the dashboard with
 // no email collected and the operator has no way to coordinate.
 func TestDashboardEnforcesEmail(t *testing.T) {
-	// The gate is dashboardEmailGate, called from handleDashboard; it
-	// reads the addresses through the accountEmailLookup interface.
-	src := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleDashboard(") + srctest.PackageFunc(t, "internal/web", "func dashboardEmailGate(")
-	if !strings.Contains(src, "dashboardEmailGate(") || !strings.Contains(src, "GetUserEmail") {
+	// The gate is admin.Service.EmailGate (stage 1 of summary/59), called
+	// from handleDashboard; it reads the addresses through the store.
+	src := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleDashboard(") + srctest.PackageFunc(t, "internal/admin", "func (s *Service) EmailGate(")
+	if !strings.Contains(src, "s.admin.EmailGate(") || !strings.Contains(src, "GetUserEmail") {
 		t.Error("handleDashboard must gate dashboard access on users.email " +
 			"being non-empty. Add either a requireEmail middleware OR " +
 			"call store.GetUserEmail in handleDashboard and redirect " +

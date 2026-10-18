@@ -56,9 +56,10 @@ func TestLoadFoundationOrgsTracksViaAddOrgToGroup(t *testing.T) {
 	if !strings.Contains(src, "AddOrgToGroup(") {
 		t.Error("load-foundation-orgs must call store.AddOrgToGroup (the tracked-org feature), not one-shot repo adds")
 	}
-	// It must derive the org owner from project repo URLs.
-	if !strings.Contains(src, "ParseRepoURL(") {
-		t.Error("load-foundation-orgs must derive distinct org owners from project repo URLs via platform.ParseRepoURL")
+	// It must derive the org URL from project repo URLs through the one
+	// hinted parser and the one org-URL builder (stage 1e of summary/59).
+	if !strings.Contains(src, "platform.ParseRepoURLWithHints(") || !strings.Contains(src, "platform.OrgURLFor(") {
+		t.Error("load-foundation-orgs must derive each org URL from the project repo URL via platform.ParseRepoURLWithHints + platform.OrgURLFor")
 	}
 }
 

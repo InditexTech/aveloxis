@@ -4,11 +4,9 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/aveloxis/aveloxis/internal/db"
 )
@@ -93,41 +91,31 @@ func (s *Server) handleCollectionDetail(w http.ResponseWriter, r *http.Request) 
 
 	groups, err := s.store.GetCollectionGroups(r.Context(), collID)
 	if err != nil {
-		s.serverError(w, r, "handleCollectionDetail", err)
+		if !s.refuseCollection(w, err) {
+			s.serverError(w, r, "handleCollectionDetail", err)
+		}
 		return
 	}
 	repos, total, err := s.store.GetCollectionRepos(r.Context(), collID, info.UserID, page, pageSize, sortKey, sortDir)
 	if err != nil {
-		s.serverError(w, r, "handleCollectionDetail", err)
+		if !s.refuseCollection(w, err) {
+			s.serverError(w, r, "handleCollectionDetail", err)
+		}
 		return
 	}
-	// Echo the EFFECTIVE paging/sort values (mirrors the store's
-	// clamps + allowlist — the v0.27.65 log-the-effective-value rule
-	// applied to response envelopes).
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 50
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
-	if !db.CollectionRepoSortValid(sortKey) {
-		sortKey = "name"
-	}
-	if !strings.EqualFold(sortDir, "desc") {
-		sortDir = "asc"
-	}
+	// Echo the EFFECTIVE paging/sort values: the store's one normaliser
+	// (the v0.27.65 log-the-effective-value rule applied to envelopes;
+	// 58 §7 item 20: `dir` is "asc" or "desc", never the caller's casing).
+	p := db.NormalizeListingPage(page, pageSize, sortKey, sortDir)
 	s.writeJSON(w, r, map[string]any{
 		"collection_id": collID,
 		"groups":        groups,
 		"repos":         repos,
 		"total":         total,
-		"page":          page,
-		"page_size":     pageSize,
-		"sort":          sortKey,
-		"dir":           sortDir,
+		"page":          p.Page,
+		"page_size":     p.PageSize,
+		"sort":          p.Sort,
+		"dir":           p.Dir,
 	})
 }
 
@@ -154,7 +142,7 @@ func (s *Server) handleCollectionCopy(w http.ResponseWriter, r *http.Request) {
 		GroupID   int64  `json:"group_id"`
 		GroupName string `json:"group_name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &req); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
 		return
 	}
@@ -164,9 +152,15 @@ func (s *Server) handleCollectionCopy(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "group_id or group_name required", http.StatusBadRequest)
 			return
 		}
-		groupID, err = s.store.FindOrCreateUserGroupByName(r.Context(), info.UserID, req.GroupName)
+		// The caller-named destination is created by the admin service (the
+		// one group writer: the name bound, the audit line); CreateUserGroup
+		// is a find-or-create (ON CONFLICT (user_id, name)), so an existing
+		// group of that name is reused (round-2 review of 0.29.100).
+		groupID, err = s.admin.CreateGroup(r.Context(), s.actor(info), req.GroupName)
 		if err != nil {
-			s.serverError(w, r, "handleCollectionCopy", err)
+			if !s.refuse(w, info, err) {
+				s.serverError(w, r, "handleCollectionCopy", err)
+			}
 			return
 		}
 	}
@@ -179,7 +173,9 @@ func (s *Server) handleCollectionCopy(w http.ResponseWriter, r *http.Request) {
 		if s.refuseCapacity(w, info, err) {
 			return // the copy does not fit the allocation; nothing was linked
 		}
-		s.serverError(w, r, "handleCollectionCopy", err)
+		if !s.refuseCollection(w, err) {
+			s.serverError(w, r, "handleCollectionCopy", err)
+		}
 		return
 	}
 	// The copy widened the caller's repo scope — bust the caller's caches.
@@ -202,13 +198,15 @@ func (s *Server) handleAdminCollectionCreate(w http.ResponseWriter, r *http.Requ
 		Description string `json:"description"`
 		Position    int    `json:"position"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &req); err != nil || req.Name == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
 		return
 	}
 	id, err := s.store.CreateCollection(r.Context(), req.Name, req.Description, req.Position, info.UserID)
 	if err != nil {
-		s.serverError(w, r, "handleAdminCollectionCreate", err)
+		if !s.refuseCollection(w, err) {
+			s.serverError(w, r, "handleAdminCollectionCreate", err)
+		}
 		return
 	}
 	s.writeJSON(w, r, map[string]any{"collection_id": id})
@@ -230,12 +228,14 @@ func (s *Server) handleAdminCollectionUpdate(w http.ResponseWriter, r *http.Requ
 		Description string `json:"description"`
 		Position    int    `json:"position"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &req); err != nil || req.Name == "" {
 		http.Error(w, "name required", http.StatusBadRequest)
 		return
 	}
 	if err := s.store.UpdateCollection(r.Context(), collID, req.Name, req.Description, req.Position); err != nil {
-		s.serverError(w, r, "handleAdminCollectionUpdate", err)
+		if !s.refuseCollection(w, err) {
+			s.serverError(w, r, "handleAdminCollectionUpdate", err)
+		}
 		return
 	}
 	s.writeJSON(w, r, map[string]any{"ok": true})
@@ -252,7 +252,9 @@ func (s *Server) handleAdminCollectionDelete(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err := s.store.DeleteCollection(r.Context(), collID); err != nil {
-		s.serverError(w, r, "handleAdminCollectionDelete", err)
+		if !s.refuseCollection(w, err) {
+			s.serverError(w, r, "handleAdminCollectionDelete", err)
+		}
 		return
 	}
 	s.writeJSON(w, r, map[string]any{"ok": true})
@@ -272,7 +274,7 @@ func (s *Server) handleAdminCollectionAddGroup(w http.ResponseWriter, r *http.Re
 	var req struct {
 		GroupID int64 `json:"group_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.GroupID == 0 {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &req); err != nil || req.GroupID == 0 {
 		http.Error(w, "group_id required", http.StatusBadRequest)
 		return
 	}
@@ -281,7 +283,13 @@ func (s *Server) handleAdminCollectionAddGroup(w http.ResponseWriter, r *http.Re
 			http.Error(w, "collection member groups must be admin-owned", http.StatusBadRequest)
 			return
 		}
-		s.serverError(w, r, "handleAdminCollectionAddGroup", err)
+		if errors.Is(err, db.ErrGroupNotFound) {
+			writeAuthError(w, http.StatusNotFound, "no group with that id")
+			return
+		}
+		if !s.refuseCollection(w, err) {
+			s.serverError(w, r, "handleAdminCollectionAddGroup", err)
+		}
 		return
 	}
 	s.writeJSON(w, r, map[string]any{"ok": true})
@@ -304,8 +312,26 @@ func (s *Server) handleAdminCollectionRemoveGroup(w http.ResponseWriter, r *http
 		return
 	}
 	if err := s.store.RemoveGroupFromCollection(r.Context(), collID, groupID); err != nil {
-		s.serverError(w, r, "handleAdminCollectionRemoveGroup", err)
+		if !s.refuseCollection(w, err) {
+			s.serverError(w, r, "handleAdminCollectionRemoveGroup", err)
+		}
 		return
 	}
 	s.writeJSON(w, r, map[string]any{"ok": true})
+}
+
+// refuseCollection answers the collection store's refusals (58 §7 item 8:
+// an unknown id or a duplicate name answered 500; the detail and the copy
+// answered 200 for an unknown id): 404 for no such collection, 409 for a
+// taken name. false for anything else (the caller's serverError).
+func (s *Server) refuseCollection(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, db.ErrCollectionNotFound):
+		writeAuthError(w, http.StatusNotFound, "no collection with that id")
+	case errors.Is(err, db.ErrCollectionNameTaken):
+		writeAuthError(w, http.StatusConflict, "a collection with that name already exists")
+	default:
+		return false
+	}
+	return true
 }

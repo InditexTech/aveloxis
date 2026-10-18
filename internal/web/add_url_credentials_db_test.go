@@ -170,7 +170,8 @@ func TestAddURLWithCredentialsIsRefusedAndNotLogged(t *testing.T) {
 		if strings.Contains(logs.String(), secret) {
 			t.Errorf("%s: the log carries the credential: %s", name, logs.String())
 		}
-		if !strings.Contains(logs.String(), "org not added") {
+		// The service's one refusal line (stage 1 of summary/59).
+		if !strings.Contains(logs.String(), "add organization refused") {
 			t.Errorf("%s: the refusal was not logged: %s", name, logs.String())
 		}
 	}

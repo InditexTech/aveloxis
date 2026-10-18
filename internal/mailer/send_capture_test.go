@@ -485,15 +485,17 @@ func TestSiteURLNormalizedOnce(t *testing.T) {
 		m.sendMail = func(string, smtp.Auth, string, []string, []byte) error { return nil }
 		var sent []byte
 		m.sendMail = func(_ string, _ smtp.Auth, _ string, _ []string, msg []byte) error { sent = msg; return nil }
-		if err := m.SendGroupApproved("user@example.com", "alice", "g", 5); err != nil {
+		// The approvals link (the group-approved mail and its link are gone
+		// with the legacy pending groups, 0.29.100).
+		if err := m.SendAddRequestSubmitted("ops@example.com", "alice", "g", "repos", 2, []string{"https://github.com/a/b"}, 5); err != nil {
 			t.Fatal(err)
 		}
-		wantLink := "(your Aveloxis site URL)"
+		wantLink := "(your Aveloxis site URL)/admin/groups/pending"
 		if tc.want != "" {
-			wantLink = tc.want + "/groups/5"
+			wantLink = tc.want + "/admin/groups/pending"
 		}
-		if !strings.Contains(string(sent), "View your group: "+wantLink+"\r\n") && !strings.Contains(string(sent), "View your group: "+wantLink+"\n") {
-			t.Errorf("site_url %q: group link is not %q:\n%s", tc.in, wantLink, sent)
+		if !strings.Contains(string(sent), "Review pending additions: "+wantLink+"\r\n") && !strings.Contains(string(sent), "Review pending additions: "+wantLink+"\n") {
+			t.Errorf("site_url %q: approvals link is not %q:\n%s", tc.in, wantLink, sent)
 		}
 	}
 }

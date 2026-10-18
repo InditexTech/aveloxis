@@ -33,7 +33,7 @@ func TestPortalAlwaysRequiresIdentity(t *testing.T) {
 		s.handleMe, s.handleGroupsList, s.handleGroupCreate,
 		s.handleGroupPendingAdds, // v0.27.20
 		s.handleGroupOrgs,        // 2026-07-21 tracked-orgs listing
-		s.handleAdminUsers, s.handleAdminPendingGroups,
+		s.handleAdminUsers,
 		s.handleAdminMonitorStats, s.handleAdminMonitorQueue,
 	} {
 		rec := httptest.NewRecorder()
@@ -51,8 +51,8 @@ func TestAdminRoutesRejectNonAdmins(t *testing.T) {
 	s := portalServer(t, store)
 
 	for _, h := range []http.HandlerFunc{
-		s.handleAdminUsers, s.handleAdminPendingGroups,
-		s.handleAdminGroupDecision, s.handleAdminSetUserAdmin,
+		s.handleAdminUsers,
+		s.handleAdminGroupReject, s.handleAdminSetUserAdmin,
 		s.handleAdminMonitorStats, s.handleAdminMonitorQueue,
 		s.handleAdminPrioritizeRepo,
 		s.handleAdminAddRequests, s.handleAdminAddRequestDecision, // v0.27.20
@@ -68,7 +68,7 @@ func TestAdminRoutesRejectNonAdmins(t *testing.T) {
 }
 
 func TestAdminSelfDemotionRefused(t *testing.T) {
-	s := &Server{}
+	s := newTestServer()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/api/v1/admin/users/9/admin", strings.NewReader(`{"admin":false}`))
 	req.SetPathValue("userID", "9")
@@ -111,12 +111,21 @@ func TestAdminMutationsBustAuthCache(t *testing.T) {
 func TestAdminMutationHandlersInvalidateCache(t *testing.T) {
 	src := mustReadFile(t, "portal.go")
 	setAdmin := extractFuncBody(t, src, "handleAdminSetUserAdmin")
-	if !strings.Contains(setAdmin, "invalidateAll()") {
-		t.Error("handleAdminSetUserAdmin must call s.auth.invalidateAll() after SetUserAdmin — else the promoted user's own /me stays stale for up to authCacheTTL")
+	if !strings.Contains(setAdmin, "s.admin.SetUserAdmin(") {
+		t.Error("handleAdminSetUserAdmin must change the role through admin.Service.SetUserAdmin (stage 1 of summary/59)")
 	}
-	decision := extractFuncBody(t, src, "handleAdminGroupDecision")
-	if !strings.Contains(decision, "invalidateAll()") {
-		t.Error("handleAdminGroupDecision must call s.auth.invalidateAll() after approve/reject — else the requester's cached scope stays empty for up to authCacheTTL")
+	// The service's RoleChanged hook drops the target's cached validation:
+	// the promoted user's own /me must not stay stale for up to authCacheTTL.
+	hook := srctest.StripGoComments(srctest.PackageFunc(t, "internal/api", "func (h apiHooks) RoleChanged("))
+	if !strings.Contains(hook, "auth.invalidateUser(userID)") {
+		t.Error("apiHooks.RoleChanged must call auth.invalidateUser(userID)")
+	}
+	// A rejection changes nobody's scope (visibility is never gated), so
+	// the reject route runs through the service with no cache flush (stage
+	// 1g of summary/59; the legacy approve arm, which did flush, is gone).
+	reject := extractFuncBody(t, src, "handleAdminGroupReject")
+	if !strings.Contains(reject, "s.admin.RejectGroup(") || strings.Contains(reject, "invalidateAll()") {
+		t.Error("handleAdminGroupReject must reject through admin.Service.RejectGroup and flush no cache")
 	}
 }
 
@@ -140,8 +149,7 @@ func TestPortalRoutesRegistered(t *testing.T) {
 		`"GET /api/v1/groups/{groupID}/orgs"`, // 2026-07-21 tracked-orgs listing
 		`"GET /api/v1/admin/users"`,
 		`"POST /api/v1/admin/users/{userID}/admin"`,
-		`"GET /api/v1/admin/groups/pending"`,
-		`"POST /api/v1/admin/groups/{groupID}/{decision}"`,
+		`"POST /api/v1/admin/groups/{groupID}/reject"`,
 		`"GET /api/v1/admin/monitor/stats"`,
 		`"GET /api/v1/admin/monitor/queue"`,
 	} {

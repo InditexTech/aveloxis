@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 )
@@ -69,11 +70,18 @@ func (s *Server) resolveSupplyChainScope(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "invalid group", http.StatusBadRequest)
 		return supplyChainScope{}, false
 	}
-	ids, err := s.store.GetGroupRepoIDsForUser(r.Context(), gid, info.UserID, info.IsAdmin)
-	if errors.Is(err, db.ErrGroupNotFound) {
-		http.Error(w, "group not found", http.StatusNotFound)
+	// The service's one access rule: the owner, or an administrator's
+	// session; a stranger's and an unknown group answer alike (N11).
+	if _, err := s.admin.GroupAccess(r.Context(), s.actor(info), gid, admin.Read); err != nil {
+		if ref, ok := admin.Classify(err); ok && (ref.Kind == admin.NotFound || ref.Kind == admin.NotOwned) {
+			http.Error(w, "group not found", http.StatusNotFound)
+			return supplyChainScope{}, false
+		}
+		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "supply-chain group scope failed", "group_id", gid, "error", err)
+		http.Error(w, "group lookup failed", http.StatusInternalServerError)
 		return supplyChainScope{}, false
 	}
+	ids, err := s.store.GetGroupRepoIDs(r.Context(), gid)
 	if err != nil {
 		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "supply-chain group scope failed", "group_id", gid, "error", err)
 		http.Error(w, "group lookup failed", http.StatusInternalServerError)

@@ -88,14 +88,17 @@ func (s *PostgresStore) GetGroupStatus(ctx context.Context, groupID int64) (stri
 // identically. Resolves the URL by its stored spelling and case; creates
 // the repos row only when absent (an existing repo is linked, not
 // re-upserted); always ensures a queue row; always links user_repos.
-func (s *PostgresStore) ensureRepoCollectedInGroup(ctx context.Context, groupID int64, repoURL string) (int64, error) {
+// glWebBase is the configured GitLab instance's web base: a new row under
+// it is a GitLab repository whatever its host name says (round-3 review of
+// 0.29.100), as the org scan of that instance records its projects.
+func (s *PostgresStore) ensureRepoCollectedInGroup(ctx context.Context, groupID int64, repoURL, glWebBase string) (int64, error) {
 	repoID, err := s.FindRepoByURL(ctx, repoURL)
 	if err != nil {
 		return 0, fmt.Errorf("resolve repo URL: %w", err)
 	}
 	if repoID == 0 {
 		newRepo := &model.Repo{GitURL: repoURL, Platform: model.PlatformGenericGit}
-		if ru, perr := platform.ParseAnyRepoURL(repoURL); perr == nil {
+		if ru, perr := platform.ParseAnyRepoURLWithHints(repoURL, platform.GitLabWebHints(glWebBase)); perr == nil {
 			newRepo.Platform = ru.Platform
 			newRepo.Owner = ru.Owner
 			newRepo.Name = ru.Repo
@@ -131,7 +134,7 @@ func (s *PostgresStore) ensureRepoCollectedInGroup(ctx context.Context, groupID 
 //
 // autoApproveLimit comes from web.auto_approve_add_limit; 0 (the
 // default) means every non-admin new-repo add requires approval.
-func (s *PostgresStore) AddReposToGroup(ctx context.Context, userID int, groupID int64, repoURLs []string, autoApproveLimit int) (AddOutcome, error) {
+func (s *PostgresStore) AddReposToGroup(ctx context.Context, userID int, groupID int64, repoURLs []string, autoApproveLimit int, glWebBase string) (AddOutcome, error) {
 	var out AddOutcome
 	if err := s.verifyGroupOwned(ctx, userID, groupID); err != nil {
 		return out, err
@@ -229,7 +232,7 @@ func (s *PostgresStore) AddReposToGroup(ctx context.Context, userID int, groupID
 			out.Pending = len(unknown)
 			return out, nil
 		}
-		return s.processAutoApproved(ctx, out, userID, groupID, reqID, len(unknown))
+		return s.processAutoApproved(ctx, out, userID, groupID, reqID, len(unknown), glWebBase)
 	}
 	for _, it := range items {
 		if it.tracked {
@@ -243,7 +246,7 @@ func (s *PostgresStore) AddReposToGroup(ctx context.Context, userID int, groupID
 			}
 			continue
 		}
-		if _, err := s.ensureRepoCollectedInGroup(ctx, groupID, it.url); err != nil {
+		if _, err := s.ensureRepoCollectedInGroup(ctx, groupID, it.url, glWebBase); err != nil {
 			return out, err
 		}
 		out.Enqueued++
@@ -252,7 +255,7 @@ func (s *PostgresStore) AddReposToGroup(ctx context.Context, userID int, groupID
 }
 
 // processAutoApproved runs an auto-approved add request's items.
-func (s *PostgresStore) processAutoApproved(ctx context.Context, out AddOutcome, userID int, groupID, reqID int64, items int) (AddOutcome, error) {
+func (s *PostgresStore) processAutoApproved(ctx context.Context, out AddOutcome, userID int, groupID, reqID int64, items int, glWebBase string) (AddOutcome, error) {
 	// The request is committed as approved and no admin will see it,
 	// so its processing must not stop with the caller's request context
 	// (a client disconnect used to leave its items unprocessed for good;
@@ -265,7 +268,7 @@ func (s *PostgresStore) processAutoApproved(ctx context.Context, out AddOutcome,
 	// context.Canceled arm (the shutdown-classification ratchet's
 	// producer rule).
 	detached := context.WithoutCancel(ctx)
-	processed, failed, err := s.processAddRequest(detached, reqID, true)
+	processed, failed, err := s.processAddRequest(detached, reqID, true, glWebBase)
 	out.Enqueued += processed
 	out.Failed = failed
 	if err != nil {
@@ -359,15 +362,73 @@ func insertAddRequest(ctx context.Context, tx pgx.Tx, userID int, groupID int64,
 	return requestID, nil
 }
 
-// ListPendingAddRequests returns the admin approval queue,
-// oldest-first, each with a small sample of item URLs.
-func (s *PostgresStore) ListPendingAddRequests(ctx context.Context) ([]AddRequest, error) {
-	rows, err := s.pool.Query(ctx, `
+// addRequestSelectSQL is the one SELECT behind every AddRequest reader (the
+// queue listing, the single-row read, the decision): one column order, one
+// scanner. Append a WHERE and an ORDER BY.
+const addRequestSelectSQL = `
 		SELECT ar.request_id, ar.user_id, u.login_name, COALESCE(u.email, ''),
 		       ar.group_id, g.name, ar.kind, ar.org_url, ar.status, ar.item_count, ar.created_at
 		FROM aveloxis_ops.collection_add_requests ar
 		JOIN aveloxis_ops.users u ON u.user_id = ar.user_id
-		JOIN aveloxis_ops.user_groups g ON g.group_id = ar.group_id
+		JOIN aveloxis_ops.user_groups g ON g.group_id = ar.group_id`
+
+// scanAddRequest fills one AddRequest from an addRequestSelectSQL row.
+func scanAddRequest(row pgx.Row, a *AddRequest) error {
+	return row.Scan(&a.RequestID, &a.UserID, &a.UserLogin, &a.UserEmail,
+		&a.GroupID, &a.GroupName, &a.Kind, &a.OrgURL, &a.Status, &a.ItemCount, &a.CreatedAt)
+}
+
+// addRequestSampleLimit is how many item URLs a request carries for the
+// admin queue and the operator's notification: enough to recognise the
+// paste, never the whole request.
+const addRequestSampleLimit = 10
+
+// addRequestSample reads the first item URLs of one request.
+func (s *PostgresStore) addRequestSample(ctx context.Context, requestID int64) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT repo_url FROM aveloxis_ops.collection_add_request_items
+		WHERE request_id = $1 ORDER BY item_id LIMIT $2`, requestID, addRequestSampleLimit)
+	if err != nil {
+		return nil, fmt.Errorf("add request %d sample urls: %w", requestID, err)
+	}
+	defer rows.Close()
+	var sample []string
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, fmt.Errorf("add request %d sample urls: %w", requestID, err)
+		}
+		sample = append(sample, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("add request %d sample urls: %w", requestID, err)
+	}
+	return sample, nil
+}
+
+// GetAddRequest reads one request, decided or pending, with its sample of
+// item URLs: the single-row read the submission notification needs (stage
+// 1 of summary/59, eval-2 item 1 — both notifiers listed the whole queue to
+// find one row). ErrAddRequestNotFound for no such request.
+func (s *PostgresStore) GetAddRequest(ctx context.Context, requestID int64) (AddRequest, error) {
+	var a AddRequest
+	err := scanAddRequest(s.pool.QueryRow(ctx, addRequestSelectSQL+` WHERE ar.request_id = $1`, requestID), &a)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return a, fmt.Errorf("add request %d: %w", requestID, ErrAddRequestNotFound)
+	}
+	if err != nil {
+		return a, fmt.Errorf("load add request %d: %w", requestID, err)
+	}
+	if a.SampleURLs, err = s.addRequestSample(ctx, requestID); err != nil {
+		return a, err
+	}
+	return a, nil
+}
+
+// ListPendingAddRequests returns the admin approval queue,
+// oldest-first, each with a small sample of item URLs.
+func (s *PostgresStore) ListPendingAddRequests(ctx context.Context) ([]AddRequest, error) {
+	rows, err := s.pool.Query(ctx, addRequestSelectSQL+`
 		WHERE ar.status = 'pending'
 		ORDER BY ar.request_id`)
 	if err != nil {
@@ -377,8 +438,7 @@ func (s *PostgresStore) ListPendingAddRequests(ctx context.Context) ([]AddReques
 	var out []AddRequest
 	for rows.Next() {
 		var a AddRequest
-		if err := rows.Scan(&a.RequestID, &a.UserID, &a.UserLogin, &a.UserEmail,
-			&a.GroupID, &a.GroupName, &a.Kind, &a.OrgURL, &a.Status, &a.ItemCount, &a.CreatedAt); err != nil {
+		if err := scanAddRequest(rows, &a); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -387,23 +447,11 @@ func (s *PostgresStore) ListPendingAddRequests(ctx context.Context) ([]AddReques
 		return nil, err
 	}
 	for i := range out {
-		sample, err := s.pool.Query(ctx, `
-			SELECT repo_url FROM aveloxis_ops.collection_add_request_items
-			WHERE request_id = $1 ORDER BY item_id LIMIT 10`, out[i].RequestID)
-		if err != nil {
-			continue
-		}
-		for sample.Next() {
-			var u string
-			if err := sample.Scan(&u); err != nil {
-				sample.Close()
-				return nil, err
-			}
-			out[i].SampleURLs = append(out[i].SampleURLs, u)
-		}
-		sample.Close()
-		if err := sample.Err(); err != nil {
-			return nil, fmt.Errorf("add request %d sample urls: %w", out[i].RequestID, err)
+		// A failed sample read is the listing's failure (it was skipped
+		// silently: the admin saw a request with no URLs and nothing said
+		// why; stage 1 of summary/59).
+		if out[i].SampleURLs, err = s.addRequestSample(ctx, out[i].RequestID); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
@@ -418,17 +466,9 @@ func (s *PostgresStore) ListPendingAddRequests(ctx context.Context) ([]AddReques
 // registration happens HERE (INSERT into user_org_requests): presence
 // in that table means "approved to scan", which is what keeps the
 // scheduler's org tickers gate-free by construction.
-func (s *PostgresStore) DecideAddRequest(ctx context.Context, requestID int64, adminID int, approve bool, ghAPIBase string) (AddRequest, bool, error) {
+func (s *PostgresStore) DecideAddRequest(ctx context.Context, requestID int64, adminID int, approve bool, ghAPIBase, glWebBase string) (AddRequest, bool, error) {
 	var req AddRequest
-	err := s.pool.QueryRow(ctx, `
-		SELECT ar.request_id, ar.user_id, u.login_name, COALESCE(u.email, ''),
-		       ar.group_id, g.name, ar.kind, ar.org_url, ar.status, ar.item_count, ar.created_at
-		FROM aveloxis_ops.collection_add_requests ar
-		JOIN aveloxis_ops.users u ON u.user_id = ar.user_id
-		JOIN aveloxis_ops.user_groups g ON g.group_id = ar.group_id
-		WHERE ar.request_id = $1`, requestID).Scan(
-		&req.RequestID, &req.UserID, &req.UserLogin, &req.UserEmail,
-		&req.GroupID, &req.GroupName, &req.Kind, &req.OrgURL, &req.Status, &req.ItemCount, &req.CreatedAt)
+	err := scanAddRequest(s.pool.QueryRow(ctx, addRequestSelectSQL+` WHERE ar.request_id = $1`, requestID), &req)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return req, false, fmt.Errorf("add request %d: %w", requestID, ErrAddRequestNotFound)
 	}
@@ -482,7 +522,7 @@ func (s *PostgresStore) DecideAddRequest(ctx context.Context, requestID int64, a
 		// completes the approval, so it reports changed=true and the caller
 		// notifies the requester then.
 		if approve && req.Status == "approved" && req.Kind == "org" {
-			inserted, err := registerApprovedOrg(ctx, tx, req, ghAPIBase)
+			inserted, err := registerApprovedOrg(ctx, tx, req, ghAPIBase, glWebBase)
 			if err != nil {
 				return req, false, err
 			}
@@ -494,7 +534,7 @@ func (s *PostgresStore) DecideAddRequest(ctx context.Context, requestID int64, a
 		return req, false, nil
 	}
 	if approve && req.Kind == "org" {
-		if _, err := registerApprovedOrg(ctx, tx, req, ghAPIBase); err != nil {
+		if _, err := registerApprovedOrg(ctx, tx, req, ghAPIBase, glWebBase); err != nil {
 			return req, false, err
 		}
 	}
@@ -514,13 +554,21 @@ func (s *PostgresStore) DecideAddRequest(ctx context.Context, requestID int64, a
 // (v0.29.57, round 2 on the Copilot 5260961848 fixes).
 var ErrOrgOffGitHubHost = errors.New("organization is not on this deployment's GitHub host")
 
+// ErrOrgOffGitLabInstance is ErrOrgOffGitHubHost's GitLab twin (round-3
+// review of 0.29.100): a GitLab group not on the configured instance
+// (gitlab.base_url) — or any GitLab group when none is configured — can
+// never be enumerated (keys are sent to that instance alone), so it is
+// refused at every writer like a GitHub org off the host, instead of
+// registering and then being skipped by every scan with a WARN forever.
+var ErrOrgOffGitLabInstance = errors.New("organization is not on this deployment's GitLab instance")
+
 // OrgApprovalRefusalAdvice is the 409 body both admin surfaces (web page,
 // portal) send when an org approval is refused — ONE spelling (SR-17). The
 // host parenthetical belongs to the host refusal only. A credentialed
 // request can be rejected while pending; one already approved (the
 // half-state re-approve) cannot be rejected, and nothing enumerates it, so
 // the advice says exactly that — there is no delete path to point at.
-func OrgApprovalRefusalAdvice(err error, ghAPIBase string) string {
+func OrgApprovalRefusalAdvice(err error, ghAPIBase, glWebBase string) string {
 	if errors.Is(err, ErrURLTooLong) {
 		// PR #218 fix review r1: its own text ("longer than 1342 bytes") is
 		// the add limit; this refusal is the registration index's bound.
@@ -533,38 +581,70 @@ func OrgApprovalRefusalAdvice(err error, ghAPIBase string) string {
 	if errors.Is(err, platform.ErrURLUserinfo) {
 		return "the organization URL carries credentials; reject the request — one that is already approved cannot be registered and nothing enumerates it"
 	}
+	if errors.Is(err, ErrOrgOffGitLabInstance) {
+		return err.Error() + " (" + GitLabInstanceLabel(glWebBase) + "); reject the request instead — one that is already approved cannot be registered and nothing enumerates it"
+	}
 	// PR #218 fix review r3 F3: an org approved before v0.29.57's host gate
 	// reaches this on re-approve too (registerApprovedOrg → orgRegistrable).
 	return err.Error() + " (" + platform.GitHubWebHost(ghAPIBase) + "); reject the request instead — one that is already approved cannot be registered and nothing enumerates it"
 }
 
-// orgRegistrable is the registration gate: a "github"-labelled org must be
-// on the deployment's GitHub host. GitLab groups are not gated here (their
-// keys are routed by host elsewhere, and no refresh enumerates them yet). A
-// URL that does not PARSE is not "off the host" — it is left to the checks
-// that name that defect (the database's value rejection, ErrURLTooLong), so
-// a caller's error text stays true (the NUL-byte case in
-// TestGroupAddRepoErrorStatus).
-func orgRegistrable(platformName, orgURL, ghAPIBase string) error {
+// GitLabInstanceLabel names the configured GitLab instance in a refusal:
+// its web base, or the fact that none is configured.
+func GitLabInstanceLabel(glWebBase string) string {
+	if glWebBase == "" {
+		return "no GitLab instance is configured: gitlab.base_url"
+	}
+	return glWebBase
+}
+
+// orgRegistrable is the registration gate, the registration-time twin of
+// OrgScanEligible (SR-18: what the scan would never enumerate is refused
+// where it is written): a "github"-labelled org must be on the deployment's
+// GitHub host; a "gitlab"-labelled group must be on the configured
+// instance (glWebBase; none configured → refused). A URL that does not
+// PARSE is not "off the host" — it is left to the checks that name that
+// defect (the database's value rejection, ErrURLTooLong), so a caller's
+// error text stays true (the NUL-byte case in TestGroupAddRepoErrorStatus).
+func orgRegistrable(platformName, orgURL, ghAPIBase, glWebBase string) error {
 	host, _, err := platform.ParseOrgURL(orgURL)
 	if err != nil {
 		return nil
 	}
-	if platformName == "github" && !platform.IsGitHubHost(host, ghAPIBase) {
-		return ErrOrgOffGitHubHost
+	switch platformName {
+	case "github":
+		if !platform.IsGitHubHost(host, ghAPIBase) {
+			return ErrOrgOffGitHubHost
+		}
+	case "gitlab":
+		if glWebBase == "" || !platform.OnGitLabInstance(orgURL, glWebBase) {
+			return ErrOrgOffGitLabInstance
+		}
 	}
 	return nil
 }
 
 // OrgScanEligible reports whether a registered org row is one the periodic
-// refresh will ENUMERATE: a "github" row on the deployment's GitHub host.
-// The never-scanned probe counts only these. A github row the host gate
-// skips is never stamped and would otherwise re-fire the demand scan on
-// every poll tick (round 2; the rejected-group exclusion has the same
-// reason); a GitLab group is stamped by the full pass but nothing
-// enumerates it, so a demand scan for one would only stamp it (round 3).
-func OrgScanEligible(platformName, orgURL, ghAPIBase string) bool {
-	return platformName == "github" && platform.OrgOnGitHubHost(orgURL, ghAPIBase)
+// refresh will ENUMERATE: a "github" row on the deployment's GitHub host,
+// or a "gitlab" row on the configured instance (glWebBase; the probe
+// passes "" while no GitLab key exists). The never-scanned probe counts
+// only these: a row a gate skips is never stamped and would otherwise
+// re-fire the demand scan on every poll tick (v0.29.57 round 2; the
+// rejected-group exclusion has the same reason). Since stage 1e of
+// summary/59 the pass enumerates GitLab groups by full path on that
+// instance.
+func OrgScanEligible(platformName, orgURL, ghAPIBase, glWebBase string) bool {
+	switch platformName {
+	case "github":
+		return platform.OrgOnGitHubHost(orgURL, ghAPIBase)
+	case "gitlab":
+		// A GitLab group is enumerable only on the configured instance
+		// (gitlab.base_url): its keys are sent to that host alone. The
+		// probe passes "" while no GitLab key exists, so an unenumerable
+		// row never re-fires the demand scan (stage 1e of summary/59, C4).
+		return glWebBase != "" && platform.OnGitLabInstance(orgURL, glWebBase)
+	}
+	return false
 }
 
 // registerApprovedOrg records an approved org request in user_org_requests,
@@ -579,7 +659,7 @@ func OrgScanEligible(platformName, orgURL, ghAPIBase string) bool {
 // TestAddOrgToGroupAutoApproveIsAtomic inject failures into both writes. The
 // admin add and the half-state re-approve pass a transaction that holds only
 // the registration.
-func registerApprovedOrg(ctx context.Context, tx pgx.Tx, req AddRequest, ghAPIBase string) (bool, error) {
+func registerApprovedOrg(ctx context.Context, tx pgx.Tx, req AddRequest, ghAPIBase, glWebBase string) (bool, error) {
 	// A pending request written before the store refused credentialed URLs
 	// reaches this writer without AddOrgToGroup; refused here, so the
 	// approval's transaction never commits (Copilot review 5267193512). The
@@ -595,8 +675,8 @@ func registerApprovedOrg(ctx context.Context, tx pgx.Tx, req AddRequest, ghAPIBa
 	if len(req.OrgURL) > maxIndexedURLBytes {
 		return false, fmt.Errorf("register approved org: %w", ErrURLTooLong)
 	}
-	orgName, platformName := parseOrgURLMeta(req.OrgURL)
-	if err := orgRegistrable(platformName, req.OrgURL, ghAPIBase); err != nil {
+	orgName, platformName := parseOrgURLMeta(req.OrgURL, glWebBase)
+	if err := orgRegistrable(platformName, req.OrgURL, ghAPIBase, glWebBase); err != nil {
 		return false, err
 	}
 	// The arbiter below is the exact key, and rows written before v0.29.68
@@ -685,8 +765,8 @@ var ErrAddRequestInProgress = errors.New("add request is already being processed
 // (-1: a permanent failure of the item's own values), so the caller's log
 // line reports both (worklist follow-up 9; v0.29.50 counted the failed
 // items on the auto-approve path only).
-func (s *PostgresStore) ProcessApprovedAddRequest(ctx context.Context, requestID int64) (processed, failed int, err error) {
-	return s.processAddRequest(ctx, requestID, false)
+func (s *PostgresStore) ProcessApprovedAddRequest(ctx context.Context, requestID int64, glWebBase string) (processed, failed int, err error) {
+	return s.processAddRequest(ctx, requestID, false, glWebBase)
 }
 
 // groupRejected reports whether an administrator has rejected the group.
@@ -739,7 +819,7 @@ func (s *PostgresStore) ApprovedAddRequestsToRetry(ctx context.Context, olderTha
 // processAddRequest is the processing pass. With everyFailureFinal, used for
 // an auto-approved add that nobody re-approves, every failed item is stamped
 // processed-with-error and the pass goes on; failed counts those items.
-func (s *PostgresStore) processAddRequest(ctx context.Context, requestID int64, everyFailureFinal bool) (int, int, error) {
+func (s *PostgresStore) processAddRequest(ctx context.Context, requestID int64, everyFailureFinal bool, glWebBase string) (int, int, error) {
 	if !s.startAddRequestPass(requestID) {
 		return 0, 0, ErrAddRequestInProgress
 	}
@@ -802,7 +882,7 @@ func (s *PostgresStore) processAddRequest(ctx context.Context, requestID int64, 
 		if rejected {
 			return processed, failed, fmt.Errorf("request %d: %w", requestID, ErrGroupRejected)
 		}
-		repoID, err := s.ensureRepoCollectedInGroup(ctx, groupID, it.url)
+		repoID, err := s.ensureRepoCollectedInGroup(ctx, groupID, it.url, glWebBase)
 		if errors.Is(err, context.Canceled) {
 			// A stopped process, not a failure: leave the item unprocessed.
 			return processed, failed, err
@@ -868,6 +948,15 @@ func IsRejectedValue(err error) bool {
 	return strings.HasPrefix(pgErr.Code, "22")
 }
 
+// isUniqueViolation reports SQLSTATE 23505: the unique index is the
+// arbiter of "that name is taken" (a precheck would race a concurrent
+// insert). Unlike class 54 (memory: validate input, do not classify
+// SQLSTATEs), 23505 has one meaning.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
 // startAddRequestPass records that this process is processing requestID, and
 // reports false when a pass for it is already running here.
 func (s *PostgresStore) startAddRequestPass(requestID int64) bool {
@@ -902,7 +991,7 @@ type PendingAddItem struct {
 // content (repo URLs from pending 'repos' requests plus pending org
 // registrations) so the group page can show what's still in review.
 // Callers own the ownership check (portal: verifyGroupOwned semantics
-// via GetPendingAddItemsForUser; admins may read any group).
+// through admin.Service.GroupAccess; an administrator's session may read any group).
 func (s *PostgresStore) GetPendingAddItemsForGroup(ctx context.Context, groupID int64) ([]PendingAddItem, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT ar.request_id, ar.kind,
@@ -926,18 +1015,6 @@ func (s *PostgresStore) GetPendingAddItemsForGroup(ctx context.Context, groupID 
 		out = append(out, p)
 	}
 	return out, rows.Err()
-}
-
-// GetPendingAddItemsForUser is the ownership-checked wrapper the
-// portal uses: non-admins may only read their own group's pending
-// items; admins bypass.
-func (s *PostgresStore) GetPendingAddItemsForUser(ctx context.Context, userID int, groupID int64, isAdmin bool) ([]PendingAddItem, error) {
-	if !isAdmin {
-		if err := s.verifyGroupOwned(ctx, userID, groupID); err != nil {
-			return nil, err
-		}
-	}
-	return s.GetPendingAddItemsForGroup(ctx, groupID)
 }
 
 // migrateLegacyPendingGroups converts every pre-v0.27.20 'pending'
@@ -1043,10 +1120,29 @@ func migrateLegacyPendingGroups(ctx context.Context, pg *PostgresStore, logger *
 }
 
 // parseOrgURLMeta extracts the org name + platform label from an org
-// URL, keeping the historical host-contains-"gitlab" heuristic and
-// the permissive empty-name fallback (shared by AddOrgToGroup and the
-// org-approval path so both register identically).
-func parseOrgURLMeta(orgURL string) (orgName, platformName string) {
+// URL through the one classifier (ParseOrgRef with the configured
+// instance's hint), keeping the historical host-contains-"gitlab"
+// heuristic and the permissive empty-name fallback only for a URL the
+// classifier cannot place (shared by AddOrgToGroup and the org-approval
+// path so both register identically).
+func parseOrgURLMeta(orgURL, glWebBase string) (orgName, platformName string) {
+	// The one classifier (stage 1e of summary/59): a GitLab group is named
+	// by its FULL path (N14), GitHub by its account. glWebBase is the
+	// configured instance's web base (the caller's gitlab.base_url): a
+	// group there is GitLab whatever its host name says (round-2 review of
+	// 0.29.100: code.example.org was labelled github and refused off-host).
+	// Without one, a self-hosted instance whose host does not say "gitlab"
+	// takes the fallback below, as before.
+	if ref, err := platform.ParseOrgRef(orgURL, platform.GitLabWebHints(glWebBase)); err == nil {
+		platformName = "github"
+		if ref.Platform == model.PlatformGitLab {
+			platformName = "gitlab"
+		}
+		return ref.Path, platformName
+	}
+	// Not a forge this deployment classifies, or unparseable: the label
+	// and the first-segment name as they always were (DBS-11: observed,
+	// never rewritten); the scan's gates decide what is enumerated.
 	platformName = "github"
 	if host, org, err := platform.ParseOrgURL(orgURL); err == nil {
 		orgName = org

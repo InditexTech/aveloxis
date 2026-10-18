@@ -90,7 +90,7 @@ func TestServerHasEmailConfirmRoute(t *testing.T) {
 // generates a token + sends mail, instead of the v0.19.10 behavior of
 // writing directly to users.email.
 func TestAccountEmailPostUsesPendingFlow(t *testing.T) {
-	src := srctest.PackageFunc(t, "internal/web", "func submitAccountEmailAddress(")
+	src := srctest.PackageFunc(t, "internal/admin", "func (s *Service) SubmitAccountEmail(")
 	// The handler must reference at least one of the new pieces.
 	if !strings.Contains(src, "SetUserPendingEmail") &&
 		!strings.Contains(src, "CreateEmailConfirmation") {
@@ -113,7 +113,7 @@ func TestAccountEmailPostUsesPendingFlow(t *testing.T) {
 // The gate's redirect behavior is tested through the handler in
 // internal/web (TestDashboardEmailGateThroughTheHandler).
 func TestDashboardShowsPendingEmail(t *testing.T) {
-	srv := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleDashboard(") + srctest.PackageFunc(t, "internal/web", "func dashboardEmailGate(")
+	srv := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleDashboard(") + srctest.PackageFunc(t, "internal/admin", "func (s *Service) EmailGate(")
 	if !strings.Contains(srv, "PendingEmail") &&
 		!strings.Contains(srv, "GetUserLivePendingEmail") {
 		t.Error("handleDashboard must look up the user's email_pending " +

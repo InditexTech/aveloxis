@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/config"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
@@ -42,11 +43,19 @@ type Server struct {
 	// which is how the org scan below sent an Enterprise token to public
 	// GitHub (v0.29.57, the last site of worklist item 34's client half).
 	ghAPIBase string
-	sessionMu sync.RWMutex
-	sessions  map[string]*Session // session token -> session
-	tmpl      *template.Template
-	apiProxy  http.Handler   // reverse proxy for /api/* → cfg.APIInternalURL; nil on parse failure
-	mailer    *mailer.Mailer // gmail-backed transactional mailer; safely nil if unconfigured (v0.19.0)
+	// gitlabAPIBase is gitlab.base_url (WithGitLabAPIBase): the admin
+	// service classifies an organisation on that instance as GitLab.
+	gitlabAPIBase string
+	sessionMu     sync.RWMutex
+	sessions      map[string]*Session // session token -> session
+	tmpl          *template.Template
+	apiProxy      http.Handler   // reverse proxy for /api/* → cfg.APIInternalURL; nil on parse failure
+	mailer        *mailer.Mailer // gmail-backed transactional mailer; safely nil if unconfigured (v0.19.0)
+	// admin is the administrative service this process adapts (stage 1 of
+	// summary/59): groups, additions, approvals, roles and the account
+	// e-mail flow. Built by New, rebuilt by WithMailer so the mailer it
+	// sends through is the one attached.
+	admin *admin.Service
 }
 
 // Session tracks a logged-in user.
@@ -176,7 +185,7 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 				return
 			}
 			// r.URL.Path is attacker-controlled — sanitize before logging.
-			logger.Warn("api reverse proxy error", "path", truncateForLog([]byte(r.URL.Path), 200), "error", err)
+			logger.Warn("api reverse proxy error", "path", platform.TruncateForLog([]byte(r.URL.Path), 200), "error", err)
 			http.Error(w, "API backend unavailable", http.StatusBadGateway)
 		}
 		s.apiProxy = rp
@@ -188,17 +197,36 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 	// Parse embedded templates.
 	s.tmpl = parseTemplates()
 
+	s.admin = s.newAdminService(nil)
 	return s
+}
+
+// WithGitLabAPIBase tells the admin service which GitLab instance this
+// deployment enumerates (gitlab.base_url): an organisation URL on it is
+// registered as a GitLab group whatever its host name says. Returns the
+// server for chaining; the service is rebuilt with the mailer it has.
+func (s *Server) WithGitLabAPIBase(base string) *Server {
+	s.gitlabAPIBase = base
+	s.admin = s.newAdminService(s.mailer)
+	return s
+}
+
+// gitlabWebBase is the configured GitLab instance's web base ("" without
+// one), derived from gitlab.base_url the way the admin service derives it.
+func (s *Server) gitlabWebBase() string {
+	base, _ := platform.GitLabWebBaseForAPI(s.gitlabAPIBase)
+	return base
 }
 
 // WithMailer attaches a transactional mailer to the server. Returns
 // the server for chaining. Optional — without one (or with a disabled
-// one) the notification hooks (welcome email, group and add-request
+// one) the notification hooks (welcome email, add-request notices and
 // decisions) send nothing, the account-email form refuses new addresses,
 // and users without an address reach the dashboard; see
 // confirmationBaseFor.
 func (s *Server) WithMailer(m *mailer.Mailer) *Server {
 	s.mailer = m
+	s.admin = s.newAdminService(m)
 	// Said once at startup, where an operator looks: the refusal it
 	// predicts otherwise shows up only when a user submits the form.
 	if m.Enabled() && m.SiteURL() == "" && !s.cfg.DevMode && s.logger != nil {
@@ -264,7 +292,6 @@ func (s *Server) Handler() http.Handler {
 	// non-admin users get a 403 instead of seeing other people's
 	// pending submissions or being able to toggle admin roles.
 	mux.HandleFunc("/admin/groups/pending", s.requireAdmin(s.handleAdminPendingGroups))
-	mux.HandleFunc("POST /admin/groups/{id}/approve", s.requireAdmin(s.handleApproveGroup))
 	mux.HandleFunc("POST /admin/groups/{id}/reject", s.requireAdmin(s.handleRejectGroup))
 	// v0.27.20 per-add approval queue (summary/15): decisions on
 	// non-admin additions of not-yet-tracked repos/orgs.

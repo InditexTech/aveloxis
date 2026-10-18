@@ -75,7 +75,7 @@ func (s *Server) postLoginRedirect(r *http.Request) string {
 	if target := safeNextTarget(c.Value, s.cfg.SPAURL); target != "" {
 		return target
 	}
-	s.logger.Warn("ignoring untrusted post-login next URL", "next", truncateForLog([]byte(c.Value), 120))
+	s.logger.Warn("ignoring untrusted post-login next URL", "next", platform.TruncateForLog([]byte(c.Value), 120))
 	return "/dashboard"
 }
 
@@ -189,7 +189,7 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 
 	if resp.StatusCode != http.StatusOK {
 		s.logger.Error("github /user returned non-200",
-			"status", resp.StatusCode, "body", truncateForLog(body, 200))
+			"status", resp.StatusCode, "body", platform.TruncateForLog(body, 200))
 		http.Error(w, "GitHub user fetch failed", http.StatusBadGateway)
 		return
 	}
@@ -209,7 +209,7 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(ghUser.Login) == "" {
-		s.logger.Error("github /user response missing login field", "body", truncateForLog(body, 200))
+		s.logger.Error("github /user response missing login field", "body", platform.TruncateForLog(body, 200))
 		http.Error(w, "GitHub did not return a login. Try again, or check token scopes.", http.StatusBadGateway)
 		return
 	}
@@ -323,7 +323,7 @@ func (s *Server) completeOAuthLogin(w http.ResponseWriter, r *http.Request, info
 	// signup its welcome (batch-2 review round 4).
 	if wasNewUser && s.mailer != nil && info.Email != "" {
 		if err := s.mailer.SendWelcome(info.Email, info.Login, providerLabel); err != nil && !mailer.IsSkip(err) {
-			s.logger.Warn("failed to send welcome email", "login", truncateForLog([]byte(info.Login), 100), "error", err)
+			s.logger.Warn("failed to send welcome email", "login", platform.TruncateForLog([]byte(info.Login), 100), "error", err)
 		}
 	}
 
@@ -468,7 +468,7 @@ func (s *Server) handleGitLabCallback(w http.ResponseWriter, r *http.Request) {
 
 	if resp.StatusCode != http.StatusOK {
 		s.logger.Error("gitlab /user returned non-200",
-			"status", resp.StatusCode, "body", truncateForLog(body, 200))
+			"status", resp.StatusCode, "body", platform.TruncateForLog(body, 200))
 		http.Error(w, "GitLab user fetch failed", http.StatusBadGateway)
 		return
 	}
@@ -488,7 +488,7 @@ func (s *Server) handleGitLabCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(glUser.Username) == "" {
-		s.logger.Error("gitlab /user response missing username field", "body", truncateForLog(body, 200))
+		s.logger.Error("gitlab /user response missing username field", "body", platform.TruncateForLog(body, 200))
 		http.Error(w, "GitLab did not return a username. Try again, or check token scopes.", http.StatusBadGateway)
 		return
 	}

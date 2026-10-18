@@ -72,7 +72,7 @@ func TestProcessApprovedAddRequestReportsFailedItems(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	processed, failed, err := store.ProcessApprovedAddRequest(ctx, reqID)
+	processed, failed, err := store.ProcessApprovedAddRequest(ctx, reqID, "")
 	if err != nil {
 		t.Fatalf("ProcessApprovedAddRequest: %v", err)
 	}

@@ -185,9 +185,15 @@ func TestUnboundedDataReadsLogTheirSize(t *testing.T) {
 	}
 }
 
-// funcCallsAny reports whether the function or method fn in the package at
-// dir calls any of names (a bare or package-qualified call), by the AST of
-// the file declaring it (found across the package, v0.29.98).
+// funcCallsAny reports whether every declaration named fn in the package
+// at dir that reads a response body (an `io.ReadAll(x.Body)` call — the
+// registry's subject) calls any of names (a bare or package-qualified
+// call). Two methods may share a name on different receivers
+// (mailinglist's two FetchMonth: Pony Mail reads HTTP, public-inbox reads
+// git blobs); the first version checked whichever the map walk reached
+// first, so the pin flipped between runs (stage 1 of summary/59, found on
+// the way). A declaration without a body read is not the registry's
+// subject and is not checked.
 func funcCallsAny(t *testing.T, dir, fn string, names ...string) bool {
 	t.Helper()
 	var decls []ast.Decl
@@ -198,16 +204,25 @@ func funcCallsAny(t *testing.T, dir, fn string, names ...string) bool {
 		}
 		decls = append(decls, f.Decls...)
 	}
+	seen, readers := 0, 0
 	for _, d := range decls {
 		fd, ok := d.(*ast.FuncDecl)
 		if !ok || fd.Name.Name != fn || fd.Body == nil {
 			continue
 		}
-		found := false
+		seen++
+		readsBody, found := false, false
 		ast.Inspect(fd.Body, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
 				return true
+			}
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "ReadAll" && len(call.Args) == 1 {
+				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "io" {
+					if arg, ok := call.Args[0].(*ast.SelectorExpr); ok && arg.Sel.Name == "Body" {
+						readsBody = true
+					}
+				}
 			}
 			var name string
 			switch f := call.Fun.(type) {
@@ -221,10 +236,21 @@ func funcCallsAny(t *testing.T, dir, fn string, names ...string) bool {
 					found = true
 				}
 			}
-			return !found
+			return true
 		})
-		return found
+		if !readsBody {
+			continue
+		}
+		readers++
+		if !found {
+			return false
+		}
 	}
-	t.Fatalf("function %s not found in %s", fn, dir)
-	return false
+	if seen == 0 {
+		t.Fatalf("function %s not found in %s", fn, dir)
+	}
+	if readers == 0 {
+		t.Fatalf("no declaration named %s in %s reads a response body — the registry entry lost its subject", fn, dir)
+	}
+	return true
 }

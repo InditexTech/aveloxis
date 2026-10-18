@@ -725,18 +725,13 @@ func isASCII(s string) bool {
 // user's group is not disclosed).
 var ErrGroupNotFound = errors.New("group not found")
 
-// GetGroupRepoIDsForUser returns a group's repository ids for a cohort
-// scope. The group must exist for everyone (review round 1: an admin
-// asking for an unknown id got an empty cohort, not a 404); a non-admin
-// must also own it (the portal's rule).
-func (s *PostgresStore) GetGroupRepoIDsForUser(ctx context.Context, groupID int64, userID int, isAdmin bool) ([]int64, error) {
-	var owner int
-	err := s.pool.QueryRow(ctx, `SELECT user_id FROM aveloxis_ops.user_groups WHERE group_id = $1`, groupID).Scan(&owner)
-	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !isAdmin && owner != userID) {
-		return nil, ErrGroupNotFound
-	}
-	if err != nil {
-		return nil, fmt.Errorf("group owner: %w", err)
+// GetGroupRepoIDs returns a group's repository ids for a cohort scope.
+// The group must exist (review round 1: an admin asking for an unknown id
+// got an empty cohort, not a 404). Who may read it is decided before this
+// is called (admin.Service.GroupAccess; stage 1 of summary/59).
+func (s *PostgresStore) GetGroupRepoIDs(ctx context.Context, groupID int64) ([]int64, error) {
+	if _, _, err := s.GroupOwner(ctx, groupID); err != nil {
+		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `SELECT repo_id FROM aveloxis_ops.user_repos WHERE group_id = $1 ORDER BY repo_id`, groupID)
 	if err != nil {

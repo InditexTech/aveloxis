@@ -106,12 +106,16 @@ func TestGroupAddRepoErrorStatus(t *testing.T) {
 		inBody   string
 		logsWarn bool
 	}{
-		{"not owned", store, notOwned, `{"urls":["` + urlPrefix + `works"],"kind":"repo"}`, http.StatusBadRequest, "group not found or not owned by user", false},
-		{"rejected group", store, rejected, `{"urls":["` + urlPrefix + `works"],"kind":"repo"}`, http.StatusBadRequest, "group has been rejected by an administrator", false},
-		{"rejected group, org", store, rejected, `{"url":"https://github.com/_avapi-add-status-org","kind":"org"}`, http.StatusBadRequest, "group has been rejected by an administrator", false},
+		// Stage 1 of summary/59: a group that is not the caller's answers as
+		// one that does not exist (N11); a rejected group is a 409.
+		{"not owned", store, notOwned, `{"urls":["` + urlPrefix + `works"],"kind":"repo"}`, http.StatusNotFound, "no group of yours with that id", false},
+		{"rejected group", store, rejected, `{"urls":["` + urlPrefix + `works"],"kind":"repo"}`, http.StatusConflict, "has been rejected by an administrator", false},
+		{"rejected group, org", store, rejected, `{"url":"https://github.com/_avapi-add-status-org","kind":"org"}`, http.StatusConflict, "has been rejected by an administrator", false},
 		{"repositories could not be added", store, gid, `{"urls":["` + urlPrefix + `fails","` + urlPrefix + `works"],"kind":"repo"}`, http.StatusInternalServerError, "1 of 2 repositories could not be added", true},
-		{"store failure", closed, gid, `{"urls":["` + urlPrefix + `works"],"kind":"repo"}`, http.StatusInternalServerError, "could not add", true},
-		{"store failure, org", closed, gid, `{"url":"https://github.com/_avapi-add-status-org","kind":"org"}`, http.StatusInternalServerError, "could not add", true},
+		// A store failure is serverError's generic 500, logged at ERROR with
+		// the cause (checked below, not as a WARN).
+		{"store failure", closed, gid, `{"urls":["` + urlPrefix + `works"],"kind":"repo"}`, http.StatusInternalServerError, "internal error", false},
+		{"store failure, org", closed, gid, `{"url":"https://github.com/_avapi-add-status-org","kind":"org"}`, http.StatusInternalServerError, "internal error", false},
 		// A URL the database cannot store is the caller's mistake, not an
 		// outage (round-25 review: a NUL byte or an over-long URL was a 500
 		// saying "try again").
@@ -126,10 +130,15 @@ func TestGroupAddRepoErrorStatus(t *testing.T) {
 		// must not be stored, shown or echoed.
 		{"credentials in a URL", store, gid, `{"urls":["https://user:s3cret-token@git.example.invalid/_avapi-add-status/creds"],"kind":"repo"}`, http.StatusBadRequest, "carries credentials", false},
 		{"credentials in an org URL", store, gid, `{"url":"https://s3cret-token@github.com/_avapi-add-status-creds-org","kind":"org"}`, http.StatusBadRequest, "carries credentials", false},
+		// A line that is not a repository URL beside one that is: reported in
+		// `invalid` (review round 1 F5: the documented field had no reader
+		// through the handler), the other goes through.
+		{"invalid lines are reported", store, gid, `{"urls":["not a url at all","` + urlPrefix + `works"],"kind":"repo"}`, http.StatusOK, `"invalid":["not a url at all: not a repository URL`, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := &lockedBuffer{}
 			s := &Server{store: tc.store, logger: slog.New(slog.NewTextHandler(logs, nil)), auth: newAuthenticator(tc.store, false, nil), autoApproveAddLimit: 5}
+			s.admin = testAdminService(s)
 			id := strconv.FormatInt(tc.groupID, 10)
 			r := httptest.NewRequest(http.MethodPost, "/api/v1/groups/"+id+"/repos", strings.NewReader(tc.body))
 			r.SetPathValue("groupID", id)
@@ -152,6 +161,9 @@ func TestGroupAddRepoErrorStatus(t *testing.T) {
 			}
 			if warned != tc.logsWarn {
 				t.Errorf("WARN with %s and the error logged = %v, want %v; log:\n%s", want, warned, tc.logsWarn, logs.String())
+			}
+			if tc.store == closed && (!strings.Contains(logs.String(), "level=ERROR") || !strings.Contains(logs.String(), "closed pool")) {
+				t.Errorf("a store failure must be logged at ERROR with its cause; log:\n%s", logs.String())
 			}
 		})
 	}
@@ -212,15 +224,19 @@ func TestGroupPendingAddsErrorStatus(t *testing.T) {
 		warns   bool
 	}{
 		{"own group", store, gid, http.StatusOK, `"pending"`, false},
-		{"not owned", store, notOwned, http.StatusForbidden, "group not found or not owned by user", false},
-		{"store failure", closed, gid, http.StatusInternalServerError, "could not load", true},
-		// An admin skips the ownership lookup; the listing's own failure is a
-		// 500 too (round-26 review: answering it 200 with an empty list passed).
-		{"store failure, admin", closed, gid, http.StatusInternalServerError, "could not load", true},
+		// N11 (stage 1 of summary/59): someone else's group answers 404.
+		{"not owned", store, notOwned, http.StatusNotFound, "no group of yours with that id", false},
+		// The access read and the listing fail alike: serverError's generic
+		// 500, logged at ERROR (checked below).
+		{"store failure", closed, gid, http.StatusInternalServerError, "internal error", false},
+		// An admin's read fails the same way (round-26 review: answering it
+		// 200 with an empty list passed).
+		{"store failure, admin", closed, gid, http.StatusInternalServerError, "internal error", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := &lockedBuffer{}
 			s := &Server{store: tc.store, logger: slog.New(slog.NewTextHandler(logs, nil)), auth: newAuthenticator(tc.store, false, nil)}
+			s.admin = testAdminService(s)
 			id := strconv.FormatInt(tc.groupID, 10)
 			r := httptest.NewRequest(http.MethodGet, "/api/v1/groups/"+id+"/pending-adds", nil)
 			r.SetPathValue("groupID", id)
@@ -236,6 +252,9 @@ func TestGroupPendingAddsErrorStatus(t *testing.T) {
 			warned := strings.Contains(logs.String(), "level=WARN") && strings.Contains(logs.String(), fmt.Sprintf("group_id=%d", tc.groupID))
 			if warned != tc.warns {
 				t.Errorf("WARN logged = %v, want %v; log:\n%s", warned, tc.warns, logs.String())
+			}
+			if tc.store == closed && (!strings.Contains(logs.String(), "level=ERROR") || !strings.Contains(logs.String(), "closed pool")) {
+				t.Errorf("a store failure must be logged at ERROR with its cause; log:\n%s", logs.String())
 			}
 		})
 	}

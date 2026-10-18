@@ -299,8 +299,8 @@ func PlatformHost(p model.Platform) string {
 	}
 }
 
-func ClientForRepo(repoURL string, ghClient, glClient platform.Client) (platform.Client, string, string, error) {
-	parsed, err := platform.ParseRepoURL(repoURL)
+func ClientForRepo(repoURL string, gitlabWebBases []string, ghClient, glClient platform.Client) (platform.Client, string, string, error) {
+	parsed, err := platform.ParseRepoURLWithHints(repoURL, gitlabWebBases)
 	if err != nil {
 		return nil, "", "", err
 	}

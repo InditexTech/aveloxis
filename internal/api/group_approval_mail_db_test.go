@@ -21,105 +21,6 @@ import (
 	"github.com/aveloxis/aveloxis/internal/mailer"
 )
 
-// TestAdminGroupApprovalMailsTheRequesterOnce (AVELOXIS_TEST_DB): approving a
-// pending group through the API mails its requester once; approving it again
-// mails nobody; a store failure is a logged 500 (round-10 review: the
-// requester lookup's error was discarded, so a failed lookup approved the
-// group and silently mailed no one).
-func TestAdminGroupApprovalMailsTheRequesterOnce(t *testing.T) {
-	dsn := os.Getenv("AVELOXIS_TEST_DB")
-	if dsn == "" {
-		t.Skip("AVELOXIS_TEST_DB not set")
-	}
-	ctx := context.Background()
-	discard := slog.New(slog.NewTextHandler(io.Discard, nil))
-	store, err := db.NewPostgresStore(ctx, dsn, discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(store.Close)
-	if err := store.Migrate(ctx); err != nil {
-		t.Fatal(err)
-	}
-	const login = "_avapi_group_approval_probe"
-	clean := func() {
-		_, _ = store.Pool().Exec(ctx, `DELETE FROM aveloxis_ops.user_groups WHERE user_id IN (SELECT user_id FROM aveloxis_ops.users WHERE login_name = $1)`, login)
-		_, _ = store.Pool().Exec(ctx, `DELETE FROM aveloxis_ops.users WHERE login_name = $1`, login)
-	}
-	clean()
-	t.Cleanup(clean)
-	uid, err := store.UpsertOAuthUser(ctx, db.OAuthUserInfo{Login: login, Provider: "github"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Pool().Exec(ctx, `UPDATE aveloxis_ops.users SET email = 'requester@example.com' WHERE user_id = $1`, uid); err != nil {
-		t.Fatal(err)
-	}
-	gid, err := store.CreateUserGroup(ctx, uid, "api approval probe")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Pool().Exec(ctx, `UPDATE aveloxis_ops.user_groups SET status = 'pending' WHERE group_id = $1`, gid); err != nil {
-		t.Fatal(err)
-	}
-
-	sent := make(chan string, 4)
-	m := mailer.New(mailer.Config{GmailUser: "ops@example.com", GmailAppPassword: "abcdefghijklmnop"}, nil).
-		WithSendFunc(func(_ string, _ smtp.Auth, _ string, to []string, _ []byte) error {
-			sent <- strings.Join(to, ",")
-			return nil
-		})
-	logs := &lockedBuffer{}
-	decide := func(st *db.PostgresStore, decision string) *httptest.ResponseRecorder {
-		s := &Server{store: st, logger: slog.New(slog.NewTextHandler(logs, nil)), mailer: m, auth: newAuthenticator(st, false, nil)}
-		r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups/"+strconv.FormatInt(gid, 10)+"/"+decision, nil)
-		r.SetPathValue("groupID", strconv.FormatInt(gid, 10))
-		r.SetPathValue("decision", decision)
-		r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, authInfo{UserID: uid, IsAdmin: true}))
-		w := httptest.NewRecorder()
-		s.handleAdminGroupDecision(w, r)
-		return w
-	}
-
-	if w := decide(store, "approve"); w.Code != http.StatusOK {
-		t.Fatalf("approve = %d %s", w.Code, w.Body.String())
-	}
-	select {
-	case to := <-sent:
-		if to != "requester@example.com" {
-			t.Errorf("the approval email went to %q, want the requester", to)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("no approval email within 10s")
-	}
-	// A second approval changes nothing, so it mails nobody. (Bounded wait:
-	// the send runs in its own goroutine.)
-	if w := decide(store, "approve"); w.Code != http.StatusOK {
-		t.Fatalf("second approve = %d %s", w.Code, w.Body.String())
-	}
-	select {
-	case to := <-sent:
-		t.Errorf("approving an already-approved group mailed %q again", to)
-	case <-time.After(500 * time.Millisecond):
-	}
-
-	closed, err := db.NewPostgresStore(ctx, dsn, discard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	closed.Close()
-	for _, decision := range []string{"approve", "reject"} {
-		if w := decide(closed, decision); w.Code != http.StatusInternalServerError {
-			t.Errorf("%s on a failing store = %d, want 500", decision, w.Code)
-		}
-		// One line at ERROR through serverError (PR #218 review C15: a WARN
-		// before it logged the same failure twice).
-		if !strings.Contains(logs.String(), "level=ERROR") || !strings.Contains(logs.String(), "decision "+decision+":") || !strings.Contains(logs.String(), "closed pool") {
-			t.Errorf("a failed group %s must be logged at ERROR with its error; log:\n%s", decision, logs.String())
-		}
-	}
-}
-
 // TestAdminAddRequestDecisionThroughTheHandler (AVELOXIS_TEST_DB): a failed
 // add-request decision is a logged 500, and re-approving a repos request
 // whose first approval never finished processing resumes it, as the API
@@ -159,6 +60,7 @@ func TestAdminAddRequestDecisionThroughTheHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	adminUID := seedAdminAccount(t, store, login+"-admin")
 	if _, err := store.Pool().Exec(ctx, `UPDATE aveloxis_ops.users SET email = 'requester@example.com' WHERE user_id = $1`, uid); err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +68,7 @@ func TestAdminAddRequestDecisionThroughTheHandler(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := store.AddReposToGroup(ctx, uid, gid, []string{repoURL}, 0)
+	out, err := store.AddReposToGroup(ctx, uid, gid, []string{repoURL}, 0, "")
 	if err != nil || out.RequestID == 0 {
 		t.Fatalf("AddReposToGroup = %+v, %v; want a pending request", out, err)
 	}
@@ -181,10 +83,11 @@ func TestAdminAddRequestDecisionThroughTheHandler(t *testing.T) {
 		})
 	decide := func(st *db.PostgresStore, decision string) *httptest.ResponseRecorder {
 		s := &Server{store: st, logger: slog.New(slog.NewTextHandler(logs, nil)), mailer: m, auth: newAuthenticator(st, false, nil)}
+		s.admin = testAdminService(s)
 		r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/add-requests/"+reqID+"/"+decision, nil)
 		r.SetPathValue("requestID", reqID)
 		r.SetPathValue("decision", decision)
-		r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, authInfo{UserID: uid, IsAdmin: true}))
+		r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, authInfo{UserID: adminUID, IsAdmin: true}))
 		w := httptest.NewRecorder()
 		s.handleAdminAddRequestDecision(w, r)
 		return w
@@ -192,7 +95,7 @@ func TestAdminAddRequestDecisionThroughTheHandler(t *testing.T) {
 
 	// The first approval flips the request but its processing pass never
 	// runs (the process stopped): the item stays unprocessed.
-	if _, changed, err := store.DecideAddRequest(ctx, out.RequestID, uid, true, ""); err != nil || !changed {
+	if _, changed, err := store.DecideAddRequest(ctx, out.RequestID, uid, true, "", ""); err != nil || !changed {
 		t.Fatalf("first approval: changed=%v err=%v", changed, err)
 	}
 	unprocessed := func() int {
@@ -225,18 +128,19 @@ func TestAdminAddRequestDecisionThroughTheHandler(t *testing.T) {
 
 	// Approving a REJECTED repos request starts no processing pass (which
 	// would log a false "processing … failed" WARN) and registers no org.
-	rejected, err := store.AddReposToGroup(ctx, uid, gid, []string{repoURL + "-rejected"}, 0)
+	rejected, err := store.AddReposToGroup(ctx, uid, gid, []string{repoURL + "-rejected"}, 0, "")
 	if err != nil || rejected.RequestID == 0 {
 		t.Fatalf("AddReposToGroup = %+v, %v", rejected, err)
 	}
-	if _, changed, err := store.DecideAddRequest(ctx, rejected.RequestID, uid, false, ""); err != nil || !changed {
+	if _, changed, err := store.DecideAddRequest(ctx, rejected.RequestID, uid, false, "", ""); err != nil || !changed {
 		t.Fatalf("reject: changed=%v err=%v", changed, err)
 	}
 	s := &Server{store: store, logger: slog.New(slog.NewTextHandler(logs, nil)), mailer: m, auth: newAuthenticator(store, false, nil)}
+	s.admin = testAdminService(s)
 	rr := httptest.NewRequest(http.MethodPost, "/api/v1/admin/add-requests/x/approve", nil)
 	rr.SetPathValue("requestID", strconv.FormatInt(rejected.RequestID, 10))
 	rr.SetPathValue("decision", "approve")
-	rr = rr.WithContext(context.WithValue(rr.Context(), authCtxKey{}, authInfo{UserID: uid, IsAdmin: true}))
+	rr = rr.WithContext(context.WithValue(rr.Context(), authCtxKey{}, authInfo{UserID: adminUID, IsAdmin: true}))
 	rw := httptest.NewRecorder()
 	s.handleAdminAddRequestDecision(rw, rr)
 	if rw.Code != http.StatusOK || !strings.Contains(rw.Body.String(), `"changed":false`) {
@@ -311,6 +215,7 @@ func TestAdminOrgApprovalNotifiesWhenItRegisters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	adminUID := seedAdminAccount(t, store, login+"-admin")
 	if _, err := p.Exec(ctx, `UPDATE aveloxis_ops.users SET email = 'requester@example.com' WHERE user_id = $1`, uid); err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +223,7 @@ func TestAdminOrgApprovalNotifiesWhenItRegisters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := store.AddOrgToGroup(ctx, uid, gid, orgURL, "")
+	out, err := store.AddOrgToGroup(ctx, uid, gid, orgURL, "", "")
 	if err != nil || out.RequestID == 0 {
 		t.Fatalf("AddOrgToGroup = %+v, %v; want a pending request", out, err)
 	}
@@ -330,11 +235,12 @@ func TestAdminOrgApprovalNotifiesWhenItRegisters(t *testing.T) {
 			return nil
 		})
 	s := &Server{store: store, logger: discard, mailer: m, auth: newAuthenticator(store, false, nil)}
+	s.admin = testAdminService(s)
 	approve := func() *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/add-requests/x/approve", nil)
 		r.SetPathValue("requestID", strconv.FormatInt(out.RequestID, 10))
 		r.SetPathValue("decision", "approve")
-		r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, authInfo{UserID: uid, IsAdmin: true}))
+		r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, authInfo{UserID: adminUID, IsAdmin: true}))
 		w := httptest.NewRecorder()
 		s.handleAdminAddRequestDecision(w, r)
 		return w
@@ -434,6 +340,7 @@ func TestAdminAddRequestProcessingInvalidatesTheAuthCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	adminUID := seedAdminAccount(t, store, login+"-admin")
 	gid, err := store.CreateUserGroup(ctx, uid, "api scope cache probe")
 	if err != nil {
 		t.Fatal(err)
@@ -449,6 +356,7 @@ func TestAdminAddRequestProcessingInvalidatesTheAuthCache(t *testing.T) {
 	}
 
 	s := &Server{store: store, logger: discard, auth: newAuthenticator(store, false, nil)}
+	s.admin = testAdminService(s)
 	unprocessed := func(reqID int64) int {
 		t.Helper()
 		var n int
@@ -467,7 +375,7 @@ func TestAdminAddRequestProcessingInvalidatesTheAuthCache(t *testing.T) {
 		r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/add-requests/x/approve", nil)
 		r.SetPathValue("requestID", strconv.FormatInt(reqID, 10))
 		r.SetPathValue("decision", "approve")
-		r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, authInfo{UserID: uid, IsAdmin: true}))
+		r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, authInfo{UserID: adminUID, IsAdmin: true}))
 		w := httptest.NewRecorder()
 		s.handleAdminAddRequestDecision(w, r)
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), wantChanged) {
@@ -506,18 +414,37 @@ func TestAdminAddRequestProcessingInvalidatesTheAuthCache(t *testing.T) {
 		}
 	}
 
-	out, err := store.AddReposToGroup(ctx, uid, gid, []string{repoURL}, 0)
+	out, err := store.AddReposToGroup(ctx, uid, gid, []string{repoURL}, 0, "")
 	if err != nil || out.RequestID == 0 {
 		t.Fatalf("AddReposToGroup = %+v, %v; want a pending request", out, err)
 	}
 	t.Run("first approval", func(t *testing.T) { approveAndWatch(t, out.RequestID, `"changed":true`) })
 
-	resumed, err := store.AddReposToGroup(ctx, uid, gid, []string{repoURL + "-resume"}, 0)
+	resumed, err := store.AddReposToGroup(ctx, uid, gid, []string{repoURL + "-resume"}, 0, "")
 	if err != nil || resumed.RequestID == 0 {
 		t.Fatalf("AddReposToGroup = %+v, %v; want a pending request", resumed, err)
 	}
-	if _, changed, err := store.DecideAddRequest(ctx, resumed.RequestID, uid, true, ""); err != nil || !changed {
+	if _, changed, err := store.DecideAddRequest(ctx, resumed.RequestID, uid, true, "", ""); err != nil || !changed {
 		t.Fatalf("first approval (processing never ran): changed=%v err=%v", changed, err)
 	}
 	t.Run("resume", func(t *testing.T) { approveAndWatch(t, resumed.RequestID, `"changed":false`) })
+}
+
+// seedAdminAccount creates an administrator account for a decision and
+// removes it at the end (stage 1 of summary/59: the admin service reads
+// the row, so a cached identity's IsAdmin flag alone decides nothing).
+func seedAdminAccount(t *testing.T, store *db.PostgresStore, login string) int {
+	t.Helper()
+	ctx := context.Background()
+	uid, err := store.UpsertOAuthUser(ctx, db.OAuthUserInfo{Login: login, Provider: "github"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Pool().Exec(ctx, `UPDATE aveloxis_ops.users SET admin = TRUE WHERE user_id = $1`, uid); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = store.Pool().Exec(context.Background(), `DELETE FROM aveloxis_ops.users WHERE user_id = $1`, uid)
+	})
+	return uid
 }

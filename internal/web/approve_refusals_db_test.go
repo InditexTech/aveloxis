@@ -56,6 +56,10 @@ func TestApproveRefusalsAreNotServerErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The admin service reads the administrator's row (stage 1 of summary/59).
+	if _, err := store.Pool().Exec(ctx, `UPDATE aveloxis_ops.users SET admin = TRUE WHERE user_id = $1`, auid); err != nil {
+		t.Fatal(err)
+	}
 	gid, err := store.CreateUserGroup(ctx, muid, "over-long org probe")
 	if err != nil {
 		t.Fatal(err)

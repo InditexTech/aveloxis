@@ -4,26 +4,31 @@
 package platform
 
 import (
-	"net/url"
 	"strings"
 
 	"github.com/aveloxis/aveloxis/internal/model"
 )
 
-// GitLabAPIBaseForHost returns the configured GitLab API base URL (the
-// operator's gitlab.base_url, trailing slash trimmed) and true only when
-// host — the host of a GitLab URL about to be queried — is that configured
-// instance's host (case-insensitive, port included). Otherwise it returns
-// ("", false).
-//
-// GitLab API keys belong to the ONE instance gitlab.base_url names. Building
-// a keyed client from a host taken out of stored data (a group's website
-// URL) would send those keys to whatever host the data names; routing every
-// keyed GitLab client through this check means no client is ever BUILT for
-// a foreign host (v0.29.11 — the legacy group refresh had been sending
-// GitHub tokens to such hosts). Once a client exists, HTTPClient keeps every
-// keyed request on its base host — redirects, pagination continuations and
-// GraphQL endpoints included (onClientHost, v0.29.12).
+// GitLabHints is the GitLab web-base hint list every URL classifier takes
+// on 0.29 (stage 1 of summary/59): the configured instance's web base, or
+// none. v0.30's `gitlab.instances` replaces the derivation; the callers
+// keep the []string shape.
+func GitLabHints(configuredAPIBase string) []string {
+	base, _ := GitLabWebBaseForAPI(configuredAPIBase)
+	return GitLabWebHints(base)
+}
+
+// GitLabWebHints is the hint list for one configured instance's web base
+// (GitLabWebBaseForAPI's form; "" without an instance → nil): the one
+// spelling every classifier takes — ParseRepoURLWithHints,
+// ParseAnyRepoURLWithHints and ParseOrgRef (round-3 review of 0.29.100).
+func GitLabWebHints(webBase string) []string {
+	if webBase == "" {
+		return nil
+	}
+	return []string{webBase}
+}
+
 // GitLabWebBaseForAPI derives the configured GitLab instance's web base
 // URL (model.NormalizeInstanceWebBase's form) from gitlab.base_url — the API
 // URL with its /api/v4 suffix removed — and true; ("", false) when no
@@ -43,16 +48,29 @@ func GitLabWebBaseForAPI(configuredAPIBase string) (string, bool) {
 	return base, true
 }
 
-func GitLabAPIBaseForHost(configuredAPIBase, host string) (string, bool) {
-	if host == "" || configuredAPIBase == "" {
+// GitLabAPIBaseForURL is the API base GitLab keys may be sent to for a URL:
+// the configured instance's (gitlab.base_url) when the URL is on that
+// instance by the ONE host rule every GitLab gate applies (OnGitLabInstance).
+// A URL elsewhere, no configuration or an unusable base: ok false, and no
+// keyed client is built (v0.29.11; round-2 review of 0.29.100: the scan's
+// gate admitted www.gitlab.com while this compared the host byte for byte,
+// and the admitted row looped unstamped).
+func GitLabAPIBaseForURL(configuredAPIBase, rawURL string) (string, bool) {
+	webBase, ok := GitLabWebBaseForAPI(configuredAPIBase)
+	if !ok || !OnGitLabInstance(rawURL, webBase) {
 		return "", false
 	}
-	u, err := url.Parse(configuredAPIBase)
-	if err != nil || u.Host == "" {
-		return "", false
-	}
-	if !strings.EqualFold(u.Host, host) {
-		return "", false
-	}
-	return strings.TrimRight(configuredAPIBase, "/"), true
+	return strings.TrimRight(strings.TrimSpace(configuredAPIBase), "/"), true
+}
+
+// OnGitLabInstance reports whether rawURL is on the GitLab instance whose
+// web base is webBase (GitLabWebBaseForAPI's form): the one host rule
+// (SR-17) behind the scan gate (db.OrgScanEligible), the never-scanned
+// probe and the keyed client (GitLabAPIBaseForURL). The match is
+// model.MatchInstanceWebBase's: host case, a www. prefix, a trailing dot
+// and the scheme's default port name one host, and the base's path prefix
+// must match. A URL without a path names no group or project: false.
+func OnGitLabInstance(rawURL, webBase string) bool {
+	ref, err := ParseOrgRef(rawURL, []string{webBase})
+	return err == nil && ref.WebBase == webBase
 }

@@ -321,6 +321,7 @@ func TestAccountEmailFlowThroughTheHandler(t *testing.T) {
 		confirm := u.RequestURI()
 		var logs strings.Builder
 		s.logger = slog.New(slog.NewTextHandler(&logs, nil))
+		s.admin = s.newAdminService(s.mailer) // the service logs through the server's logger of its construction
 		w := do(s, http.MethodGet, confirm, "aveloxis.io", "b", "")
 		if w.Code != http.StatusFound || w.Header().Get("Location") != "/account/email?expired=1" {
 			t.Errorf("B's click = %d %q, want 302 /account/email?expired=1", w.Code, w.Header().Get("Location"))

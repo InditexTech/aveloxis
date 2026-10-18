@@ -12,8 +12,6 @@
 package web
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -21,176 +19,43 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
-	"github.com/aveloxis/aveloxis/internal/mailer"
-	"github.com/aveloxis/aveloxis/internal/platform"
-	"github.com/aveloxis/aveloxis/internal/safego"
 )
 
-// notifyAddRequestSubmitted emails the operator that a new add-request
-// awaits review (v0.27.20). Best-effort in a goroutine — the user's
-// redirect never waits on SMTP. No-op without a mailer or operator
-// email.
-func (s *Server) notifyAddRequestSubmitted(requestID int64) {
-	if s.mailer == nil || s.mailer.OperatorEmail() == "" || requestID == 0 {
-		return
-	}
-	safego.Go(s.logger, "add-request-submitted-email", func() {
-		ctx := context.Background()
-		pending, err := s.store.ListPendingAddRequests(ctx)
-		if err != nil {
-			s.logger.Warn("add-request email: list failed", "error", err)
-			return
-		}
-		for _, req := range pending {
-			if req.RequestID != requestID {
-				continue
-			}
-			sample := req.SampleURLs
-			if req.Kind == "org" {
-				sample = []string{req.OrgURL}
-			}
-			if err := s.mailer.SendAddRequestSubmitted(s.mailer.OperatorEmail(),
-				req.UserLogin, req.GroupName, req.Kind, req.ItemCount, sample, req.RequestID); err != nil && !mailer.IsSkip(err) {
-				s.logger.Warn("failed to send add-request email", "request_id", requestID, "error", err)
-			}
-			return
-		}
-	})
-}
-
-// decideAddRequest is the shared web-side decision flow: flip the
-// request, notify the requester, and (on approval) run the item
-// processing / org scan in the background so a 50K-item approval
-// doesn't block the admin's redirect. Idempotent — a double click
-// finds the request already decided (changed=false) and notifies nobody;
-// re-approving an approved repos request resumes its processing pass (items
-// are stamped as they process, so a finished pass does nothing). An org
-// re-approve that completes a missing registration is changed=true, so it
-// scans and notifies like a first approval.
-func (s *Server) decideAddRequest(ctx context.Context, requestID int64, adminID int, approve bool) error {
-	req, changed, err := s.store.DecideAddRequest(ctx, requestID, adminID, approve, s.ghAPIBase)
-	if err != nil {
-		return err
-	}
-	resume := !changed && approve && req.Status == "approved" && req.Kind != "org"
-	if !changed && !resume {
-		return nil
-	}
-	if approve {
-		if req.Kind == "org" {
-			// Registration happened in DecideAddRequest. Nothing scans here
-			// (stage 1 of summary/59, C2: the web process holds no forge
-			// keys): serve's demand probe finds the never-scanned
-			// registration on its next poll tick and lists the org with the
-			// one lister (scheduler.refreshUserOrgs).
-		} else {
-			safego.Go(s.logger, "approved-add-request", func() {
-				n, failed, err := s.store.ProcessApprovedAddRequest(context.Background(), req.RequestID)
-				if errors.Is(err, db.ErrAddRequestInProgress) {
-					s.logger.Info("add-request is already being processed", "request_id", req.RequestID)
-					return
-				}
-				if errors.Is(err, db.ErrGroupRejected) {
-					// v0.29.71: the pass refuses a rejected group's items;
-					// re-approving the request cannot change that.
-					s.logger.Info("approved add-request not processed — its group was rejected", "request_id", req.RequestID, "group_id", req.GroupID)
-					return
-				}
-				if err != nil {
-					s.logger.Warn("processing approved add-request failed — re-approving resumes it",
-						"request_id", req.RequestID, "processed", n, "failed", failed, "error", err)
-					return
-				}
-				if failed > 0 {
-					s.logger.Warn("approved add-request processed with items that could not be added", "request_id", req.RequestID, "repos", n, "failed", failed)
-					return
-				}
-				s.logger.Info("approved add-request processed", "request_id", req.RequestID, "repos", n)
-			})
-		}
-	}
-	if !changed {
-		return nil
-	}
-	if s.mailer != nil && req.UserEmail != "" {
-		req := req
-		safego.Go(s.logger, "add-request-decided-email", func() {
-			if err := s.mailer.SendAddRequestDecided(req.UserEmail, req.UserLogin,
-				req.GroupName, req.Kind, approve, req.ItemCount); err != nil && !mailer.IsSkip(err) {
-				s.logger.Warn("failed to send add-request decision email",
-					"request_id", req.RequestID, "error", err)
-			}
-		})
-	}
-	return nil
-}
-
+// handleApproveAddRequest and handleRejectAddRequest decide a pending
+// add request through the service (one decision flow for the web GUI and
+// the API: the flip, the background pass, the requester's mail). A refusal
+// is answered from refusePage's table; a failure is logged with a generic
+// body (PR #218 review C6 — the body carried the store's text).
 func (s *Server) handleApproveAddRequest(w http.ResponseWriter, r *http.Request) {
-	sess := s.getSession(r)
-	requestID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid request id", http.StatusBadRequest)
-		return
-	}
-	err = s.decideAddRequest(r.Context(), requestID, sess.UserID, true)
-	if errors.Is(err, db.ErrAddRequestNotFound) {
-		http.Error(w, "no such add request", http.StatusNotFound)
-		return
-	}
-	if errors.Is(err, db.ErrGroupRejected) {
-		// v0.29.71 review round 2: a rejected group takes no approval.
-		http.Error(w, "Cannot approve: the group has been rejected", http.StatusConflict)
-		return
-	}
-	if errors.Is(err, db.ErrOrgOffGitHubHost) || errors.Is(err, platform.ErrURLUserinfo) || errors.Is(err, db.ErrURLTooLong) {
-		// A pending org that is not on this deployment's GitHub host cannot
-		// be approved — nothing would ever enumerate it (v0.29.57 round 3;
-		// the portal reports the same store refusal the same way).
-		// A legacy org URL carrying credentials is refused the same way
-		// (review 5267193512): the message names no URL.
-		s.logger.Warn("add-request approval refused — the org cannot be registered", "request_id", requestID, "error", err)
-		http.Error(w, "Cannot approve: "+db.OrgApprovalRefusalAdvice(err, s.ghAPIBase), http.StatusConflict)
-		return
-	}
-	if err != nil {
-		// A store failure: logged, generic body (PR #218 review C6 — the
-		// body carried the store's text).
-		s.serverError(w, r, "handleApproveAddRequest", fmt.Errorf("approve add-request %d: %w", requestID, err))
-		return
-	}
-	http.Redirect(w, r, "/admin/groups/pending", http.StatusFound)
+	s.decideAddRequestPage(w, r, true)
 }
 
 func (s *Server) handleRejectAddRequest(w http.ResponseWriter, r *http.Request) {
+	s.decideAddRequestPage(w, r, false)
+}
+
+func (s *Server) decideAddRequestPage(w http.ResponseWriter, r *http.Request, approve bool) {
 	sess := s.getSession(r)
 	requestID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid request id", http.StatusBadRequest)
 		return
 	}
-	if err := s.decideAddRequest(r.Context(), requestID, sess.UserID, false); err != nil {
-		if errors.Is(err, db.ErrAddRequestNotFound) { // PR #218 fix review r1: the caller's input, not a store failure
-			http.Error(w, "no such add request", http.StatusNotFound)
-			return
+	if _, err := s.admin.DecideAddRequest(r.Context(), sessionActor(sess), requestID, approve); err != nil {
+		if !s.refusePage(w, r, err) {
+			s.serverError(w, r, "decideAddRequestPage", fmt.Errorf("add-request %d approve=%t: %w", requestID, approve, err))
 		}
-		s.serverError(w, r, "handleRejectAddRequest", fmt.Errorf("reject add-request %d: %w", requestID, err)) // PR #218 review C6
 		return
 	}
 	http.Redirect(w, r, "/admin/groups/pending", http.StatusFound)
 }
 
+// handleAdminPendingGroups is the approvals page: the per-add approval
+// queue (v0.27.20). The legacy pending-groups table is gone since
+// 0.29.100 (N9, stage 1g of summary/59): the migrate converted every
+// pending group at v0.27.20 and groups are born approved.
 func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request) {
-	pending, err := s.store.ListPendingGroups(r.Context())
-	if err != nil {
-		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "failed to list pending groups", "error", err)
-		http.Error(w, "Failed to list pending groups", http.StatusInternalServerError)
-		return
-	}
-	// v0.27.20: the per-add approval queue shares this page. Legacy
-	// pending groups empty out after the migration; the additions
-	// table is the ongoing queue.
 	requests, err := s.store.ListPendingAddRequests(r.Context())
 	if err != nil {
 		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "failed to list pending add-requests", "error", err)
@@ -254,57 +119,7 @@ func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request
 		fmt.Fprint(w, `</table>`)
 	}
 
-	fmt.Fprint(w, `<h2>Pending groups (legacy)</h2>`)
-	if len(pending) == 0 {
-		fmt.Fprint(w, `<div class="empty">No pending groups awaiting review.</div></body></html>`)
-		return
-	}
-
-	fmt.Fprint(w, `<table><tr><th>Group</th><th>Submitted by</th><th>Email</th><th>Repos</th><th>Org requests</th><th>Action</th></tr>`)
-	for _, p := range pending {
-		fmt.Fprintf(w, `<tr><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td><td>
-<form method="POST" action="/admin/groups/%d/approve" style="display:inline"><button class="btn approve" type="submit">Approve</button></form>
-<form method="POST" action="/admin/groups/%d/reject" style="display:inline"><button class="btn reject" type="submit">Reject</button></form>
-</td></tr>`,
-			template.HTMLEscapeString(p.Name),
-			template.HTMLEscapeString(p.UserLogin),
-			template.HTMLEscapeString(p.UserEmail),
-			p.RepoCount, p.OrgRequests,
-			p.GroupID, p.GroupID)
-	}
-	fmt.Fprint(w, `</table></body></html>`)
-}
-
-func (s *Server) handleApproveGroup(w http.ResponseWriter, r *http.Request) {
-	sess := s.getSession(r)
-	groupID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid group id", http.StatusBadRequest)
-		return
-	}
-
-	approval, approved, err := s.store.ApproveGroup(r.Context(), groupID, sess.UserID)
-	if err != nil {
-		// A store failure: logged, generic body (PR #218 review C6 — the
-		// body carried the store's text).
-		s.serverError(w, r, "handleApproveGroup", fmt.Errorf("approve group %d: %w", groupID, err))
-		return
-	}
-
-	// Notify the requester — only when this request approved the group, so
-	// a second click mails nobody. Best-effort — don't block the redirect
-	// on email delivery.
-	if approved && s.mailer != nil && approval.RequesterEmail != "" {
-		go func() {
-			defer safego.Recover(s.logger, "group-approved-email")
-			if err := s.mailer.SendGroupApproved(approval.RequesterEmail, approval.RequesterLogin, approval.GroupName, groupID); err != nil && !mailer.IsSkip(err) {
-				s.logger.Warn("failed to send group-approved email",
-					"group_id", groupID, "to", platform.RedactEmail(approval.RequesterEmail), "error", err)
-			}
-		}()
-	}
-
-	http.Redirect(w, r, "/admin/groups/pending", http.StatusFound)
+	fmt.Fprint(w, `</body></html>`)
 }
 
 func (s *Server) handleRejectGroup(w http.ResponseWriter, r *http.Request) {
@@ -314,8 +129,10 @@ func (s *Server) handleRejectGroup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid group id", http.StatusBadRequest)
 		return
 	}
-	if err := s.store.RejectGroup(r.Context(), groupID, sess.UserID); err != nil {
-		s.serverError(w, r, "handleRejectGroup", fmt.Errorf("reject group %d: %w", groupID, err)) // PR #218 review C6
+	if err := s.admin.RejectGroup(r.Context(), sessionActor(sess), groupID); err != nil {
+		if !s.refusePage(w, r, err) {
+			s.serverError(w, r, "handleRejectGroup", fmt.Errorf("reject group %d: %w", groupID, err)) // PR #218 review C6
+		}
 		return
 	}
 	http.Redirect(w, r, "/admin/groups/pending", http.StatusFound)
@@ -350,7 +167,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 <h1>Users</h1>
 <div class="sub navlinks">
   <a href="/dashboard">Back to dashboard</a>
-  <a href="/admin/groups/pending">Pending groups</a>
+  <a href="/admin/groups/pending">Approvals</a>
 </div>
 <table><tr><th>ID</th><th>Login</th><th>Email</th><th>Provider</th><th>Role</th><th>Action</th></tr>`)
 
@@ -388,25 +205,15 @@ func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	isAdmin := strings.EqualFold(strings.TrimSpace(r.FormValue("admin")), "true")
-	// Demoting yourself is the caller's input, refused before the store, as
-	// the portal refuses it (PR #218 review C6: every store error, a lost
-	// connection included, was answered 400 with its text). The page shows
-	// no Demote button for the signed-in admin, so only a crafted POST gets
-	// here.
-	if sess := s.getSession(r); sess != nil && !isAdmin && sess.UserID == userID {
-		http.Error(w, "Refusing self-demotion — use another admin account.", http.StatusBadRequest)
-		return
-	}
-	if err := s.store.SetUserAdmin(r.Context(), userID, isAdmin); err != nil {
-		// The store's last-admin refusal (reachable only through a stale
-		// admin session, since self-demotion is refused above) is a refusal,
-		// not a failure: 409 with its reason. Any other store error is logged
-		// with a generic 500 body.
-		if errors.Is(err, db.ErrLastAdmin) {
-			http.Error(w, db.ErrLastAdmin.Error(), http.StatusConflict)
-			return
+	// The service refuses self-demotion (the page shows no Demote button
+	// for the signed-in admin, so only a crafted POST gets here) and,
+	// atomically in the store, the last administrator's; both are answered
+	// from refusePage's table. Any other store error is logged with a
+	// generic 500 body.
+	if err := s.admin.SetUserAdmin(r.Context(), sessionActor(s.getSession(r)), userID, isAdmin); err != nil {
+		if !s.refusePage(w, r, err) {
+			s.serverError(w, r, "handleSetUserAdmin", fmt.Errorf("set admin=%t for user %d: %w", isAdmin, userID, err))
 		}
-		s.serverError(w, r, "handleSetUserAdmin", fmt.Errorf("set admin=%t for user %d: %w", isAdmin, userID, err))
 		return
 	}
 	http.Redirect(w, r, "/admin/users", http.StatusFound)

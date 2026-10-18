@@ -233,7 +233,7 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 		VALUES ($1, 'queued', 100, NOW())`, trackedID); err != nil {
 		t.Fatal(err)
 	}
-	out, err := store.AddReposToGroup(ctx, userID, groupID, []string{trackedURL}, 0)
+	out, err := store.AddReposToGroup(ctx, userID, groupID, []string{trackedURL}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 
 	// --- non-admin unknown URL pends with zero catalog residue ---
 	newURL := mkURL("newrepo")
-	out, err = store.AddReposToGroup(ctx, userID, groupID, []string{newURL}, 0)
+	out, err = store.AddReposToGroup(ctx, userID, groupID, []string{newURL}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,14 +257,14 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 	}
 
 	// --- approval creates + enqueues + links, resumably ---
-	req, changed, err := store.DecideAddRequest(ctx, out.RequestID, adminID, true, "")
+	req, changed, err := store.DecideAddRequest(ctx, out.RequestID, adminID, true, "", "")
 	if err != nil || !changed {
 		t.Fatalf("approve: changed=%v err=%v", changed, err)
 	}
 	if req.UserEmail != "req@example.com" {
 		t.Errorf("decision must carry requester email for notification, got %q", req.UserEmail)
 	}
-	processed, _, err := store.ProcessApprovedAddRequest(ctx, out.RequestID)
+	processed, _, err := store.ProcessApprovedAddRequest(ctx, out.RequestID, "")
 	if err != nil || processed != 1 {
 		t.Fatalf("process: processed=%d err=%v", processed, err)
 	}
@@ -281,22 +281,22 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 		t.Error("approved repo must be linked into the requesting group")
 	}
 	// Idempotent re-run processes nothing (items are stamped).
-	processed, _, err = store.ProcessApprovedAddRequest(ctx, out.RequestID)
+	processed, _, err = store.ProcessApprovedAddRequest(ctx, out.RequestID, "")
 	if err != nil || processed != 0 {
 		t.Errorf("re-processing must be a no-op, processed=%d err=%v", processed, err)
 	}
 	// Double decision is a no-op.
-	if _, changed, _ := store.DecideAddRequest(ctx, out.RequestID, adminID, true, ""); changed {
+	if _, changed, _ := store.DecideAddRequest(ctx, out.RequestID, adminID, true, "", ""); changed {
 		t.Error("double approval must report changed=false")
 	}
 
 	// --- rejection leaves zero residue ---
 	rejURL := mkURL("rejected")
-	out, err = store.AddReposToGroup(ctx, userID, groupID, []string{rejURL}, 0)
+	out, err = store.AddReposToGroup(ctx, userID, groupID, []string{rejURL}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, changed, err := store.DecideAddRequest(ctx, out.RequestID, adminID, false, ""); err != nil || !changed {
+	if _, changed, err := store.DecideAddRequest(ctx, out.RequestID, adminID, false, "", ""); err != nil || !changed {
 		t.Fatalf("reject: changed=%v err=%v", changed, err)
 	}
 	pool.QueryRow(ctx, `SELECT COUNT(*) FROM aveloxis_data.repos WHERE repo_git = $1`, rejURL).Scan(&n)
@@ -310,7 +310,7 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	adminURL := mkURL("adminrepo")
-	out, err = store.AddReposToGroup(ctx, adminID, adminGroupID, []string{adminURL}, 0)
+	out, err = store.AddReposToGroup(ctx, adminID, adminGroupID, []string{adminURL}, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 
 	// --- org registration pends for non-admins; approval registers ---
 	orgURL := fmt.Sprintf("https://github.com/_avaddreqorg%d", suffix)
-	orgOut, err := store.AddOrgToGroup(ctx, userID, groupID, orgURL, "")
+	orgOut, err := store.AddOrgToGroup(ctx, userID, groupID, orgURL, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 	if n != 0 {
 		t.Fatal("unapproved org must NOT reach user_org_requests — that table means 'approved to scan'")
 	}
-	if _, changed, err := store.DecideAddRequest(ctx, orgOut.RequestID, adminID, true, ""); err != nil || !changed {
+	if _, changed, err := store.DecideAddRequest(ctx, orgOut.RequestID, adminID, true, "", ""); err != nil || !changed {
 		t.Fatalf("org approve: changed=%v err=%v", changed, err)
 	}
 	pool.QueryRow(ctx, `SELECT COUNT(*) FROM aveloxis_ops.user_org_requests WHERE org_url = $1`, orgURL).Scan(&n)
@@ -341,7 +341,7 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 
 	// --- auto-approve boundary: limit 2 → 2 URLs direct, 3 URLs pend ---
 	two := []string{mkURL("auto1"), mkURL("auto2")}
-	out, err = store.AddReposToGroup(ctx, userID, groupID, two, 2)
+	out, err = store.AddReposToGroup(ctx, userID, groupID, two, 2, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +355,7 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 		t.Errorf("auto-approved request must carry decided_by=0 audit marker, got %d", decidedBy)
 	}
 	three := []string{mkURL("auto3"), mkURL("auto4"), mkURL("auto5")}
-	out, err = store.AddReposToGroup(ctx, userID, groupID, three, 2)
+	out, err = store.AddReposToGroup(ctx, userID, groupID, three, 2, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 	if err := store.RejectGroup(ctx, groupID, adminID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.AddReposToGroup(ctx, userID, groupID, []string{mkURL("blocked")}, 0); err == nil {
+	if _, err := store.AddReposToGroup(ctx, userID, groupID, []string{mkURL("blocked")}, 0, ""); err == nil {
 		t.Error("adds to a rejected group must error")
 	}
 }

@@ -54,7 +54,6 @@ func TestAdminDecisionStoreFailuresAreGeneric500s(t *testing.T) {
 	}{
 		{"/admin/add-requests/5/approve", url.Values{}},
 		{"/admin/add-requests/5/reject", url.Values{}},
-		{"/admin/groups/5/approve", url.Values{}},
 		{"/admin/groups/5/reject", url.Values{}},
 		{"/admin/users/5/admin", url.Values{"admin": {"true"}}},
 		{"/admin/users/5/admin", url.Values{"admin": {"false"}}},

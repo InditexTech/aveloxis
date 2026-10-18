@@ -153,6 +153,25 @@ var impliedResponseExceptions = map[string]map[string]string{
 		// runs only when r.Method != DELETE ("Unstar needs no scope").
 		"403": "unstar skips the scope and quota branch",
 	},
+	// Server.refuse answers every refusal kind from one table (stage 1 of
+	// summary/59), so its Forbidden arm is reached from every caller; the
+	// service returns Forbidden only from operations that require an
+	// administrator, which these group operations do not.
+	"POST /api/v1/groups": {
+		"403": "CreateGroup needs no role; refuse's Forbidden arm is unreachable here",
+	},
+	"GET /api/v1/groups/{groupID}/repos": {
+		"403": "GroupAccess refuses with NotOwned (404), never Forbidden",
+	},
+	"GET /api/v1/groups/{groupID}/orgs": {
+		"403": "GroupAccess refuses with NotOwned (404), never Forbidden",
+	},
+	"GET /api/v1/groups/{groupID}/pending-adds": {
+		"403": "GroupAccess refuses with NotOwned (404), never Forbidden",
+	},
+	"POST /api/v1/groups/{groupID}/repos/{repoID}/remove": {
+		"403": "RemoveFromGroup is owner-only (NotOwned, 404), never Forbidden",
+	},
 }
 
 // documentedStatusSources: a documented 4xx must be one the handler can

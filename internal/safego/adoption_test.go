@@ -13,6 +13,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 func TestSafegoAdoptionAtAuditedSites(t *testing.T) {
@@ -28,7 +30,6 @@ func TestSafegoAdoptionAtAuditedSites(t *testing.T) {
 		"../collector/staged.go":              4, // 3 parallel collectors + PR shard
 		"../collector/scancode_worker.go":     5,
 		"../collector/distribution/worker.go": 2,
-		"../web/admin.go":                     1, // group-approved-email
 		// O6 (v0.29.71): goroutines on external data or a subprocess.
 		"../platform/github/contributor_history.go": 1, // per-window fetch (RecoverWith: a panic fails the contributor)
 		"../collector/swept_command.go":             1, // the subprocess waiter (RecoverWith: Wait still answers)
@@ -43,6 +44,13 @@ func TestSafegoAdoptionAtAuditedSites(t *testing.T) {
 		if i < 0 || !strings.Contains(body[i:min(i+400, len(body))], "safego.Go(") {
 			t.Errorf("scheduler.goTracked must delegate to safego.Go — every s.goTracked launch is counted here as a recovered site")
 		}
+	}
+	// The admin service's three goroutines (stage 1 of summary/59: the
+	// approved add-request pass, the submission notice, the one best-effort
+	// sender) are counted over the package source — the by-name read
+	// ratchet (scripts/source_file_reads_test.go) only shrinks.
+	if n := strings.Count(srctest.StripGoComments(srctest.PackageSource(t, "internal/admin", 6)), "safego.Go("); n < 3 {
+		t.Errorf("internal/admin has %d safego.Go sites, want at least 3 — a bare `go` would let one panicking mail or pass take the process down", n)
 	}
 	for path, min := range expectations {
 		src, err := os.ReadFile(path)

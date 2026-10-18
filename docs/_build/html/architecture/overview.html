@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Architecture Overview &mdash; Aveloxis 0.29.99 documentation</title>
+  <title>Architecture Overview &mdash; Aveloxis 0.29.100 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=bfc74ce3"></script>
+      <script src="../_static/documentation_options.js?v=8e993c7f"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -2107,6 +2107,11 @@ Done -&gt; repo re-queued with new due time
     <span class="n">platform</span><span class="o">/</span>             <span class="c1"># Platform abstraction</span>
       <span class="n">github</span><span class="o">/</span>             <span class="c1"># GitHub REST API client</span>
       <span class="n">gitlab</span><span class="o">/</span>             <span class="c1"># GitLab API v4 client</span>
+    <span class="n">admin</span><span class="o">/</span>                <span class="c1"># Administrative operations (groups, additions and their</span>
+                          <span class="c1"># approval, roles, forge-ID adoption, the account e-mail</span>
+                          <span class="c1"># flow): one service the web GUI, the REST API and the</span>
+                          <span class="c1"># CLI adapt; it decides administrator privilege from the</span>
+                          <span class="c1"># caller&#39;s credential and the users row, never from a flag</span>
     <span class="n">api</span><span class="o">/</span>                  <span class="c1"># REST API server (:8383)</span>
     <span class="n">web</span><span class="o">/</span>                  <span class="c1"># Web GUI (:8082) — OAuth, groups, monitor page</span>
     <span class="n">showcase</span><span class="o">/</span>             <span class="c1"># Static public showcase generator</span>

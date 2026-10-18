@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/importers/numfocus"
 	"github.com/spf13/cobra"
@@ -98,12 +99,17 @@ func runLoadNumfocusOrgs(cfgPath string, opts numfocusLoadOpts) error {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer store.Close()
+	// The loaders write groups and organisation registrations as the
+	// operator acting for the dashboard user (stage 1 of summary/59: only
+	// the admin service writes them; no hooks — the CLI has no caches).
+	svc := admin.New(store, admin.Options{GitHubAPIBase: cfg.GitHub.GitHubAPIBase(), GitLabAPIBase: cfg.GitLab.BaseURL}, nil, logger)
+	operator := admin.Actor{UserID: opts.UserID, Kind: admin.Operator}
 
-	sponsoredGroupID, err := ensureNumfocusGroup(ctx, store, opts.UserID, "NumFocus Sponsored Orgs", opts.DryRun)
+	sponsoredGroupID, err := ensureNumfocusGroup(ctx, svc, opts.UserID, "NumFocus Sponsored Orgs", opts.DryRun)
 	if err != nil {
 		return err
 	}
-	affiliatedGroupID, err := ensureNumfocusGroup(ctx, store, opts.UserID, "NumFocus Affiliated Orgs", opts.DryRun)
+	affiliatedGroupID, err := ensureNumfocusGroup(ctx, svc, opts.UserID, "NumFocus Affiliated Orgs", opts.DryRun)
 	if err != nil {
 		return err
 	}
@@ -135,10 +141,15 @@ func runLoadNumfocusOrgs(cfgPath string, opts numfocusLoadOpts) error {
 				tally.planned++
 				continue
 			}
-			if _, err := store.AddOrgToGroup(ctx, opts.UserID, groupID, orgURL, cfg.GitHub.GitHubAPIBase()); err != nil {
+			out, err := svc.AddOrgToGroup(ctx, operator, groupID, orgURL)
+			if err != nil {
 				logger.Warn("failed to add numfocus org",
 					"section", section, "name", p.Name, "org_url", platform.RedactURLUserinfo(orgURL), "error", err)
 				tally.failed++
+				continue
+			}
+			if !out.Registered {
+				tally.pending++ // a non-admin --user-id's organization waits for an administrator
 				continue
 			}
 			tally.added++
@@ -153,8 +164,11 @@ func runLoadNumfocusOrgs(cfgPath string, opts numfocusLoadOpts) error {
 		fmt.Printf("\ndry-run summary: %d planned (deduped), %d skipped (needs_review or other-platform)\n",
 			tally.planned, tally.skipped)
 	} else {
-		fmt.Printf("\nsummary: %d orgs registered (or already-present), %d skipped, %d failed\n",
-			tally.added, tally.skipped, tally.failed)
+		fmt.Printf("\nsummary: %d orgs registered (or already-present), %d pending approval, %d skipped, %d failed\n",
+			tally.added, tally.pending, tally.skipped, tally.failed)
+		if tally.pending > 0 {
+			fmt.Printf("user_id=%d is not an administrator: its %d organizations wait on the approvals page\n", opts.UserID, tally.pending)
+		}
 	}
 	if len(skipped) > 0 {
 		fmt.Println("\nSkipped entries (needs_review or other-platform):")

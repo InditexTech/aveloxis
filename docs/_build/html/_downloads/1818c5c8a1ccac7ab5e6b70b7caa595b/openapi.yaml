@@ -1859,11 +1859,17 @@ paths:
                     type: string
                   dir:
                     type: string
-                    description: '`asc`, or the `dir` sent when it reads `desc` in any case, echoed as given (`DESC` stays `DESC`).'
+                    description: '`asc` or `desc`: the direction applied (0.29.100; a `DESC` sent is echoed as `desc`).'
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: No collection with that id (0.29.100; it answered 200 with an empty page).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -1932,6 +1938,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CapacityRefusal'
+        "404":
+          description: No collection with that id (0.29.100; it answered 200 and linked nothing).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -2041,6 +2053,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "409":
+          description: A collection with that name already exists (0.29.100; it was a 500).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -2083,6 +2101,18 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "404":
+          description: No collection with that id (0.29.100; it was a 500).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "409":
+          description: A collection with that name already exists (0.29.100; it was a 500).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -2114,6 +2144,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "404":
+          description: No collection with that id (0.29.100; it answered 200).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -2162,6 +2198,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "404":
+          description: No collection with that id (0.29.100; it was a 500), or no group with that id (`no group with that id`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -2194,6 +2236,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "404":
+          description: No collection with that id (0.29.100; it answered 200).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -2314,7 +2362,7 @@ paths:
                   rate_limit_per_day:
                     type: integer
         "400":
-          description: The body is not JSON; `user_id` is missing, not positive, or names no account; `label` is blank or too long; or a lifetime or allowance is out of range.
+          description: The body is not JSON; `user_id` is missing, not positive, above 2147483647 (0.29.100; it was a 500), or names no account; `label` is blank or too long; or a lifetime or allowance is out of range.
           content:
             application/json:
               schema:
@@ -2688,7 +2736,7 @@ paths:
                     type: boolean
                     const: true
         "400":
-          description: The body is not a JSON object, or `contact_email` is neither empty nor an e-mail address within the length limit.
+          description: The body is not a JSON object, `contact_email` is missing (0.29.100; a body without it cleared the address), or it is neither empty nor an e-mail address within the length limit.
           content:
             application/json:
               schema:
@@ -3266,9 +3314,9 @@ paths:
         "400":
           description: 'The body is not `{"name": "…"}`, the name is empty, or it is longer than 200 characters.'
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "429":
@@ -3341,21 +3389,21 @@ paths:
                     description: The sort key applied.
                   dir:
                     type: string
-                    description: '`asc`, or the `dir` sent when it reads `desc` in any case, echoed as given (`DESC` stays `DESC`).'
+                    description: '`asc` or `desc`: the direction applied (0.29.100; a `DESC` sent is echoed as `desc`).'
         "400":
           description: The group id is not an integer.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
-        "403":
-          description: No group with that id belongs to the caller (`group not found or not owned by user`).
+        "404":
+          description: No group of the caller's has that id (`no group of yours with that id`); an administrator's session reads any group, an API token only its owner's.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -3380,13 +3428,22 @@ paths:
         registration waits for approval (`pending_approval: 1`,
         `request_id`). The organization's repositories are linked later, by
         the scheduler's organization scan. A GitHub organization must be on
-        this deployment's GitHub host.
+        this deployment's GitHub host, and a GitLab group on its configured
+        GitLab instance (`gitlab.base_url`).
+
+        Every line is parsed as a repository URL first (a missing scheme
+        is supplied; GitHub, GitLab and any git host are accepted): a line
+        that is not one is reported in `invalid` and skipped, the rest go
+        through; a paste with no usable line is a `400`.
 
         An add that does not fit the account's repository allocation (`403`)
         or its daily additions (`429`, quota `repo_links_per_day`, until
         00:00 UTC) adds nothing and is refused with the `capacity_limit`
-        body. A `500` naming how many `repositories could not be added` means some URLs failed while the others were added: send them
-        again. The body is bounded (1,000 URLs at the store's URL length).
+        body. A group that is not the caller's is a `404`; one an
+        administrator rejected is a `409`. A `500` naming how many
+        `repositories could not be added` means some URLs failed while the
+        others were added: send them again. The body is bounded (1,000 URLs
+        at the store's URL length).
 
         Handler: `handleGroupAddRepo`.
       tags: [Groups]
@@ -3444,21 +3501,26 @@ paths:
                     type: integer
                     format: int64
                     description: The add request holding the waiting items.
+                  invalid:
+                    type: array
+                    description: 'Repositories only. Lines that were not repository URLs, each "url: why" (credentials redacted); they were skipped.'
+                    items:
+                      type: string
                   registered:
                     type: integer
                     const: 1
                     description: Organizations only. Tracking is registered now.
         "400":
           description: |
-            The body is malformed or names no URL; more than 1,000 URLs; more
-            than one organization; a group id that is not an integer; the
-            group is not the caller's or was rejected; an organization not on
-            this deployment's GitHub host; a URL that is too long, carries
+            The body is malformed or names no URL; no line of the paste is a
+            repository URL; more than 1,000 URLs; more than one organization;
+            a group id that is not an integer; an organization not on this
+            deployment's GitHub host or GitLab instance; a URL that is too long, carries
             credentials or was refused by the database.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -3467,14 +3529,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CapacityRefusal'
+        "404":
+          description: No group of the caller's has that id (`no group of yours with that id`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "409":
+          description: An administrator rejected the group; it takes no additions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
           description: |
-            `add request <id>: <f> of <n> repositories could not be added;
-            try adding them again` (`f` of the `n` URLs failed, the rest were
-            added), or `could not add to the group right now; try again`.
+            JSON `error` `add request <id>: <f> of <n> repositories could not
+            be added; try adding them again` (`f` of the `n` URLs failed, the
+            rest were added), or the generic server failure as plain text
+            (`internal error; try again`; the cause is in the api log).
           content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
             text/plain:
               schema:
                 type: string
@@ -3524,17 +3602,17 @@ paths:
         "400":
           description: The group id is not an integer.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
-        "403":
-          description: No group with that id belongs to the caller.
+        "404":
+          description: No group of the caller's has that id (`no group of yours with that id`); an administrator's session reads any group, an API token only its owner's.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -3583,17 +3661,17 @@ paths:
         "400":
           description: The group id is not an integer.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
-        "403":
-          description: No group with that id belongs to the caller.
+        "404":
+          description: No group of the caller's has that id (`no group of yours with that id`); an administrator's session reads any group, an API token only its owner's.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -3742,100 +3820,53 @@ paths:
                     type: boolean
                     const: true
         "400":
-          description: 'The user id is not an integer, the body is not a JSON object with a boolean `admin` (for example `{"admin": "yes"}` or no body at all), or the caller tried to demote itself.'
-          content:
-            text/plain:
-              schema:
-                type: string
-        "401":
-          $ref: '#/components/responses/Unauthorized'
-        "403":
-          $ref: '#/components/responses/Forbidden'
-        "409":
-          description: The account is the last administrator.
-          content:
-            text/plain:
-              schema:
-                type: string
-        "429":
-          $ref: '#/components/responses/TooManyRequests'
-        "500":
-          $ref: '#/components/responses/ServerError'
-        "503":
-          $ref: '#/components/responses/ServiceUnavailable'
-  /api/v1/admin/groups/pending:
-    get:
-      operationId: pendingGroups
-      summary: Returns the groups waiting for approval.
-      description: |
-        Handler: `handleAdminPendingGroups`.
-      tags: [Admin users and groups]
-      security: [{sessionToken: [admin]}]
-      responses:
-        "200":
-          description: The groups.
+          description: 'The user id is not an integer, the body is not a JSON object with a boolean `admin` (for example `{"admin": "yes"}`, `{}` — the field is required since 0.29.100 — or no body at all), or the caller tried to demote itself.'
           content:
             application/json:
               schema:
-                type: object
-                required: [pending]
-                properties:
-                  pending:
-                    type: array
-                    items:
-                      type: object
-                      required: [group_id, name, user_id, user_login, user_email, repo_count, org_requests, created_at]
-                      properties:
-                        group_id:
-                          type: integer
-                          format: int64
-                        name:
-                          type: string
-                        user_id:
-                          type: integer
-                        user_login:
-                          type: string
-                        user_email:
-                          type: string
-                        repo_count:
-                          type: integer
-                        org_requests:
-                          type: integer
-                        created_at:
-                          type: string
-                          format: date-time
+                $ref: '#/components/schemas/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "404":
+          description: No user with that id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "409":
+          description: The account is the last administrator.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
           $ref: '#/components/responses/ServerError'
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
-  /api/v1/admin/groups/{groupID}/{decision}:
+  /api/v1/admin/groups/{groupID}/reject:
     post:
-      operationId: decideGroup
-      summary: Approves or rejects a group.
+      operationId: rejectGroup
+      summary: Rejects a group.
       description: |
-        Approving mails the requester when this request approved it.
-        Rejecting works on any group and stops its organization scans.
+        The group-level abuse lever (v0.27.20): a rejected group takes no
+        further additions and its organizations stop being listed; its
+        repositories stay. Works on any group. The legacy approve arm and
+        `GET /admin/groups/pending` are gone since 0.29.100 (groups are born
+        approved; the additions queue, `/admin/add-requests`, is the
+        approval unit).
 
-        Handler: `handleAdminGroupDecision`.
+        Handler: `handleAdminGroupReject`.
       tags: [Admin users and groups]
       security: [{sessionToken: [admin]}]
       parameters:
         - $ref: '#/components/parameters/GroupID'
-        - name: decision
-          in: path
-          required: true
-          schema:
-            type: string
-            enum: [approve, reject]
       responses:
         "200":
-          description: Done.
+          description: Done (a group already rejected answers the same).
           content:
             application/json:
               schema:
@@ -3846,15 +3877,21 @@ paths:
                     type: boolean
                     const: true
         "400":
-          description: The group id is not an integer, or the decision is neither `approve` nor `reject`.
+          description: The group id is not an integer.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
           $ref: '#/components/responses/Forbidden'
+        "404":
+          description: No group with that id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -3973,9 +4010,9 @@ paths:
         "400":
           description: The request id is not an integer, or the decision is neither `approve` nor `reject`.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -3983,18 +4020,18 @@ paths:
         "404":
           description: No such add request.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "409":
           description: |
             The group was rejected, or an organization cannot be registered
-            (not on this deployment's GitHub host, a URL carrying
-            credentials, or too long); the body says what to do.
+            (not on this deployment's GitHub host or GitLab instance, a URL
+            carrying credentials, or too long); the body says what to do.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
@@ -4451,9 +4488,9 @@ paths:
         "400":
           description: The repository id is not a positive integer, the body is unreadable, too large or not JSON, an ID is missing, or the note is too long.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -4461,23 +4498,19 @@ paths:
         "404":
           description: No unadopted change with that pair is recorded for this repository.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "409":
           description: Superseded; the repository no longer stores the old ID. Nothing was written.
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                $ref: '#/components/schemas/Error'
         "429":
           $ref: '#/components/responses/TooManyRequests'
         "500":
-          description: '`adoption failed`.'
-          content:
-            text/plain:
-              schema:
-                type: string
+          $ref: '#/components/responses/ServerError'
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/repo-groups:

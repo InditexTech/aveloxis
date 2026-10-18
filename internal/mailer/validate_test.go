@@ -184,6 +184,9 @@ func TestValidateConfigSiteURL(t *testing.T) {
 		if err := ValidateConfig(Config{GmailUser: "ops@example.com", GmailAppPassword: "abcdefghijklmnop", SiteURL: site}); err != nil {
 			t.Errorf("site_url %q: %v; want it accepted", site, err)
 		}
+		if err := ValidateConfig(Config{SiteURL: site}); err != nil {
+			t.Errorf("site_url %q with the mailer disabled: %v; want it accepted", site, err)
+		}
 	}
 	for _, site := range []string{
 		"aveloxis.example",
@@ -220,11 +223,32 @@ func TestValidateConfigSiteURL(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "mail.site_url") {
 			t.Errorf("site_url %q: %v; want an error naming mail.site_url", site, err)
 		}
-		if err := ValidateConfig(Config{SiteURL: site}); err != nil {
-			t.Errorf("site_url %q with the mailer disabled: %v; want nil", site, err)
+		// With the Gmail pair empty too (round-2 review of 0.29.100): a set
+		// site_url must be a URL whatever the pair says — until 0.29.99 an
+		// invalid block only disabled the mailer, so this arm was lenient;
+		// with the block fatal at load, a field that is set must be right.
+		if err := ValidateConfig(Config{SiteURL: site}); err == nil || !strings.Contains(err.Error(), "mail.site_url") {
+			t.Errorf("site_url %q with the mailer disabled: %v; want the same refusal", site, err)
 		}
 	}
 	if m := New(Config{GmailUser: "ops@example.com", GmailAppPassword: "abcdefghijklmnop", SiteURL: "aveloxis.example"}, nil); m.Enabled() || m.SiteURL() != "" {
 		t.Errorf("New with site_url %q: enabled=%v site=%q; want the mailer disabled", "aveloxis.example", m.Enabled(), m.SiteURL())
+	}
+}
+
+// TestValidateConfig_RejectsBadSiteURLWithMailOff (round-2 review of
+// 0.29.100): a set site_url is checked whether or not the Gmail pair is
+// set — the docs promise that a site_url that is not a URL refuses to
+// start, and since 0.29.100 an invalid block stops every process at load,
+// so a value that is set must be right. An empty one stays the valid "no
+// links" state.
+func TestValidateConfig_RejectsBadSiteURLWithMailOff(t *testing.T) {
+	if err := ValidateConfig(Config{SiteURL: "aveloxis.example"}); err == nil || !strings.Contains(err.Error(), "site_url") {
+		t.Errorf("ValidateConfig(site_url only, not a URL) = %v; want the site_url refusal", err)
+	}
+	for _, site := range []string{"", "https://aveloxis.example"} {
+		if err := ValidateConfig(Config{SiteURL: site}); err != nil {
+			t.Errorf("ValidateConfig(site_url %q, mail off) = %v; want accepted", site, err)
+		}
 	}
 }

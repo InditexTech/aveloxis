@@ -142,7 +142,7 @@ func TestSuffixVariantURLResolvesToTheCollectedRepo(t *testing.T) {
 	}
 	// The admin add path and the approval processor both go through here.
 	for _, v := range variants {
-		rid, err := store.ensureRepoCollectedInGroup(ctx, gid, v)
+		rid, err := store.ensureRepoCollectedInGroup(ctx, gid, v, "")
 		if err != nil {
 			t.Fatalf("ensureRepoCollectedInGroup(%q): %v", v, err)
 		}

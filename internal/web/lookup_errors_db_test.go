@@ -118,11 +118,13 @@ func TestPageLookupErrorsAreNotNotFound(t *testing.T) {
 	if w := get(fmt.Sprintf("/groups/%d", otherGID)); w.Code != http.StatusNotFound {
 		t.Errorf("someone else's group page = %d; want 404", w.Code)
 	}
-	if w := get(fmt.Sprintf("/groups/%d/repos/%d", otherGID, repoID)); w.Code != http.StatusForbidden {
-		t.Errorf("a repository page in someone else's group = %d; want 403", w.Code)
+	// N11 (stage 1 of summary/59): someone else's group answers as a group
+	// that does not exist, on the repository page and the SBOM alike.
+	if w := get(fmt.Sprintf("/groups/%d/repos/%d", otherGID, repoID)); w.Code != http.StatusNotFound {
+		t.Errorf("a repository page in someone else's group = %d; want 404", w.Code)
 	}
-	if w := get(fmt.Sprintf("/groups/%d/repos/%d/sbom", otherGID, repoID)); w.Code != http.StatusForbidden {
-		t.Errorf("an SBOM in someone else's group = %d; want 403", w.Code)
+	if w := get(fmt.Sprintf("/groups/%d/repos/%d/sbom", otherGID, repoID)); w.Code != http.StatusNotFound {
+		t.Errorf("an SBOM in someone else's group = %d; want 404", w.Code)
 	}
 	if w := get(fmt.Sprintf("/groups/%d/repos/%d", gid, repoID+1000000)); w.Code != http.StatusNotFound {
 		t.Errorf("a repository id nobody has = %d; want 404", w.Code)
@@ -194,7 +196,7 @@ func TestLogURLRedactsBeforeTruncating(t *testing.T) {
 	// package that defines a logURL — review round 3: a line-based check
 	// here missed a hand-wrapped call). Only the inline order is banned here.
 	for _, f := range srctest.PackageFiles(t, "internal/web", 1) {
-		if strings.Contains(srctest.StripGoComments(f), "RedactURLUserinfo(truncateForLog(") {
+		if body := srctest.StripGoComments(f); strings.Contains(body, "RedactURLUserinfo(truncateForLog(") || strings.Contains(body, "RedactURLUserinfo(platform.TruncateForLog(") {
 			t.Error("the inline redact-after-truncate spelling is banned")
 		}
 	}

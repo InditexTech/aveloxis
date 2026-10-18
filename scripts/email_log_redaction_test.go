@@ -69,7 +69,9 @@ func TestEveryAccountAddressLogAttributeIsRedacted(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	srctest.MinCount(t, "account-address log attributes examined", examined, 10)
+	// 9 since 0.29.100: the legacy group-approved mail's "to" attribute went
+	// with the pending-group approval (stage 1g of summary/59).
+	srctest.MinCount(t, "account-address log attributes examined", examined, 9)
 }
 
 // TestAccountAddressScanCorpus proves the scan both ways.

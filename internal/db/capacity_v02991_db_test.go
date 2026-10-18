@@ -174,13 +174,13 @@ func TestLegacyPendingGroupConvertsUnderAnAllowanceThatFits(t *testing.T) {
 func TestPendingItemForALinkedRepositoryIsCountedOnce(t *testing.T) {
 	f := newAllocFixture(t, false, 1, 1, capacity.Enforce)
 	mustExecRetry(f.ctx, t, f.store, `DELETE FROM aveloxis_ops.collection_queue WHERE repo_id = $1`, f.repos[0])
-	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[:1], 0)
+	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[:1], 0, "")
 	if err != nil || out.Pending != 1 {
 		t.Fatalf("the untracked URL = %+v, %v; want pending", out, err)
 	}
 	// Someone else's approval collects it.
 	mustExecRetry(f.ctx, t, f.store, `INSERT INTO aveloxis_ops.collection_queue (repo_id, status, priority, due_at) VALUES ($1, 'queued', 100, NOW())`, f.repos[0])
-	if _, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[:1], 0); err != nil {
+	if _, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[:1], 0, ""); err != nil {
 		t.Fatalf("pasting the now-tracked repository whose place the item holds = %v; want linked (allowance 1)", err)
 	}
 	if got := f.linked(t); got != 1 {
@@ -241,14 +241,14 @@ func TestHeldItemMatchesTheRepositoryApprovalWillLink(t *testing.T) {
 		}
 		// Approval would create .../legacy (FindRepoByURL normalizes the
 		// suffix away and finds no row): a new place, refused at 1 of 1.
-		_, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, []string{legacy}, 0)
+		_, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, []string{legacy}, 0, "")
 		if ex, ok := capacity.AsExceeded(err); !ok || ex.Quota != capacity.QuotaReposPerAccount {
 			t.Fatalf("pasting a legacy linked row's text = %v; want the allocation refusal (approval links a new repository)", err)
 		}
 		if err := f.store.SetCapacityOverride(f.ctx, CapacityOverride{UserID: f.user, ReposAllowed: intPtr(2)}, 0); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, []string{legacy}, 0); err != nil {
+		if _, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, []string{legacy}, 0, ""); err != nil {
 			t.Fatal(err)
 		}
 		if got := f.linked(t); got != 2 {
@@ -332,7 +332,7 @@ func TestAutoApprovedPasteCountsTowardDailyAdditions(t *testing.T) {
 	f := newAllocFixture(t, false, 100, 4, capacity.Enforce)
 	setLinksQuota(t, f, 2, capacity.Enforce)
 	mustExecRetry(f.ctx, t, f.store, `DELETE FROM aveloxis_ops.collection_queue WHERE repo_id = ANY($1)`, f.repos)
-	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[:2], 2)
+	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[:2], 2, "")
 	if err != nil || out.Enqueued != 2 {
 		t.Fatalf("an auto-approved paste of 2 = %+v, %v; want both added", out, err)
 	}
@@ -348,7 +348,7 @@ func TestAutoApprovedPasteCountsTowardDailyAdditions(t *testing.T) {
 	if err := f.store.pool.QueryRow(f.ctx, `SELECT COUNT(*) FROM aveloxis_ops.collection_add_requests WHERE user_id = $1`, f.user).Scan(&requestsBefore); err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[2:4], 2)
+	_, err = f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[2:4], 2, "")
 	if ex, ok := capacity.AsExceeded(err); !ok || ex.Quota != capacity.QuotaRepoLinksPerDay {
 		t.Fatalf("a second auto-approved paste of 2 past 2 a day = %v; want the repo_links_per_day refusal", err)
 	}
@@ -390,7 +390,7 @@ func TestAutoApprovedRepasteOfPendingURLsCounts(t *testing.T) {
 	f := newAllocFixture(t, false, 100, 2, capacity.Enforce)
 	setLinksQuota(t, f, 1, capacity.Enforce)
 	mustExecRetry(f.ctx, t, f.store, `DELETE FROM aveloxis_ops.collection_queue WHERE repo_id = ANY($1)`, f.repos)
-	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls, 0)
+	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls, 0, "")
 	if err != nil || out.Pending != 2 {
 		t.Fatalf("the pending paste = %+v, %v", out, err)
 	}
@@ -398,7 +398,7 @@ func TestAutoApprovedRepasteOfPendingURLsCounts(t *testing.T) {
 	if err := f.store.pool.QueryRow(f.ctx, `SELECT COUNT(*) FROM aveloxis_ops.collection_add_requests WHERE user_id = $1`, f.user).Scan(&requestsBefore); err != nil {
 		t.Fatal(err)
 	}
-	_, err = f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls, 2)
+	_, err = f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls, 2, "")
 	if ex, ok := capacity.AsExceeded(err); !ok || ex.Quota != capacity.QuotaRepoLinksPerDay {
 		t.Fatalf("an auto-approved re-paste of 2 pending URLs past 1 a day = %v; want the repo_links_per_day refusal", err)
 	}
@@ -416,7 +416,7 @@ func TestAutoApprovedRepasteOfPendingURLsCounts(t *testing.T) {
 	// re-paste is accepted, counted, and each repository holds one place
 	// although a pending item and the auto-approved one both named it.
 	setLinksQuota(t, f, 10, capacity.Enforce)
-	if _, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls, 2); err != nil {
+	if _, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls, 2, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.addedToday(t); got != 2 {
@@ -441,7 +441,7 @@ func TestAllocationRefusalTakesPrecedenceOverDailyAdditions(t *testing.T) {
 	}
 	mustExecRetry(f.ctx, t, f.store, `DELETE FROM aveloxis_ops.collection_queue WHERE repo_id = $1`, f.repos[1])
 	// Both spent: an auto-approved paste of one new URL.
-	_, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[1:2], 2)
+	_, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[1:2], 2, "")
 	if ex, ok := capacity.AsExceeded(err); !ok || ex.Quota != capacity.QuotaReposPerAccount {
 		t.Fatalf("with both spent = %v; want the repos_per_account refusal", err)
 	}
@@ -451,7 +451,7 @@ func TestAllocationRefusalTakesPrecedenceOverDailyAdditions(t *testing.T) {
 	// Shadow links: no spurious "would refuse" either.
 	setLinksQuota(t, f, 1, capacity.Shadow)
 	logs.Reset()
-	if _, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[1:2], 2); err == nil {
+	if _, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[1:2], 2, ""); err == nil {
 		t.Fatal("the allocation must still refuse")
 	}
 	if strings.Contains(logs.String(), "daily additions quota (shadow)") {

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>REST API &mdash; Aveloxis 0.29.99 documentation</title>
+  <title>REST API &mdash; Aveloxis 0.29.100 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=bfc74ce3"></script>
+      <script src="../_static/documentation_options.js?v=8e993c7f"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -2004,7 +2004,8 @@ loads it only when asked.</p></li>
 saves one quota; the api processes apply it within a minute. <code class="docutils literal notranslate"><span class="pre">409</span></code> when
 <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> sets the quota (DEFAULT, SHADOW or OFF), <code class="docutils literal notranslate"><span class="pre">404</span></code> for an
 unknown name, <code class="docutils literal notranslate"><span class="pre">400</span></code> for a value that is not positive or an unknown mode.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">…/capacity/contact</span></code> <code class="docutils literal notranslate"><span class="pre">{&quot;contact_email&quot;:</span> <span class="pre">&quot;…&quot;}</span></code> sets the address
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">…/capacity/contact</span></code> <code class="docutils literal notranslate"><span class="pre">{&quot;contact_email&quot;:</span> <span class="pre">&quot;…&quot;}</span></code> (the field is
+required since 0.29.100: <code class="docutils literal notranslate"><span class="pre">{}</span></code> used to clear the address) sets the address
 every refusal invites a heavy user to write to (empty: none offered).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">…/capacity/accounts?login=…</span></code> (or <code class="docutils literal notranslate"><span class="pre">?user_id=…</span></code>) reads one account:
 its <code class="docutils literal notranslate"><span class="pre">user_id</span></code>, <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">provider</span></code> (the forge of its last sign-in) and
@@ -3453,8 +3454,10 @@ per-request aggregation), <code class="docutils literal notranslate"><span class
 reflects the calling user’s star state. <code class="docutils literal notranslate"><span class="pre">sort</span></code> accepts <code class="docutils literal notranslate"><span class="pre">name</span></code>
 (default), <code class="docutils literal notranslate"><span class="pre">issues</span></code>, <code class="docutils literal notranslate"><span class="pre">prs</span></code>, <code class="docutils literal notranslate"><span class="pre">commits</span></code>, <code class="docutils literal notranslate"><span class="pre">collected</span></code>, <code class="docutils literal notranslate"><span class="pre">activity</span></code>;
 <code class="docutils literal notranslate"><span class="pre">dir</span></code> accepts <code class="docutils literal notranslate"><span class="pre">asc</span></code> (default) or <code class="docutils literal notranslate"><span class="pre">desc</span></code>; unknown values fall back
-and the response echoes the effective sort. Non-admins may only
-read their own groups (403 otherwise).</p></li>
+and the response echoes the effective sort. The group must be the
+caller’s (an administrator’s session reads any group; an API token
+only its owner’s): otherwise a <code class="docutils literal notranslate"><span class="pre">404</span></code>, the same answer as for a group
+that does not exist (stage 1 of the admin-console refactor, 0.29.100).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/groups/{groupID}/repos</span></code> with
 <code class="docutils literal notranslate"><span class="pre">{&quot;url&quot;:</span> <span class="pre">&quot;https://github.com/owner/repo&quot;,</span> <span class="pre">&quot;kind&quot;:</span> <span class="pre">&quot;repo&quot;}</span></code> (or
 <code class="docutils literal notranslate"><span class="pre">&quot;kind&quot;:</span> <span class="pre">&quot;org&quot;</span></code> with an org URL) — add a repo or track an org. A
@@ -3476,12 +3479,18 @@ returns <code class="docutils literal notranslate"><span class="pre">linked:</sp
 When <code class="docutils literal notranslate"><span class="pre">web.auto_approve_add_limit</span></code> lets a batch through and some of its
 repositories cannot be added, the others are still added and the call
 fails with an error saying how many could not be; sending the same
-URLs again retries them (v0.29.50). A group the caller does not own,
-or a rejected group, is a <code class="docutils literal notranslate"><span class="pre">400</span></code> with the reason, and so is a URL
-longer than 1342 bytes (v0.29.54) or one the database refuses (such as
-one with a NUL byte; v0.29.52); repositories
-that could not be added and any server-side failure are a <code class="docutils literal notranslate"><span class="pre">500</span></code> with a
-plain message and no database text (v0.29.51).
+URLs again retries them (v0.29.50). Every line is parsed as a
+repository URL first (0.29.100): a missing scheme is supplied, GitHub,
+GitLab and any git host are accepted, and a line that is not a
+repository URL is reported in <code class="docutils literal notranslate"><span class="pre">invalid</span></code> (each <code class="docutils literal notranslate"><span class="pre">url:</span> <span class="pre">why</span></code>, credentials
+redacted) and skipped while the rest go through; a paste with no
+usable line is a <code class="docutils literal notranslate"><span class="pre">400</span></code>. A group the caller does not own is a <code class="docutils literal notranslate"><span class="pre">404</span></code>
+(the same answer as a group that does not exist); a rejected group is
+a <code class="docutils literal notranslate"><span class="pre">409</span></code>; a URL longer than 1342 bytes (v0.29.54) or one the database
+refuses (such as one with a NUL byte; v0.29.52) is a <code class="docutils literal notranslate"><span class="pre">400</span></code>;
+repositories that could not be added and any server-side failure are
+a <code class="docutils literal notranslate"><span class="pre">500</span></code> with a plain message and no database text (v0.29.51). Every
+refusal body is JSON <code class="docutils literal notranslate"><span class="pre">{&quot;error&quot;:</span> <span class="pre">&quot;…&quot;}</span></code>.
 Org outcomes (v0.27.84): <code class="docutils literal notranslate"><span class="pre">registered:</span> <span class="pre">1</span></code> means the org is tracked
 NOW — admin adds always register, and a non-admin’s add of an org
 that is ALREADY registered in a group that is not rejected auto-approves (it adds zero
@@ -3504,7 +3513,9 @@ the group (2026-07-21; read-only — registration goes through the
 POST above with <code class="docutils literal notranslate"><span class="pre">kind:</span> <span class="pre">&quot;org&quot;</span></code>). Envelope:
 <code class="docutils literal notranslate"><span class="pre">{orgs:</span> <span class="pre">[{org_request_id,</span> <span class="pre">url,</span> <span class="pre">name,</span> <span class="pre">platform,</span> <span class="pre">last_scanned?}]}</span></code>.
 <code class="docutils literal notranslate"><span class="pre">last_scanned</span></code> is omitted until the scheduler’s org scan first
-visits the org. Ownership-checked for non-admins (403 otherwise).</p></li>
+visits the org. The group must be the caller’s (an administrator’s
+session reads any group; an API token only its owner’s): otherwise a
+<code class="docutils literal notranslate"><span class="pre">404</span></code>, the same answer as for a group that does not exist.</p></li>
 </ul>
 <p>Admin-only:</p>
 <ul class="simple">
@@ -3517,24 +3528,28 @@ approximation as their join date (the table had no earlier
 timestamp to backfill from), so for those two fields start equal
 and diverge from the next login onward.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/users/{userID}/admin</span></code> with
-<code class="docutils literal notranslate"><span class="pre">{&quot;admin&quot;:</span> <span class="pre">true|false}</span></code> — promote/demote. Self-demotion is refused
-(last-admin guard). A demotion that would leave no admin at all is a
-<code class="docutils literal notranslate"><span class="pre">409</span></code> with <code class="docutils literal notranslate"><span class="pre">refusing</span> <span class="pre">to</span> <span class="pre">demote</span> <span class="pre">the</span> <span class="pre">last</span> <span class="pre">admin</span> <span class="pre">—</span> <span class="pre">promote</span> <span class="pre">another</span> <span class="pre">user</span> <span class="pre">first</span></code> (it was a <code class="docutils literal notranslate"><span class="pre">500</span></code> before PR #218 review).</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/groups/pending</span></code> — pending groups awaiting
-approval, with requester login/email and repo/org counts.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/groups/{groupID}/{decision}</span></code> where decision is
-<code class="docutils literal notranslate"><span class="pre">approve</span></code> or <code class="docutils literal notranslate"><span class="pre">reject</span></code> —
-decide a pending group. Approval bulk-enqueues the group’s repos
-for collection (same machinery as the server-rendered admin UI).
-Legacy: new groups always create approved since v0.27.20; this
-route remains for pre-conversion pending groups.</p></li>
+<code class="docutils literal notranslate"><span class="pre">{&quot;admin&quot;:</span> <span class="pre">true|false}</span></code> — promote/demote; the field is required
+(0.29.100: <code class="docutils literal notranslate"><span class="pre">{}</span></code> used to demote the account). Self-demotion is refused
+(<code class="docutils literal notranslate"><span class="pre">400</span></code>). A demotion that would leave no admin at all is a
+<code class="docutils literal notranslate"><span class="pre">409</span></code> with <code class="docutils literal notranslate"><span class="pre">refusing</span> <span class="pre">to</span> <span class="pre">demote</span> <span class="pre">the</span> <span class="pre">last</span> <span class="pre">admin</span> <span class="pre">—</span> <span class="pre">promote</span> <span class="pre">another</span> <span class="pre">user</span> <span class="pre">first</span></code> (it was a <code class="docutils literal notranslate"><span class="pre">500</span></code> before PR #218 review); the count and the write
+are one locked transaction, so two demotions deciding at once cannot
+both pass. No such user is a <code class="docutils literal notranslate"><span class="pre">404</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/groups/{groupID}/reject</span></code> — reject a group: the
+group-level abuse lever (v0.27.20); it takes no further additions and
+its organizations stop being listed; its repositories stay. <code class="docutils literal notranslate"><span class="pre">404</span></code> for a
+group that does not exist. The legacy pending-group approval —
+<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/groups/pending</span></code> and the <code class="docutils literal notranslate"><span class="pre">approve</span></code> decision — is gone
+since 0.29.100: groups have been born approved since v0.27.20 and the
+migrate converted every pending group then; the additions queue below
+is the approval unit.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/groups/{groupID}/pending-adds</span></code> — the group’s own
 awaiting-approval content (v0.27.20): repo URLs from pending
 add-requests plus pending org registrations, each with
-<code class="docutils literal notranslate"><span class="pre">request_id</span></code>, <code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">url</span></code>, <code class="docutils literal notranslate"><span class="pre">created_at</span></code>. Ownership-checked for
-non-admins (a group the caller does not own is a <code class="docutils literal notranslate"><span class="pre">403</span></code>; a server-side
-failure is a <code class="docutils literal notranslate"><span class="pre">500</span></code> without database text, v0.29.52). Envelope:
-<code class="docutils literal notranslate"><span class="pre">{pending:</span> <span class="pre">[...]}</span></code>.</p></li>
+<code class="docutils literal notranslate"><span class="pre">request_id</span></code>, <code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">url</span></code>, <code class="docutils literal notranslate"><span class="pre">created_at</span></code>. The group must be the
+caller’s (an administrator’s session reads any group): otherwise a
+<code class="docutils literal notranslate"><span class="pre">404</span></code>, the same answer as for a group that does not exist; a
+server-side failure is a <code class="docutils literal notranslate"><span class="pre">500</span></code> without database text (v0.29.52).
+Envelope: <code class="docutils literal notranslate"><span class="pre">{pending:</span> <span class="pre">[...]}</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/add-requests</span></code> — the v0.27.20 per-add approval
 queue: pending additions of not-yet-collected repos/orgs by
 non-admins. Each entry carries the requester (<code class="docutils literal notranslate"><span class="pre">user_login</span></code>,
@@ -3554,7 +3569,7 @@ Response: <code class="docutils literal notranslate"><span class="pre">{ok:</spa
 request was already decided (idempotent double-click). A request id that
 does not exist answers <code class="docutils literal notranslate"><span class="pre">404</span></code>. An org request that can never be registered
 answers <code class="docutils literal notranslate"><span class="pre">409</span></code> with the reason and “reject the request”: an org that is
-not on this deployment’s GitHub host, a URL carrying credentials, or a
+not on this deployment’s GitHub host or GitLab instance, a URL carrying credentials, or a
 request created before v0.29.54 whose URL is longer than the registration
 index holds (2,684 bytes).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/monitor/stats</span></code> — <code class="docutils literal notranslate"><span class="pre">{queue:</span> <span class="pre">{status:</span> <span class="pre">count}}</span></code>:
@@ -3607,7 +3622,9 @@ visible to every authenticated user).</p></li>
 user (mirrors the repo-star routes). Both idempotent; PUT on a
 nonexistent collection returns 404. Response
 <code class="docutils literal notranslate"><span class="pre">{ok,</span> <span class="pre">starred}</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/collections/{collectionID}?page&amp;page_size&amp;sort&amp;dir</span></code> —
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/collections/{collectionID}?page&amp;page_size&amp;sort&amp;dir</span></code> — (<code class="docutils literal notranslate"><span class="pre">404</span></code>
+for a collection that does not exist, 0.29.100; <code class="docutils literal notranslate"><span class="pre">dir</span></code> is echoed as the
+direction applied, <code class="docutils literal notranslate"><span class="pre">asc</span></code> or <code class="docutils literal notranslate"><span class="pre">desc</span></code>) —
 member groups (each with live repo count) + one page of the deduped
 repo set: <code class="docutils literal notranslate"><span class="pre">{collection_id,</span> <span class="pre">groups,</span> <span class="pre">repos,</span> <span class="pre">total,</span> <span class="pre">page,</span> <span class="pre">page_size,</span> <span class="pre">sort,</span> <span class="pre">dir}</span></code>. Page size defaults 50, caps 100. v0.27.74: rows carry
 <code class="docutils literal notranslate"><span class="pre">issues</span></code>, <code class="docutils literal notranslate"><span class="pre">prs</span></code>, <code class="docutils literal notranslate"><span class="pre">commits</span></code> (the queue’s CACHED cumulative counts —
@@ -3623,7 +3640,9 @@ EFFECTIVE sort/dir.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/collections/{collectionID}/copy</span></code> with <code class="docutils literal notranslate"><span class="pre">{group_id}</span></code>
 (must be the caller’s) or <code class="docutils literal notranslate"><span class="pre">{group_name}</span></code> (find-or-create for the
 caller) — links every repo of the collection into that group and
-returns <code class="docutils literal notranslate"><span class="pre">{added,</span> <span class="pre">group_id}</span></code> (repos already in the group no-op).
+returns <code class="docutils literal notranslate"><span class="pre">{added,</span> <span class="pre">group_id}</span></code> (repos already in the group no-op); a
+collection that does not exist is a <code class="docutils literal notranslate"><span class="pre">404</span></code> (0.29.100; it answered 200
+and linked nothing).
 <strong>Never enqueues collection and never creates add-requests</strong>:
 collection repos are already tracked, and approval only ever gates
 NEW collection (v0.27.20). The caller’s auth scope and home cache
@@ -3632,15 +3651,21 @@ are invalidated so the repos are visible on the next request.</p></li>
 <p>Admin mutations (requireAdmin):</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/collections</span></code> <code class="docutils literal notranslate"><span class="pre">{name,</span> <span class="pre">description,</span> <span class="pre">position}</span></code> →
-<code class="docutils literal notranslate"><span class="pre">{collection_id}</span></code>. Name is globally UNIQUE.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/collections/{collectionID}</span></code> <code class="docutils literal notranslate"><span class="pre">{name,</span> <span class="pre">description,</span> <span class="pre">position}</span></code> — update in place.</p></li>
+<code class="docutils literal notranslate"><span class="pre">{collection_id}</span></code>. Name is globally UNIQUE: a taken name is a <code class="docutils literal notranslate"><span class="pre">409</span></code>
+(0.29.100; it was a 500).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/collections/{collectionID}</span></code> <code class="docutils literal notranslate"><span class="pre">{name,</span> <span class="pre">description,</span> <span class="pre">position}</span></code> — update in place; <code class="docutils literal notranslate"><span class="pre">404</span></code> for a collection
+that does not exist, <code class="docutils literal notranslate"><span class="pre">409</span></code> for a taken name (0.29.100; both were 500s).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/collections/{collectionID}/delete</span></code> — removes
-the collection; member links cascade, member groups are untouched.</p></li>
+the collection; member links cascade, member groups are untouched;
+<code class="docutils literal notranslate"><span class="pre">404</span></code> for a collection that does not exist (0.29.100; it answered 200).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/collections/{collectionID}/groups</span></code>
 <code class="docutils literal notranslate"><span class="pre">{group_id}</span></code> — link an ADMIN-OWNED group (400 for a group owned by
-a non-admin; linking an already-linked group is an idempotent ok).</p></li>
+a non-admin; <code class="docutils literal notranslate"><span class="pre">404</span></code> for a collection or a group that does not exist,
+0.29.100; linking an already-linked group is an idempotent ok).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/collections/{collectionID}/groups/{groupID}/remove</span></code>
-— unlink; the group and its repos are untouched.</p></li>
+— unlink; the group and its repos are untouched; <code class="docutils literal notranslate"><span class="pre">404</span></code> for a
+collection that does not exist. Every administrative body on these
+routes is bounded (64 KiB) and read by one decoder (0.29.100).</p></li>
 </ul>
 </section>
 <section id="window-boundary-semantics-v0-27-39">

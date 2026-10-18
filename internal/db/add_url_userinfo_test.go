@@ -93,23 +93,23 @@ func TestAddRefusesURLsWithUserinfo(t *testing.T) {
 		add  func() error
 	}{
 		{"non-admin repos, beside a clean URL", func() error {
-			_, err := store.AddReposToGroup(ctx, uid, gid, []string{okURL, badRepo}, 0)
+			_, err := store.AddReposToGroup(ctx, uid, gid, []string{okURL, badRepo}, 0, "")
 			return err
 		}},
 		{"auto-approved repos", func() error {
-			_, err := store.AddReposToGroup(ctx, uid, gid, []string{badHub}, 5)
+			_, err := store.AddReposToGroup(ctx, uid, gid, []string{badHub}, 5, "")
 			return err
 		}},
 		{"admin repos", func() error {
-			_, err := store.AddReposToGroup(ctx, adminID, adminGID, []string{badRepo}, 0)
+			_, err := store.AddReposToGroup(ctx, adminID, adminGID, []string{badRepo}, 0, "")
 			return err
 		}},
 		{"admin org", func() error {
-			_, err := store.AddOrgToGroup(ctx, adminID, adminGID, badOrg, "")
+			_, err := store.AddOrgToGroup(ctx, adminID, adminGID, badOrg, "", "")
 			return err
 		}},
 		{"non-admin org", func() error {
-			_, err := store.AddOrgToGroup(ctx, uid, gid, badOrg, "")
+			_, err := store.AddOrgToGroup(ctx, uid, gid, badOrg, "", "")
 			return err
 		}},
 	} {
@@ -179,7 +179,7 @@ func TestApprovingALegacyCredentialedOrgRequestIsRefused(t *testing.T) {
 		VALUES ($1, $2, 'org', $3, 'pending', 0) RETURNING request_id`, uid, gid, orgURL).Scan(&reqID); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = store.DecideAddRequest(ctx, reqID, adminID, true, "")
+	_, _, err = store.DecideAddRequest(ctx, reqID, adminID, true, "", "")
 	if !errors.Is(err, platform.ErrURLUserinfo) {
 		t.Fatalf("approving a legacy credentialed org request = %v; want platform.ErrURLUserinfo", err)
 	}
@@ -195,7 +195,7 @@ func TestApprovingALegacyCredentialedOrgRequestIsRefused(t *testing.T) {
 		t.Errorf("the refused request's status = %q, %v; want pending (the admin rejects it)", status, err)
 	}
 	// Rejecting it works.
-	if _, _, err := store.DecideAddRequest(ctx, reqID, adminID, false, ""); err != nil {
+	if _, _, err := store.DecideAddRequest(ctx, reqID, adminID, false, "", ""); err != nil {
 		t.Errorf("rejecting the legacy request: %v", err)
 	}
 }

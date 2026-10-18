@@ -69,26 +69,26 @@ func TestDecideAddRequestReapproveFinishesAnOrgApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, changed, err := store.DecideAddRequest(ctx, approvedReq, 1, true, ""); err != nil || !changed || registered() != 1 {
+	if _, changed, err := store.DecideAddRequest(ctx, approvedReq, 1, true, "", ""); err != nil || !changed || registered() != 1 {
 		t.Fatalf("first approval: changed=%v err=%v registered=%d, want true, nil, 1", changed, err, registered())
 	}
 	// The registration is lost after the flip.
 	if _, err := store.pool.Exec(ctx, `DELETE FROM aveloxis_ops.user_org_requests WHERE group_id = $1 AND org_url = $2`, gid, orgURL); err != nil {
 		t.Fatal(err)
 	}
-	if _, changed, err := store.DecideAddRequest(ctx, approvedReq, 1, false, ""); err != nil || changed || registered() != 0 {
+	if _, changed, err := store.DecideAddRequest(ctx, approvedReq, 1, false, "", ""); err != nil || changed || registered() != 0 {
 		t.Errorf("rejecting an approved request: changed=%v err=%v registered=%d, want false, nil, 0", changed, err, registered())
 	}
 	// Restoring the registration completes the approval, so it reports
 	// changed=true: callers notify the requester then (round-12 review: they
 	// were never notified, because the first approval failed before its
 	// email).
-	req, changed, err := store.DecideAddRequest(ctx, approvedReq, 1, true, "")
+	req, changed, err := store.DecideAddRequest(ctx, approvedReq, 1, true, "", "")
 	if err != nil || !changed || req.Status != "approved" || registered() != 1 {
 		t.Errorf("re-approving: status=%q changed=%v err=%v registered=%d, want approved, true, nil, 1", req.Status, changed, err, registered())
 	}
 	// Idempotent: a further re-approve adds nothing and changes nothing.
-	if _, changed, err := store.DecideAddRequest(ctx, approvedReq, 1, true, ""); err != nil || changed || registered() != 1 {
+	if _, changed, err := store.DecideAddRequest(ctx, approvedReq, 1, true, "", ""); err != nil || changed || registered() != 1 {
 		t.Errorf("second re-approve: changed=%v err=%v registered=%d, want false, nil, 1", changed, err, registered())
 	}
 
@@ -97,10 +97,10 @@ func TestDecideAddRequestReapproveFinishesAnOrgApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, changed, err := store.DecideAddRequest(ctx, rejectedReq, 1, false, ""); err != nil || !changed {
+	if _, changed, err := store.DecideAddRequest(ctx, rejectedReq, 1, false, "", ""); err != nil || !changed {
 		t.Fatalf("reject: changed=%v err=%v", changed, err)
 	}
-	if _, changed, err := store.DecideAddRequest(ctx, rejectedReq, 1, true, ""); err != nil || changed {
+	if _, changed, err := store.DecideAddRequest(ctx, rejectedReq, 1, true, "", ""); err != nil || changed {
 		t.Errorf("approving a rejected request: changed=%v err=%v, want false, nil", changed, err)
 	}
 	var n int
@@ -251,11 +251,11 @@ func TestDecideAddRequestOrgRegistrationFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	drop := failOrgRegistration(ctx, t, store, "_avtest_fail_org_first", orgURL)
-	if _, changed, err := store.DecideAddRequest(ctx, reqID, 1, true, ""); err == nil || statusOf(reqID) != "pending" || registrations() != 0 {
+	if _, changed, err := store.DecideAddRequest(ctx, reqID, 1, true, "", ""); err == nil || statusOf(reqID) != "pending" || registrations() != 0 {
 		t.Errorf("approval with a failing registration: changed=%v err=%v status=%q registrations=%d, want an error, still pending, none", changed, err, statusOf(reqID), registrations())
 	}
 	drop()
-	if _, changed, err := store.DecideAddRequest(ctx, reqID, 1, true, ""); err != nil || !changed || registrations() != 1 {
+	if _, changed, err := store.DecideAddRequest(ctx, reqID, 1, true, "", ""); err != nil || !changed || registrations() != 1 {
 		t.Errorf("retry after the failure: changed=%v err=%v registrations=%d, want true, nil, 1", changed, err, registrations())
 	}
 
@@ -266,11 +266,11 @@ func TestDecideAddRequestOrgRegistrationFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	drop = failOrgRegistration(ctx, t, store, "_avtest_fail_org_half", orgURL+"-half")
-	if _, changed, err := store.DecideAddRequest(ctx, halfID, 1, true, ""); err == nil || changed || registrations() != 1 {
+	if _, changed, err := store.DecideAddRequest(ctx, halfID, 1, true, "", ""); err == nil || changed || registrations() != 1 {
 		t.Errorf("re-approve with a failing registration: changed=%v err=%v registrations=%d, want false, an error, 1", changed, err, registrations())
 	}
 	drop()
-	if _, changed, err := store.DecideAddRequest(ctx, halfID, 1, true, ""); err != nil || !changed || registrations() != 2 {
+	if _, changed, err := store.DecideAddRequest(ctx, halfID, 1, true, "", ""); err != nil || !changed || registrations() != 2 {
 		t.Errorf("re-approve completing the half-state: changed=%v err=%v registrations=%d, want true, nil, 2", changed, err, registrations())
 	}
 
@@ -283,7 +283,7 @@ func TestDecideAddRequestOrgRegistrationFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	drop = failOrgRegistrationAtCommit(ctx, t, store, "_avtest_fail_org_commit", orgURL+"-commit")
-	if _, changed, err := store.DecideAddRequest(ctx, commitID, 1, true, ""); err == nil || changed || statusOf(commitID) != "pending" || registrations() != 2 {
+	if _, changed, err := store.DecideAddRequest(ctx, commitID, 1, true, "", ""); err == nil || changed || statusOf(commitID) != "pending" || registrations() != 2 {
 		t.Errorf("approval failing at COMMIT: changed=%v err=%v status=%q registrations=%d, want false, an error, still pending, 2", changed, err, statusOf(commitID), registrations())
 	}
 	drop()
@@ -292,7 +292,7 @@ func TestDecideAddRequestOrgRegistrationFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	drop = failOrgRegistrationAtCommit(ctx, t, store, "_avtest_fail_org_halfcommit", orgURL+"-half-commit")
-	if _, changed, err := store.DecideAddRequest(ctx, halfCommitID, 1, true, ""); err == nil || changed || registrations() != 2 {
+	if _, changed, err := store.DecideAddRequest(ctx, halfCommitID, 1, true, "", ""); err == nil || changed || registrations() != 2 {
 		t.Errorf("re-approve failing at COMMIT: changed=%v err=%v registrations=%d, want false, an error, 2", changed, err, registrations())
 	}
 	drop()
@@ -305,7 +305,7 @@ func TestDecideAddRequestOrgRegistrationFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	drop = failAddRequestWriteAtCommit(ctx, t, store, "_avtest_fail_flip_commit", "UPDATE", fmt.Sprintf("NEW.request_id = %d AND NEW.status = 'approved'", flipID))
-	if _, changed, err := store.DecideAddRequest(ctx, flipID, 1, true, ""); err == nil || changed || statusOf(flipID) != "pending" || registrations() != 2 {
+	if _, changed, err := store.DecideAddRequest(ctx, flipID, 1, true, "", ""); err == nil || changed || statusOf(flipID) != "pending" || registrations() != 2 {
 		t.Errorf("approval whose flip fails at COMMIT: changed=%v err=%v status=%q registrations=%d, want false, an error, pending, 2", changed, err, statusOf(flipID), registrations())
 	}
 	drop()
@@ -316,7 +316,7 @@ func TestDecideAddRequestOrgRegistrationFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 2; i++ {
-		if _, _, err := store.DecideAddRequest(ctx, reposID, 1, true, ""); err != nil {
+		if _, _, err := store.DecideAddRequest(ctx, reposID, 1, true, "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -391,7 +391,7 @@ func TestAddOrgToGroupAutoApproveIsAtomic(t *testing.T) {
 			name += "_commit"
 		}
 		drop := injectOrgRegistrationFailure(ctx, t, store, name, orgURL, atCommit)
-		out, err := store.AddOrgToGroup(ctx, uid, target, orgURL, "")
+		out, err := store.AddOrgToGroup(ctx, uid, target, orgURL, "", "")
 		approved, registered := counts()
 		if err == nil || out.Registered || approved != 0 || registered != 0 {
 			t.Errorf("auto-approve with the registration failing (at COMMIT: %v) = %+v, %v; approved requests %d, registrations %d; want an error and neither", atCommit, out, err, approved, registered)
@@ -405,14 +405,14 @@ func TestAddOrgToGroupAutoApproveIsAtomic(t *testing.T) {
 	// The other direction: the AUDIT request fails at COMMIT, so the
 	// registration must roll back with it.
 	drop := failAddRequestWriteAtCommit(ctx, t, store, "_avtest_fail_audit_commit", "INSERT", fmt.Sprintf("NEW.group_id = %d", target))
-	if out, err := store.AddOrgToGroup(ctx, uid, target, orgURL, ""); err == nil || out.Registered {
+	if out, err := store.AddOrgToGroup(ctx, uid, target, orgURL, "", ""); err == nil || out.Registered {
 		t.Errorf("auto-approve whose audit request fails at COMMIT = %+v, %v; want an error", out, err)
 	}
 	if approved, registered := counts(); approved != 0 || registered != 0 {
 		t.Errorf("after the audit request failed at COMMIT: approved requests %d, registrations %d; want neither", approved, registered)
 	}
 	drop()
-	out, err := store.AddOrgToGroup(ctx, uid, target, orgURL, "")
+	out, err := store.AddOrgToGroup(ctx, uid, target, orgURL, "", "")
 	approved, registered := counts()
 	if err != nil || !out.Registered || out.RequestID == 0 || approved != 1 || registered != 1 {
 		t.Errorf("the retry = %+v, %v; approved requests %d, registrations %d; want registered with one of each", out, err, approved, registered)
@@ -480,13 +480,13 @@ func TestAddOrgToGroupAdminRegistrationFailures(t *testing.T) {
 			name += "_commit"
 		}
 		drop := injectOrgRegistrationFailure(ctx, t, store, name, orgURL, atCommit)
-		out, err := store.AddOrgToGroup(ctx, uid, gid, orgURL, "")
+		out, err := store.AddOrgToGroup(ctx, uid, gid, orgURL, "", "")
 		if err == nil || !strings.Contains(err.Error(), "injected registration failure") || out.Registered || registrations() != 0 {
 			t.Errorf("admin add with the registration failing (at COMMIT: %v) = %+v, %v; registrations %d; want an error naming the injected failure, not registered, none", atCommit, out, err, registrations())
 		}
 		drop()
 	}
-	if out, err := store.AddOrgToGroup(ctx, uid, gid, orgURL, ""); err != nil || !out.Registered || out.RequestID != 0 || registrations() != 1 {
+	if out, err := store.AddOrgToGroup(ctx, uid, gid, orgURL, "", ""); err != nil || !out.Registered || out.RequestID != 0 || registrations() != 1 {
 		t.Errorf("admin add = %+v, %v; registrations %d; want registered directly (no request) with one row", out, err, registrations())
 	}
 }
@@ -564,7 +564,7 @@ func TestAddReposToGroupAutoApproveSurvivesACancelledRequest(t *testing.T) {
 	reqCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	time.AfterFunc(500*time.Millisecond, cancel)
-	out, err := store.AddReposToGroup(reqCtx, uid, gid, []string{repoURL}, 5)
+	out, err := store.AddReposToGroup(reqCtx, uid, gid, []string{repoURL}, 5, "")
 	if reqCtx.Err() == nil {
 		t.Fatalf("the request context was not cancelled during the add (add = %+v, %v); the probe did not exercise the cancel", out, err)
 	}
@@ -659,11 +659,11 @@ func TestProcessApprovedAddRequestPassesDoNotRepeatWork(t *testing.T) {
 	}
 	first := make(chan pass, 1)
 	go func() {
-		n, _, err := store.ProcessApprovedAddRequest(ctx, reqID)
+		n, _, err := store.ProcessApprovedAddRequest(ctx, reqID, "")
 		first <- pass{n, err}
 	}()
 	time.Sleep(100 * time.Millisecond)
-	secondN, _, secondErr := store.ProcessApprovedAddRequest(ctx, reqID)
+	secondN, _, secondErr := store.ProcessApprovedAddRequest(ctx, reqID, "")
 	firstPass := <-first
 	if firstPass.err != nil {
 		t.Fatalf("the first pass returned %v", firstPass.err)
@@ -676,7 +676,7 @@ func TestProcessApprovedAddRequestPassesDoNotRepeatWork(t *testing.T) {
 	}
 	// The guard is released when a pass ends: a later pass runs (and finds
 	// nothing left to do).
-	if n, _, err := store.ProcessApprovedAddRequest(ctx, reqID); err != nil || n != 0 {
+	if n, _, err := store.ProcessApprovedAddRequest(ctx, reqID, ""); err != nil || n != 0 {
 		t.Errorf("a pass after the first finished = %d, %v; want 0, nil", n, err)
 	}
 	var notDone, links int
@@ -761,7 +761,7 @@ func TestProcessApprovedAddRequestHoldsNoConnectionAcrossItems(t *testing.T) {
 		go func(p int) {
 			defer wg.Done()
 			<-start
-			_, _, errs[p] = store.ProcessApprovedAddRequest(deadline, requests[p])
+			_, _, errs[p] = store.ProcessApprovedAddRequest(deadline, requests[p], "")
 		}(p)
 	}
 	close(start)
@@ -873,14 +873,14 @@ func TestProcessApprovedAddRequestRetriesTransientFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 		failLink("transient-"+code, code)
-		if n, _, err := store.ProcessApprovedAddRequest(ctx, reqID); err == nil || n != 0 {
+		if n, _, err := store.ProcessApprovedAddRequest(ctx, reqID, ""); err == nil || n != 0 {
 			t.Errorf("%s: a pass whose only item failed retryably = %d, %v; want 0 and the error", code, n, err)
 		}
 		if stamp := stampOf(reqID, transient); stamp != "NULL" {
 			t.Errorf("%s: a retryably failed item was stamped %s; want it left unprocessed so re-approving retries it", code, stamp)
 		}
 		dropTrigger()
-		if n, _, err := store.ProcessApprovedAddRequest(ctx, reqID); err != nil || n != 1 {
+		if n, _, err := store.ProcessApprovedAddRequest(ctx, reqID, ""); err != nil || n != 1 {
 			t.Errorf("%s: the retry pass = %d, %v; want 1, nil", code, n, err)
 		}
 		if stamp := stampOf(reqID, transient); !positive(stamp) {
@@ -899,7 +899,7 @@ func TestProcessApprovedAddRequestRetriesTransientFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 		failLink("bad-data-"+code, code)
-		if n, _, err := store.ProcessApprovedAddRequest(ctx, reqID); err != nil || n != 1 {
+		if n, _, err := store.ProcessApprovedAddRequest(ctx, reqID, ""); err != nil || n != 1 {
 			t.Errorf("%s: a pass with one bad-data item and one good item = %d, %v; want 1, nil", code, n, err)
 		}
 		if stamp := stampOf(reqID, bad); stamp != "-1" {
@@ -922,7 +922,7 @@ func TestProcessApprovedAddRequestRetriesTransientFailures(t *testing.T) {
 	for _, code := range []string{"40001", "22001"} {
 		failed, later1, later2 := urlPrefix+"auto-fail-"+code, urlPrefix+"auto-later1-"+code, urlPrefix+"auto-later2-"+code
 		failLink("auto-fail-"+code, code)
-		out, err := store.AddReposToGroup(ctx, uid, gid, []string{failed, later1, later2}, 5)
+		out, err := store.AddReposToGroup(ctx, uid, gid, []string{failed, later1, later2}, 5, "")
 		if out.RequestID == 0 || out.Enqueued != 2 || out.Failed != 1 {
 			t.Errorf("%s: auto-approved add with one failing item = %+v; want a request, 2 enqueued, 1 failed", code, out)
 		}
@@ -975,7 +975,7 @@ func TestProcessApprovedAddRequestRetriesTransientFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	failLink("fails", "40001")
-	out, err := store.AddReposToGroup(ctx, uid, gid, []string{urlPrefix + "auto-first-fails", urlPrefix + "auto-stamp-fails"}, 5)
+	out, err := store.AddReposToGroup(ctx, uid, gid, []string{urlPrefix + "auto-first-fails", urlPrefix + "auto-stamp-fails"}, 5, "")
 	if out.RequestID == 0 || out.Failed != 1 || err == nil || !strings.Contains(err.Error(), fmt.Sprintf("add request %d:", out.RequestID)) || !strings.Contains(err.Error(), "injected stamp failure") {
 		t.Errorf("auto-approved add whose first item fails and whose second item's stamp write fails = %+v, %v; want 1 failed and an error naming the request and the stamp failure", out, err)
 	}

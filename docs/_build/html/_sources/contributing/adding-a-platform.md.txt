@@ -373,7 +373,7 @@ func detectPlatform(url string) model.Platform {
 }
 ```
 
-In practice, operators will configure a list of Bugzilla host patterns in `aveloxis.json` (similar to `gitlab_hosts`) so the dispatch is deterministic.
+In practice, operators will configure a list of Bugzilla host patterns in `aveloxis.json` (as `gitlab.base_url` names the GitLab instance) so the dispatch is deterministic.
 
 ### Step 7 — implement the meaningful methods
 

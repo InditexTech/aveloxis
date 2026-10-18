@@ -4,9 +4,10 @@
 // Source-contract tests for v0.19.0 admin web routes.
 //
 // New routes:
-//   - GET  /admin/groups/pending       — list of pending groups awaiting review
-//   - POST /admin/groups/{id}/approve  — admin approves a group
-//   - POST /admin/groups/{id}/reject   — admin rejects a group
+//   - GET  /admin/groups/pending       — the approvals page (pending additions)
+//   - POST /admin/groups/{id}/reject   — admin rejects a group (the approve
+//     route went with group approval in 0.29.100: the approval unit is the
+//     addition, v0.27.20)
 //   - GET  /admin/users                — list of all users
 //   - POST /admin/users/{id}/admin     — toggle admin role
 //
@@ -63,14 +64,6 @@ func TestAdminRoutesRegistered(t *testing.T) {
 		!strings.Contains(src, "requireAdmin(s.handlePendingGroups") {
 		t.Error("the pending-groups admin page must be wrapped in requireAdmin (not requireAuth) — non-admins must NOT see other users' pending submissions")
 	}
-}
-
-// TestApproveGroupHandlerExists pins the POST handler.
-func TestApproveGroupHandlerExists(t *testing.T) {
-	if !strings.Contains(srctest.PackageFunc(t, "internal/web", "func (s *Server) Handler("), "s.requireAdmin(s.handleApproveGroup)") {
-		t.Error("Handler must register handleApproveGroup — the POST /admin/groups/{id}/approve handler — behind requireAdmin")
-	}
-	srctest.PackageFunc(t, "internal/web", "func (s *Server) handleApproveGroup(")
 }
 
 // TestRejectGroupHandlerExists pins the rejection POST handler.

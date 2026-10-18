@@ -1620,10 +1620,47 @@ func removedKeyWarnings(data []byte) []string {
 // is a file the operator wrote and must not be silently replaced.
 var ErrNotFound = errors.New("config file not found")
 
+// MailerConfig is the mailer's configuration as aveloxis.json gives it —
+// the one derivation every process's mailer is built from (cmd's
+// newWebServer, apiOptions, wireDigestMailer and test-mail; stage 1f of
+// summary/59 moved it here from cmd so Load validates the same value).
+func (c *Config) MailerConfig() mailer.Config {
+	return mailer.Config{
+		GmailUser:        c.Mail.GmailUser,
+		GmailAppPassword: c.Mail.GmailAppPassword,
+		FromName:         c.Mail.FromName,
+		SiteURL:          c.Mail.SiteURL,
+		OperatorEmail:    c.Mail.OperatorEmail,
+		SPAURL:           c.Web.SPAURL,
+	}
+}
+
 // validate refuses values no accessor can honour without a silent
 // coercion (SR-10: one default layer, never a clamp the operator cannot
 // see). Every refusal names the JSON key.
 func (c *Config) validate() error {
+	// An invalid mail block is fatal at load (N7, stage 1f of summary/59),
+	// as every other invalid value is since v0.29.61: a half-filled block
+	// (one of gmail_user / gmail_app_password), a user that is not an
+	// address, a password that is not an App Password, a bad site_url.
+	// Until now mailer.New logged a WARN and ran with mail disabled, so an
+	// operator who mistyped the password found out at the first refused
+	// confirmation link. An empty block (mail off) is valid.
+	if err := mailer.ValidateConfig(c.MailerConfig()); err != nil {
+		return fmt.Errorf("mail: %w", err)
+	}
+	// gitlab.base_url names the one instance the GitLab keys are sent to
+	// and the web base every classifier takes as its hint (0.29.100). A
+	// value from which no web base derives (no scheme, a query, …) would
+	// build keyed clients from one string while every gate read "no
+	// instance" (round-4 review): refused here. Empty means no instance.
+	if b := strings.TrimSpace(c.GitLab.BaseURL); b != "" {
+		if _, ok := platform.GitLabWebBaseForAPI(b); !ok {
+			// Echoed redacted (the refusal lands in the log; a pasted token
+			// must not).
+			return fmt.Errorf("gitlab.base_url %q is not an absolute http:// or https:// URL of the instance's API, such as https://gitlab.example.org/api/v4 (no query, fragment or user name); empty it to run without a GitLab instance", platform.RedactURLUserinfo(b))
+		}
+	}
 	for name, word := range c.Capacity {
 		if _, known := capacity.Shipped[name]; !known {
 			return fmt.Errorf("capacity.%s is not a quota — the quotas are %s", name, strings.Join(capacity.QuotaNames(), ", "))

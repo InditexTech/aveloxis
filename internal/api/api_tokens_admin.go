@@ -71,11 +71,11 @@ func (s *Server) handleAdminAPITokenGrant(w http.ResponseWriter, r *http.Request
 		RateLimitPerHour *int64 `json:"rate_limit_per_hour"`
 		RateLimitPerDay  *int64 `json:"rate_limit_per_day"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {user_id, label, lifetime_days?, rate_limit_per_hour?, rate_limit_per_day?}")
 		return
 	}
-	if body.UserID <= 0 {
+	if body.UserID <= 0 || body.UserID > math.MaxInt32 { // users.user_id is int4 (58 §7 item 19: a larger value was a 500)
 		writeAuthError(w, http.StatusBadRequest, "user_id names the account the token authenticates as")
 		return
 	}

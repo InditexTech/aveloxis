@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/url"
 	"os"
 	"os/signal"
 	"os/user"
@@ -99,7 +98,7 @@ func adoptForgeIDFor(ctx context.Context, store adoptForgeIDStore, clientFor fun
 // adoptClientFor picks the forge client for one repository: GitHub's for a
 // GitHub repository; for GitLab, a client on the configured instance only
 // when the repository lives on that instance's host (the org scan's guard,
-// platform.GitLabAPIBaseForHost) — asking another instance would read an
+// platform.GitLabAPIBaseForURL) — asking another instance would read an
 // unrelated project's ID (SR-6) and send keys off-host; generic git has no
 // API to ask.
 func adoptClientFor(r *model.Repo, gh repoInfoFetcher, gitlabBase string, glKeys *platform.KeyPool, logger *slog.Logger) (repoInfoFetcher, error) {
@@ -107,13 +106,9 @@ func adoptClientFor(r *model.Repo, gh repoInfoFetcher, gitlabBase string, glKeys
 	case model.PlatformGitHub:
 		return gh, nil
 	case model.PlatformGitLab:
-		u, err := url.Parse(r.GitURL)
-		if err != nil || u.Host == "" {
-			return nil, fmt.Errorf("cannot read the host of %q", r.GitURL)
-		}
-		apiBase, ok := platform.GitLabAPIBaseForHost(gitlabBase, u.Host)
+		apiBase, ok := platform.GitLabAPIBaseForURL(gitlabBase, r.GitURL)
 		if !ok {
-			return nil, fmt.Errorf("the repository is on %s, not the configured GitLab instance (gitlab.base_url %q) — its project ID can only be read there", u.Host, gitlabBase)
+			return nil, fmt.Errorf("the repository %s is on a host that is not the configured GitLab instance (gitlab.base_url %q) — its project ID can only be read there", platform.RedactURLUserinfo(r.GitURL), gitlabBase)
 		}
 		return gitlab.New(apiBase, glKeys, logger), nil
 	}

@@ -35,9 +35,7 @@ claim on two axes, and they have different reach:
 - **Presence — every block, every key.** Each section of the snippet
   must carry every field of its Go config struct. An omitted key is
   invisible to any value check (absent simply means "use the
-  default"), so presence is asserted separately. The one reasoned
-  exemption is `github.gitlab_hosts`: the two forge blocks share one
-  struct and that field is GitLab-only.
+  default"), so presence is asserted separately.
 - **Values — every block, every field, plus the top-level scalars.**
   Each field is compared against the compiled default: through its
   effective accessor where it has one, and by value where it does
@@ -74,8 +72,7 @@ a half against its own reference table below:
   },
   "gitlab": {
     "api_keys": ["glpat-your_token_here"],
-    "base_url": "https://gitlab.com/api/v4",
-    "gitlab_hosts": ["gitlab.freedesktop.org"]
+    "base_url": "https://gitlab.com/api/v4"
   },
   "mail": {
     "gmail_user": "aveloxis-ops@yourdomain.com",
@@ -238,8 +235,7 @@ Every field is optional except `database` credentials and at least one API key s
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `gitlab.api_keys` | string[] | `[]` | GitLab personal access tokens. |
-| `gitlab.base_url` | string | `"https://gitlab.com/api/v4"` | GitLab API base URL. Change for self-hosted GitLab instances. It also names the one host the `gitlab.api_keys` are sent to (v0.29.11): the periodic GitLab group refresh skips, with a WARN, any group whose URL is on a different host rather than send it the keys. Before v0.29.11 that refresh used the GitHub keys. |
-| `gitlab.gitlab_hosts` | string[] | `[]` | Additional hostnames to recognize as GitLab instances. Use this for self-hosted GitLab servers whose hostnames do not contain "gitlab". |
+| `gitlab.base_url` | string | `"https://gitlab.com/api/v4"` | GitLab API base URL. Change for self-hosted GitLab instances. It names the one instance the `gitlab.api_keys` are sent to (v0.29.11) and, from 0.29.100, the instance whose organization and repository URLs are classified as GitLab whatever the host name says: a GitLab group on another instance is refused when added (web, API, CLI loaders, admin approval), as a GitHub organization off `github.base_url` is, and the periodic group refresh skips a pre-existing such row with a WARN. The value must be an absolute `http://` or `https://` URL of the instance's API with no query, fragment or user name, or the process refuses to start naming it; an explicit `""` runs without a GitLab instance (every GitLab group is then refused). |
 
 ### Collection
 
@@ -454,7 +450,7 @@ A quota set by `DEFAULT`, `SHADOW` or `OFF` is read-only on the Capacity page. A
 
 An approved organization is collected in full, but the account links its repositories only up to its repository value: when you approve a large organization for an account, raise that account's value. An administrator can raise or lower one account's repository and request values on the Capacity page; their own signed-in session is never refused (it is still counted). A new quota ships in shadow so its effect can be read in the logs for about a week before it is turned on.
 
-**Set your own contact address before you enforce any quota.** The migrate seeds the contact address every refusal names as `aveloxis.io@gmail.com`, the Aveloxis project's address, on every deployment. Left as it is, heavy users of your host are told to write to the Aveloxis project. Change it to your own on the Capacity page, or with `POST /api/v1/admin/capacity/contact` and `{"contact_email": "…"}` from an administrator's session (an empty value offers no address); see the API guide, "Capacity (admin)".
+**Set your own contact address before you enforce any quota.** The address every refusal names comes from `aveloxis_ops.capacity_settings`. A new install (0.29.100 on) seeds it from `mail.operator_email` when that key is set, and leaves it empty otherwise (a refusal then names no address); a deployment first migrated by 0.29.89–0.29.99 was seeded with `aveloxis.io@gmail.com`, the Aveloxis project's address, and keeps it until you change it — left as it is, heavy users of your host are told to write to the Aveloxis project. Set it on the Capacity page, or with `POST /api/v1/admin/capacity/contact` and `{"contact_email": "…"}` from an administrator's session (an empty value offers no address); see the API guide, "Capacity (admin)".
 
 Log level descriptions:
 
@@ -646,7 +642,7 @@ does).
 
 ## Email (Gmail SMTP, optional)
 
-Aveloxis can send transactional emails (welcome on first signup, group-approval notifications) via Gmail SMTP. The mailer is **optional** — when not configured, the application works fine without sending email.
+Aveloxis can send transactional emails (welcome on first signup, account-email confirmation links, the operator's notice of a pending addition and its decision, the vulnerability digest) via Gmail SMTP. The mailer is **optional** — when not configured, the application works fine without sending email.
 
 ### Setup
 
@@ -675,14 +671,14 @@ Aveloxis can send transactional emails (welcome on first signup, group-approval 
 
 ### Validation at startup
 
-`aveloxis web`, `aveloxis api` and `aveloxis serve` each run `mailer.ValidateConfig` against the supplied block when they start, and log the result: `mailer configured` (with `operator_email`; since 0.29.71 both addresses on that line are masked to their first character and domain, e.g. `o***@example.com`), `mailer disabled`, or a WARN. If validation fails, the WARN line is emitted before any user can sign up:
+The `mail` block is checked when `aveloxis.json` loads, by every command (0.29.100 on): an invalid block stops the process with `invalid config: mail: …` naming the field, before any user can sign up. A valid block is reported once at startup by `aveloxis web`, `aveloxis api` and `aveloxis serve`: `mailer configured` (with `operator_email`; since 0.29.71 both addresses on that line are masked to their first character and domain, e.g. `o***@example.com`) or `mailer disabled`. The refusals:
 
 - `mail.gmail_user "aveloxis.io" is not an email address` — you set the bare domain. Use the full address (`ops@aveloxis.io`).
 - `mail.gmail_app_password is N character(s) after removing display-format spaces but Google App Passwords are exactly 16 lowercase letters` — you pasted a regular password or something else. Generate an actual App Password.
 - `mail.gmail_user is empty but mail.gmail_app_password is set` (or vice versa) — partial config. Either fill both fields or empty both.
-- `mail.site_url must be an absolute http:// or https:// URL with a host` (or `must not contain a query (?), a fragment (#), a user name or spaces`) — the value would make links that cannot be followed, such as a bare domain or a comma-separated list of URLs. Use the one full public URL (`https://aveloxis.example`).
+- `mail.site_url must be an absolute http:// or https:// URL with a host` (or `must not contain a query (?), a fragment (#), a user name or spaces`) — the value would make links that cannot be followed, such as a bare domain or a comma-separated list of URLs. Use the one full public URL (`https://aveloxis.example`). A set `site_url` is checked even with the Gmail pair empty: a value that is set must be right.
 
-When validation fails, the mailer falls back to disabled behavior so the rest of the application keeps working: no email is sent, and every send returns a "not configured" error. Notification emails (welcome, approval and add-request) ignore that error; `aveloxis test-mail` refuses before sending and exits non-zero with the validation error, `aveloxis serve` does not start the vulnerability digest and logs an ERROR saying why, and the account-email form refuses new addresses. Fix the config and restart the processes (`aveloxis stop all`, then `aveloxis start all`) to enable the mailer.
+When validation fails, every process refuses to start (0.29.100 on): `aveloxis.json` is loaded with `invalid config: mail: …` naming the field, as for any other invalid value — a half-filled block (`gmail_user` without `gmail_app_password` or the reverse), a `gmail_user` that is not an address, a password that is not a 16-letter App Password, a `site_url` that is not a URL. Until 0.29.99 the mailer ran with mail disabled and a WARN instead, so a mistyped password surfaced only at the first refused confirmation link. Fix the block, or empty it to run without mail, then start the processes again.
 
 ### Verifying the setup with `aveloxis test-mail`
 
@@ -692,11 +688,11 @@ After fixing the config, send a one-shot test email without waiting for a user t
 aveloxis test-mail your-personal-address@example.com
 ```
 
-The command runs the same `ValidateConfig` check, then calls `mailer.Send` against `smtp.gmail.com:587`. Output:
+The mail block was already checked when `aveloxis.json` loaded (an invalid one stops the command like any other, naming the field); the command then calls `mailer.Send` against `smtp.gmail.com:587`. Output:
 
 - **Success**: `test email sent successfully to=...` — Gmail accepted the message, so the credentials are working. The test email arrives within seconds.
 - **Not sent**: `send failed: mailer: mail is not configured` (the `mail` block is empty) or `send failed: mailer: recipient skipped: …` (the recipient is not one deliverable address — a list, a quoted local part, or longer than the SMTP limits). The command exits non-zero; no SMTP attempt is made.
-- **Validation error**: command exits non-zero with a clear message. Fix `aveloxis.json` and try again. No SMTP attempt is made.
+- **Invalid mail block**: the command stops at load with `invalid config: mail: …` naming the field. Fix `aveloxis.json` and try again. No SMTP attempt is made.
 - **SMTP error from Gmail itself** (e.g. `535 5.7.8 Username and Password not accepted`): credentials look syntactically correct but Gmail rejected them. Most likely: App Password generated against a different account, or 2-Step Verification was just disabled on the account that owns the App Password.
 
 ### Transport details

@@ -128,7 +128,7 @@ func TestRefreshUserOrgsSkipsAnOrgWhoseURLCarriesCredentials(t *testing.T) {
 	}
 	// Nor does it count as a never-scanned org that would re-fire the
 	// demand scan every poll tick.
-	if never, err := fx.s.store.HasNeverScannedOrgs(ctx, fx.s.ghAPIBase); err != nil || never {
+	if never, err := fx.s.store.HasNeverScannedOrgs(ctx, fx.s.ghAPIBase, ""); err != nil || never {
 		t.Errorf("HasNeverScannedOrgs = %v, %v; a credentialed row must not count", never, err)
 	}
 }

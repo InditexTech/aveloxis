@@ -26,6 +26,11 @@ type allocFixture struct {
 	tag   string
 }
 
+// allocContact is the operator address the fixture seeds the way serve and
+// migrate seed it (mail.operator_email through SeedCapacityContact); every
+// refusal must name it.
+const allocContact = "operator@example.test"
+
 // newAllocFixture makes the account (admin as asked), allowed as its
 // repos_allowed override, n tracked repositories, and sets the
 // repos_per_account quota to mode (restored at cleanup).
@@ -33,6 +38,18 @@ func newAllocFixture(t *testing.T, admin bool, allowed, n int, mode capacity.Mod
 	t.Helper()
 	store, ctx := openSR5Store(t)
 	f := &allocFixture{store: store, ctx: ctx, tag: fmt.Sprintf("_avalloc%d", time.Now().UnixNano())}
+	// The refusal names the operator's address, end to end (SR-10; stage 1f
+	// of summary/59 seeds the row EMPTY): the settings row is put in the
+	// never-set state a fresh install has and seeded the way serve and
+	// migrate seed it; the row is restored at cleanup.
+	prevContact, prevBy := readCapacityContactRow(t, store)
+	t.Cleanup(func() {
+		cleanupExecRetry(context.Background(), store, `UPDATE aveloxis_ops.capacity_settings SET contact_email = $1, updated_by = $2 WHERE id = 1`, prevContact, prevBy)
+	})
+	mustExecRetry(ctx, t, store, `UPDATE aveloxis_ops.capacity_settings SET contact_email = '', updated_by = NULL WHERE id = 1`)
+	if seeded, err := store.SeedCapacityContact(ctx, allocContact); err != nil || !seeded {
+		t.Fatalf("seeding the contact on a never-set row = %v, %v; want written", seeded, err)
+	}
 	before, err := store.GetCapacityQuotas(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -109,9 +126,92 @@ func wantExceeded(t *testing.T, err error, used, allowed, wanted int) {
 		t.Errorf("Exceeded = quota %s used %d allowed %d wanted %d; want %s %d %d %d",
 			ex.Quota, ex.Used, ex.Allowed, ex.Wanted, capacity.QuotaReposPerAccount, used, allowed, wanted)
 	}
-	if ex.Contact == "" {
-		t.Error("Exceeded carries no contact address; the message must say whom to write")
+	if ex.Contact != allocContact {
+		t.Errorf("Exceeded.Contact = %q; want the seeded operator address %q (the message must say whom to write)", ex.Contact, allocContact)
 	}
+}
+
+// contactStampOf renders an administrator's stamp for a failure message.
+func contactStampOf(by *int) any {
+	if by == nil {
+		return "nobody"
+	}
+	return *by
+}
+
+// readCapacityContactRow returns the settings row's contact and the
+// administrator's stamp (nil when never set by one).
+func readCapacityContactRow(t *testing.T, store *PostgresStore) (contact string, by *int) {
+	t.Helper()
+	if err := store.pool.QueryRow(context.Background(), `SELECT contact_email, updated_by FROM aveloxis_ops.capacity_settings WHERE id = 1`).Scan(&contact, &by); err != nil {
+		t.Fatal(err)
+	}
+	return contact, by
+}
+
+// TestSeedCapacityContactFillsOnlyANeverSetRow (stage 1f of summary/59;
+// SR-10): serve and migrate seed the refusal contact from
+// mail.operator_email only on a row nobody has set — empty, with no
+// administrator's stamp. A row already holding an address without a stamp
+// (0.29.89 seeded the project's address that way), a row an administrator
+// cleared (empty, stamped) and an empty operator address all seed nothing;
+// an implausible address is refused without a write.
+func TestSeedCapacityContactFillsOnlyANeverSetRow(t *testing.T) {
+	store, ctx := openSR5Store(t)
+	var admin int
+	if err := store.pool.QueryRow(ctx, `INSERT INTO aveloxis_ops.users (login_name, oauth_provider, admin) VALUES ($1, 'github', TRUE) RETURNING user_id`,
+		fmt.Sprintf("_avseed%d", time.Now().UnixNano())).Scan(&admin); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cleanupExecRetry(context.Background(), store, `DELETE FROM aveloxis_ops.users WHERE user_id = $1`, admin)
+	})
+	// Registered after the account's delete, so it runs before it (the
+	// stamp references the account).
+	prevContact, prevBy := readCapacityContactRow(t, store)
+	t.Cleanup(func() {
+		cleanupExecRetry(context.Background(), store, `UPDATE aveloxis_ops.capacity_settings SET contact_email = $1, updated_by = $2 WHERE id = 1`, prevContact, prevBy)
+	})
+	set := func(contact string, by *int) {
+		t.Helper()
+		mustExecRetry(ctx, t, store, `UPDATE aveloxis_ops.capacity_settings SET contact_email = $1, updated_by = $2 WHERE id = 1`, contact, by)
+	}
+	wantRow := func(step, contact string, by *int) {
+		t.Helper()
+		got, gotBy := readCapacityContactRow(t, store)
+		if got != contact || (gotBy == nil) != (by == nil) || (by != nil && *gotBy != *by) {
+			t.Errorf("%s: row = %q stamped by %v; want %q stamped by %v", step, got, contactStampOf(gotBy), contact, contactStampOf(by))
+		}
+	}
+
+	set("", nil)
+	if seeded, err := store.SeedCapacityContact(ctx, " ops@example.test "); err != nil || !seeded {
+		t.Fatalf("never-set row = %v, %v; want written", seeded, err)
+	}
+	wantRow("never-set row seeded (trimmed)", "ops@example.test", nil)
+
+	if seeded, err := store.SeedCapacityContact(ctx, "other@example.test"); err != nil || seeded {
+		t.Errorf("a row already holding an address = %v, %v; want left alone", seeded, err)
+	}
+	wantRow("an unstamped address is left alone", "ops@example.test", nil)
+
+	set("", &admin)
+	if seeded, err := store.SeedCapacityContact(ctx, "ops@example.test"); err != nil || seeded {
+		t.Errorf("a row an administrator cleared = %v, %v; want left alone", seeded, err)
+	}
+	wantRow("an administrator's empty contact is left alone", "", &admin)
+
+	set("", nil)
+	if seeded, err := store.SeedCapacityContact(ctx, "   "); err != nil || seeded {
+		t.Errorf("an empty operator address = %v, %v; want nothing seeded", seeded, err)
+	}
+	wantRow("an empty operator address seeds nothing", "", nil)
+	for _, bad := range []string{"not-an-address", "a@b?x=1", "a@b\r\nX: y", "<a@b>"} {
+		if seeded, err := store.SeedCapacityContact(ctx, bad); !errors.Is(err, ErrInvalidCapacitySettings) || seeded {
+			t.Errorf("operator address %q = %v, %v; want ErrInvalidCapacitySettings and no write", bad, seeded, err)
+		}
+	}
+	wantRow("an implausible operator address writes nothing", "", nil)
 }
 
 // TestRepoAllocationRefusesPastTheCapAndAdmitsWhatTheAccountReaches: the
@@ -146,14 +246,14 @@ func TestRepoAllocationCountsPendingAdditions(t *testing.T) {
 	if _, err := f.store.AddRepoToGroupByID(f.ctx, f.group, f.repos[0]); err != nil {
 		t.Fatal(err)
 	}
-	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, []string{f.url("new-a"), f.url("new-b")}, 0)
+	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, []string{f.url("new-a"), f.url("new-b")}, 0, "")
 	if err != nil || out.Pending != 2 {
 		t.Fatalf("two unknown URLs = %+v, %v; want 2 pending", out, err)
 	}
 	_, err = f.store.AddRepoToGroupByID(f.ctx, f.group, f.repos[1])
 	wantExceeded(t, err, 3, 3, 1)
 	// A rejected request no longer holds places.
-	if _, _, err := f.store.DecideAddRequest(f.ctx, out.RequestID, 0, false, ""); err != nil {
+	if _, _, err := f.store.DecideAddRequest(f.ctx, out.RequestID, 0, false, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := f.store.AddRepoToGroupByID(f.ctx, f.group, f.repos[1]); err != nil || !ok {
@@ -174,17 +274,17 @@ func TestRepoAllocationApprovedItemsKeepTheirPlace(t *testing.T) {
 	if _, err := f.store.AddRepoToGroupByID(f.ctx, f.group, f.repos[0]); err != nil {
 		t.Fatal(err)
 	}
-	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, []string{f.url("held-a"), f.url("held-b")}, 0)
+	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, []string{f.url("held-a"), f.url("held-b")}, 0, "")
 	if err != nil || out.Pending != 2 {
 		t.Fatalf("two unknown URLs = %+v, %v; want 2 pending", out, err)
 	}
-	if _, changed, err := f.store.DecideAddRequest(f.ctx, out.RequestID, 0, true, ""); err != nil || !changed {
+	if _, changed, err := f.store.DecideAddRequest(f.ctx, out.RequestID, 0, true, "", ""); err != nil || !changed {
 		t.Fatalf("approve = %v, %v", changed, err)
 	}
 	// Approved, not yet processed: the places are still held.
 	_, err = f.store.AddRepoToGroupByID(f.ctx, f.group, f.repos[1])
 	wantExceeded(t, err, 3, 3, 1)
-	processed, failed, err := f.store.ProcessApprovedAddRequest(f.ctx, out.RequestID)
+	processed, failed, err := f.store.ProcessApprovedAddRequest(f.ctx, out.RequestID, "")
 	if err != nil || processed != 2 || failed != 0 {
 		t.Fatalf("the approval pass at the cap = %d processed, %d failed, %v; want 2, 0, nil", processed, failed, err)
 	}
@@ -222,7 +322,7 @@ func TestRepoAllocationRequestWriterHoldsUnderTheLock(t *testing.T) {
 // administrator rejected are never processed, so they hold nothing.
 func TestRepoAllocationRejectedGroupReleasesItsPlaces(t *testing.T) {
 	f := newAllocFixture(t, false, 2, 1, capacity.Enforce)
-	if _, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, []string{f.url("rj-a"), f.url("rj-b")}, 0); err != nil {
+	if _, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, []string{f.url("rj-a"), f.url("rj-b")}, 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	other, err := f.store.CreateUserGroup(f.ctx, f.user, "alloc-after-reject")
@@ -328,7 +428,7 @@ func TestRepoAllocationShadowLinksAndOffDoesNotCount(t *testing.T) {
 func TestRepoAllocationBulkAddIsAllOrNothing(t *testing.T) {
 	f := newAllocFixture(t, false, 3, 3, capacity.Enforce)
 	unknown := fmt.Sprintf("https://github.com/%s/not-tracked-yet", f.tag)
-	_, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, append(append([]string{}, f.urls...), unknown), 0)
+	_, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, append(append([]string{}, f.urls...), unknown), 0, "")
 	wantExceeded(t, err, 0, 3, 4)
 	var requests int
 	if err := f.store.pool.QueryRow(f.ctx, `SELECT COUNT(*) FROM aveloxis_ops.collection_add_requests WHERE user_id = $1`, f.user).Scan(&requests); err != nil {
@@ -338,7 +438,7 @@ func TestRepoAllocationBulkAddIsAllOrNothing(t *testing.T) {
 		t.Errorf("after a refused paste: reach %d, requests %d; want 0, 0", got, requests)
 	}
 	// The same paste without the extra fits exactly.
-	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls, 0)
+	out, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls, 0, "")
 	if err != nil || out.Linked != 3 {
 		t.Errorf("a paste that fits = %+v, %v; want 3 linked", out, err)
 	}
@@ -435,7 +535,7 @@ func TestConcurrentPastesAreAllOrNothing(t *testing.T) {
 		wg.Add(1)
 		go func(i int, urls []string) {
 			defer wg.Done()
-			outs[i], errs[i] = f.store.AddReposToGroup(f.ctx, f.user, f.group, urls, 0)
+			outs[i], errs[i] = f.store.AddReposToGroup(f.ctx, f.user, f.group, urls, 0, "")
 		}(i, urls)
 	}
 	wg.Wait()
@@ -481,7 +581,7 @@ func TestConcurrentPastesWithNewURLsAreAllOrNothing(t *testing.T) {
 		wg.Add(1)
 		go func(i int, urls []string) {
 			defer wg.Done()
-			outs[i], errs[i] = f.store.AddReposToGroup(f.ctx, f.user, f.group, urls, 0)
+			outs[i], errs[i] = f.store.AddReposToGroup(f.ctx, f.user, f.group, urls, 0, "")
 		}(i, urls)
 	}
 	wg.Wait()

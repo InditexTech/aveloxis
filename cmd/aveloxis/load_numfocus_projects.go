@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/importers/numfocus"
 	"github.com/spf13/cobra"
@@ -22,9 +23,11 @@ import (
 //
 // Creates two user_groups under --user-id (default 1) — "NumFocus
 // Sponsored" and "NumFocus Affiliated" — and adds each project's
-// primary repository to the appropriate group via AddRepoToGroup
-// (same path the web UI uses). Idempotent: re-running is a no-op
-// for repos already in the group.
+// primary repository to the appropriate group through the admin
+// service's one add (Service.AddToGroup: the path the web UI and the API
+// use, under the per-add approval rule — a non-admin --user-id's new
+// repositories pend for approval). Idempotent: re-running is a no-op for
+// repos already in the group.
 //
 // The project catalog is the YAML embedded in
 // internal/importers/numfocus/data.yaml. Updates require editing
@@ -111,22 +114,26 @@ func runLoadNumfocusProjects(cfgPath string, opts numfocusLoadOpts) error {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer store.Close()
+	// The one service this command writes its groups through (stage 1 of
+	// summary/59; the CLI has no caches, so no hooks).
+	svc := admin.New(store, admin.Options{GitHubAPIBase: cfg.GitHub.GitHubAPIBase(), GitLabAPIBase: cfg.GitLab.BaseURL}, nil, logger)
 
 	// v0.21.5: schema migration intentionally NOT invoked here —
 	// reserved for `aveloxis migrate` and `aveloxis serve`. Pinned
 	// by a source-contract test that fails if the call returns.
 
-	sponsoredGroupID, err := ensureNumfocusGroup(ctx, store, opts.UserID, "NumFocus Sponsored", opts.DryRun)
+	sponsoredGroupID, err := ensureNumfocusGroup(ctx, svc, opts.UserID, "NumFocus Sponsored", opts.DryRun)
 	if err != nil {
 		return err
 	}
-	affiliatedGroupID, err := ensureNumfocusGroup(ctx, store, opts.UserID, "NumFocus Affiliated", opts.DryRun)
+	affiliatedGroupID, err := ensureNumfocusGroup(ctx, svc, opts.UserID, "NumFocus Affiliated", opts.DryRun)
 	if err != nil {
 		return err
 	}
 
 	tally := numfocusInsertTally{}
 	skipped := []numfocus.Project{}
+	operator := admin.Actor{UserID: opts.UserID, Kind: admin.Operator}
 
 	insertSection := func(projects []numfocus.Project, groupID int64, section string) {
 		for _, p := range projects {
@@ -146,10 +153,21 @@ func runLoadNumfocusProjects(cfgPath string, opts numfocusLoadOpts) error {
 				tally.planned++
 				continue
 			}
-			if err := store.AddRepoToGroup(ctx, opts.UserID, groupID, url); err != nil {
+			// Through the one group writer (round-3 review of 0.29.100: the
+			// store's single-URL wrapper was a second add path outside the
+			// service, without the instance hint).
+			out, err := svc.AddToGroup(ctx, operator, groupID, []string{url})
+			if err == nil && len(out.Invalid) > 0 {
+				err = fmt.Errorf("%s", out.Invalid[0])
+			}
+			if err != nil {
 				logger.Warn("failed to add numfocus project",
 					"section", section, "name", p.Name, "url", platform.RedactURLUserinfo(url), "error", err)
 				tally.failed++
+				continue
+			}
+			if out.Pending > 0 {
+				tally.pending += out.Pending
 				continue
 			}
 			tally.added++
@@ -164,8 +182,11 @@ func runLoadNumfocusProjects(cfgPath string, opts numfocusLoadOpts) error {
 		fmt.Printf("\ndry-run summary: %d planned, %d skipped (needs_review or unresolvable)\n",
 			tally.planned, tally.skipped)
 	} else {
-		fmt.Printf("\nsummary: %d added (or already-present), %d skipped, %d failed\n",
-			tally.added, tally.skipped, tally.failed)
+		fmt.Printf("\nsummary: %d added (or already-present), %d pending approval, %d skipped, %d failed\n",
+			tally.added, tally.pending, tally.skipped, tally.failed)
+		if tally.pending > 0 {
+			fmt.Printf("user_id=%d is not an administrator: its %d new repositories wait on the approvals page\n", opts.UserID, tally.pending)
+		}
 	}
 	if len(skipped) > 0 {
 		fmt.Println("\nSkipped entries (needs_review or unresolvable):")
@@ -186,20 +207,25 @@ func runLoadNumfocusProjects(cfgPath string, opts numfocusLoadOpts) error {
 type numfocusInsertTally struct {
 	planned int
 	added   int
+	pending int // a non-admin --user-id's new items wait for an administrator (round-4 review)
 	skipped int
 	failed  int
 }
 
 // ensureNumfocusGroup returns the group_id for a NumFocus group,
-// creating it if it doesn't already exist. CreateUserGroup is
-// itself idempotent (`ON CONFLICT (user_id, name) DO UPDATE`), so
-// this is just a thin wrapper that handles --dry-run reporting.
-func ensureNumfocusGroup(ctx context.Context, store *db.PostgresStore, userID int, name string, dryRun bool) (int64, error) {
+// creating it if it doesn't already exist. Service.CreateGroup (the store's
+// CreateUserGroup beneath it) is itself idempotent (`ON CONFLICT (user_id,
+// name) DO UPDATE`), so this is just a thin wrapper that handles --dry-run
+// reporting.
+func ensureNumfocusGroup(ctx context.Context, svc *admin.Service, userID int, name string, dryRun bool) (int64, error) {
 	if dryRun {
 		fmt.Printf("  [dry-run] would ensure user_group: user_id=%d name=%q\n", userID, name)
 		return 0, nil
 	}
-	gid, err := store.CreateUserGroup(ctx, userID, name)
+	// The operator creates the group for the dashboard user (an Operator
+	// actor acting for that account; stage 1 of summary/59: only the admin
+	// service writes groups).
+	gid, err := svc.CreateGroup(ctx, admin.Actor{UserID: userID, Kind: admin.Operator}, name)
 	if err != nil {
 		return 0, fmt.Errorf("ensure user_group %q: %w", name, err)
 	}

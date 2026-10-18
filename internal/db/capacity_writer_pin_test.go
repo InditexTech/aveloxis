@@ -220,11 +220,10 @@ func assertModeUses(t *testing.T, mode string, want map[string]int) {
 func TestOrgLinkDoorHasOnlyReviewedCallers(t *testing.T) {
 	reviewed := map[string]map[string]int{
 		".AddOrgRepoToGroupByID(": {
-			srctest.SiteKey("internal/scheduler", "refreshGitHubOrg"):   1, // the GitHub org scan
-			srctest.SiteKey("internal/scheduler", "refreshGitLabGroup"): 1, // the GitLab group scan
-			srctest.SiteKey("internal/scheduler", "refreshUserOrgs"):    1, // the demand scan
-			srctest.SiteKey("internal/web", "scanOrgRepos"):             2, // existing and new repositories (stage 1 deletes it)
-			srctest.SiteKey("cmd/aveloxis", "runAddRepo"):               1, // add-repo's org expansion
+			// Stage 1 of summary/59 (C1/C2): the one ingest every org
+			// listing feeds (the GitHub org, GitLab group and demand scans);
+			// the web scan and add-repo's expansion are gone.
+			srctest.SiteKey("internal/scheduler", "ingestDiscovered"): 1,
 		},
 		".AddOperatorRepoToGroupByID(": {
 			srctest.SiteKey("cmd/aveloxis", "runImportFoundations"): 1, // the foundation loader's dashboard groups (an operator command)

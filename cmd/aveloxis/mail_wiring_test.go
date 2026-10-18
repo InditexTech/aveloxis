@@ -46,9 +46,17 @@ func TestMailerConfigFromCarriesEveryField(t *testing.T) {
 	// The value each key carries: distinct per key so a crossed wire shows,
 	// and loadable — web.spa_url is refused at load unless it is the origin
 	// as a browser writes it (no path), so its marker rides in the host.
+	// Since 0.29.100 Load refuses an invalid mail block (N7), so the
+	// markers are valid values of their kind: an address, an App Password
+	// (16 lowercase letters), an origin.
 	valueOf := func(key string) string {
-		if key == "spa_url" {
+		switch key {
+		case "spa_url", "site_url":
 			return "https://value-of-" + strings.ReplaceAll(key, "_", "-") + ".example"
+		case "gmail_user":
+			return "value-of-gmail-user@example.com"
+		case "gmail_app_password":
+			return "valueofapppasswd"
 		}
 		return "value-of-" + key
 	}

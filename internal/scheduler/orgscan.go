@@ -143,27 +143,42 @@ func (s *Scheduler) githubOrgClient() *github.Client {
 	return s.ghOrgClient
 }
 
+// gitlabAPIBase is gitlab.base_url as configured ("" when the block is
+// absent); gitlabWebBase its web base (platform.GitLabWebBaseForAPI), the
+// one GitLab host this deployment enumerates groups on and sends keys to.
+func (s *Scheduler) gitlabAPIBase() string {
+	if s.cfg.GitLab == nil {
+		return ""
+	}
+	return s.cfg.GitLab.BaseURL
+}
+
+func (s *Scheduler) gitlabWebBase() string {
+	base, _ := platform.GitLabWebBaseForAPI(s.gitlabAPIBase())
+	return base
+}
+
 // gitlabClientForWebURL returns a GitLab client for the instance a web URL
 // (a group's website, an org registration) lives on, or ok=false with the
 // reason: no GitLab keys, no usable host, or a host other than the
 // configured instance's — GitLab keys are only ever sent to that instance
-// (platform.GitLabAPIBaseForHost, v0.29.11). On the v0.30 rebase this body
+// (platform.GitLabAPIBaseForURL, v0.29.11). On the v0.30 rebase this body
 // becomes the instances registry's lookup.
 func (s *Scheduler) gitlabClientForWebURL(webURL string) (*gitlab.Client, bool, string) {
 	if s.glKeys == nil || s.glKeys.IsEmpty() {
 		return nil, false, "no GitLab API keys configured"
 	}
-	u, err := url.Parse(webURL)
-	if err != nil || u.Host == "" {
+	// A website with no usable host is never assumed to be the instance
+	// (v0.29.11 review: a schemeless legacy website fell back to gitlab.com).
+	if u, err := url.Parse(webURL); err != nil || u.Host == "" {
 		return nil, false, "the URL has no usable host"
 	}
-	configuredBase := ""
-	if s.cfg.GitLab != nil {
-		configuredBase = s.cfg.GitLab.BaseURL
-	}
-	apiBase, ok := platform.GitLabAPIBaseForHost(configuredBase, u.Host)
+	// The gate's own host rule (platform.OnGitLabInstance through
+	// GitLabAPIBaseForURL): a URL the gate admitted is never refused here
+	// (round-2 review of 0.29.100: www. and a default port were).
+	apiBase, ok := platform.GitLabAPIBaseForURL(s.gitlabAPIBase(), webURL)
 	if !ok {
-		return nil, false, "the host is not the configured GitLab instance (gitlab.base_url), and GitLab API keys are only sent to that instance's host"
+		return nil, false, "the URL is not on the configured GitLab instance (gitlab.base_url), and GitLab API keys are only sent to that instance"
 	}
 	return gitlab.New(apiBase, s.glKeys, s.logger), true, ""
 }

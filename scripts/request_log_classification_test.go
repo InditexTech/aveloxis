@@ -30,18 +30,16 @@ func TestRequestHandlersLogThroughLogFailure(t *testing.T) {
 	// handler file does not churn the registry, and two identical messages
 	// in two functions stay two reviewed sites (L2 granularity).
 	reviewed := map[string]string{
-		srctest.SiteKey("internal/web", "submitAccountEmailAddress", "failed to clear the pending email after a failed confirmation send"):                 "a detached clean-up (WithoutCancel): its failure leaves the dashboard's pending banner, never a nobody-is-listening case (NET-6 review r7 F1)",
-		srctest.SiteKey("internal/web", "submitAccountEmailAddress", "failed to send confirmation email"):                                                  "the mailer takes no context: an SMTP failure is never the request's end (NET-6 review r6 F2)",
+		srctest.SiteKey("internal/admin", "SubmitAccountEmail", "failed to clear the pending email after a failed confirmation send"):                      "a detached clean-up (WithoutCancel): its failure leaves the dashboard's pending banner, never a nobody-is-listening case (NET-6 review r7 F1)",
+		srctest.SiteKey("internal/admin", "SubmitAccountEmail", "failed to send confirmation email"):                                                       "the mailer takes no context: an SMTP failure is never the request's end (NET-6 review r6 F2)",
+		srctest.SiteKey("internal/admin", "AddToGroup", "admin: add repositories: some could not be added"):                                                "db.ErrAddItemsFailed carries counts; a context end is not that sentinel and takes the failure arm",
 		srctest.SiteKey("internal/web", "logOAuthFailure", "oauth callback: the forge did not answer within the callback bound"):                           "logOAuthFailure: its first arm returns (Debug) when reqCtx is done; this is the 30 s callback bound's own expiry on a live request",
 		srctest.SiteKey("internal/web", "logOAuthFailure", "oauth callback: forge request failed"):                                                         "logOAuthFailure: its first arm returns (Debug) when reqCtx is done",
 		srctest.SiteKey("internal/api", "serverError", "request failed"):                                                                                   "serverError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
 		srctest.SiteKey("internal/web", "serverError", "request failed"):                                                                                   "serverError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
 		srctest.SiteKey("internal/monitor", "serverError", "request failed"):                                                                               "serverError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
 		srctest.SiteKey("internal/api", "refuseStoreError", "session token could not be resolved — store failure, request refused (503)"):                  "refuseStoreError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
-		srctest.SiteKey("internal/api", "handleGroupAddRepo", "group add: some repositories could not be added"):                                           "db.ErrAddItemsFailed carries counts; a context end takes the default arm (serverError)",
-		srctest.SiteKey("internal/api", "handleAdminAddRequestDecision", "admin add-request approval refused — the org cannot be registered"):              "a refusal on the request's content, not a store error",
 		srctest.SiteKey("internal/api", "handleAdminForgeIDAdopt", "admin forge-ID adopt: request body unreadable"):                                        "a body read error (EOF, limit), not a context end",
-		srctest.SiteKey("internal/web", "handleApproveAddRequest", "add-request approval refused — the org cannot be registered"):                          "a refusal on the request's content, not a store error",
 		srctest.SiteKey("internal/web", "handleGitHubCallback", "building the GitHub user request failed"):                                                 "http.NewRequestWithContext: a malformed request, never a context end",
 		srctest.SiteKey("internal/web", "handleGitLabCallback", "building the GitLab user request failed"):                                                 "http.NewRequestWithContext: a malformed request, never a context end",
 		srctest.SiteKey("internal/web", "handleGitHubCallback", "github /user response unmarshal failed"):                                                  "JSON decoding of a body already read",
@@ -49,7 +47,6 @@ func TestRequestHandlersLogThroughLogFailure(t *testing.T) {
 		srctest.SiteKey("internal/web", "completeOAuthLogin", "failed to upsert OAuth user"):                                                               "guarded: the httpserver.RequestEnded return just above it (pinned by TestLoginLogsAFailedAdminLookup)",
 		srctest.SiteKey("internal/web", "completeOAuthLogin", "admin flag lookup failed at login — session created as non-admin"):                          "guarded: the httpserver.RequestEnded return just above it (pinned by TestLoginLogsAFailedAdminLookup)",
 		srctest.SiteKey("internal/web", "completeOAuthLogin", "failed to send welcome email"):                                                              "the mailer's own error; the send runs off the request context",
-		srctest.SiteKey("internal/web", "handleAddOrg", "org not added — invalid URL"):                                                                     "URL validation, not a store error",
 		srctest.SiteKey("internal/web", "handleRepoDetail", "repo page: stats unavailable"):                                                                "guarded: `err != nil && !httpserver.RequestEnded(err)`",
 		srctest.SiteKey("internal/web", "handleMonitor", "monitor page: repository details unavailable"):                                                   "guarded: `err != nil && !httpserver.RequestEnded(err)`",
 		srctest.SiteKey("internal/web", "handleMonitor", "monitor page: repository stats unavailable"):                                                     "guarded: `err != nil && !httpserver.RequestEnded(err)`",
@@ -63,7 +60,7 @@ func TestRequestHandlersLogThroughLogFailure(t *testing.T) {
 	root := srctest.Root(t)
 	seen := map[string]bool{}
 	examined := 0
-	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor"} {
+	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor", "internal/admin"} {
 		files, err := filepath.Glob(filepath.Join(root, dir, "*.go"))
 		if err != nil {
 			t.Fatal(err)
@@ -81,6 +78,9 @@ func TestRequestHandlersLogThroughLogFailure(t *testing.T) {
 			}
 			for _, d := range af.Decls {
 				fd, ok := d.(*ast.FuncDecl)
+				// The admin service's operations run under the request's
+				// context too (stage 1 of summary/59): takesHTTPRequest
+				// admits a context parameter, so they are examined.
 				if !ok || fd.Body == nil || !takesHTTPRequest(fd) {
 					continue
 				}
@@ -174,7 +174,7 @@ func TestLogFailureClassifiesByTheRequestsContext(t *testing.T) {
 	root := srctest.Root(t)
 	seen := map[string]bool{}
 	calls := 0
-	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor"} {
+	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor", "internal/admin"} {
 		files, err := filepath.Glob(filepath.Join(root, dir, "*.go"))
 		if err != nil {
 			t.Fatal(err)
