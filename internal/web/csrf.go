@@ -42,9 +42,17 @@ var csrfExempt = map[string]bool{
 // frame refusal for old browsers. A handler may tighten it (the sign-up
 // refusal page sets 'none').
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
+	// Avatars come from the forges over https; under web.dev_mode (plain
+	// HTTP development, the switch that also drops Secure) a self-hosted
+	// GitLab on http:// may serve them (round 3 of the 0.29.102 review).
+	img := "img-src 'self' https: data:"
+	if s.cfg.DevMode {
+		img = "img-src 'self' https: http: data:"
+	}
+	csp := "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " + img + "; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		h.Set("Content-Security-Policy", csp)
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")

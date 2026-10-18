@@ -139,4 +139,16 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 			t.Errorf("GET %s: nosniff=%q frame=%q referrer=%q", path, rec.Header().Get("X-Content-Type-Options"), rec.Header().Get("X-Frame-Options"), rec.Header().Get("Referrer-Policy"))
 		}
 	}
+	// Images: https (the forges' avatars) in production; http too under
+	// dev_mode only (an http:// self-hosted GitLab in development).
+	for _, dev := range []bool{false, true} {
+		s := New(nil, config.WebConfig{Addr: ":0", APIInternalURL: "http://127.0.0.1:1", DevMode: dev},
+			"", slog.New(slog.NewTextHandler(io.Discard, nil)))
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
+		img := strings.SplitN(strings.SplitN(rec.Header().Get("Content-Security-Policy")+";", "img-src", 2)[1], ";", 2)[0]
+		if strings.Contains(img, "http:") != dev || !strings.Contains(img, "https:") {
+			t.Errorf("dev_mode=%v: img-src%s; want https: always and http: only under dev_mode", dev, img)
+		}
+	}
 }

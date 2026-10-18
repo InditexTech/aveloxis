@@ -147,9 +147,9 @@ function makeChart(canvasId, label, color, data) {
 If your API returns `active_contributors` instead of `count`, either:
 
 - **Adapt the response shape** in your REST endpoint to use `count`. Cleanest.
-- **Map at fetch time**: `.then(ts => makeChart(..., ts.weekly_counts.map(d => ({week: d.week, count: d.active_contributors}))))`. Smaller change but the mapping clutters the template.
+- **Map at fetch time**: `.then(ts => makeChart(..., ts.weekly_counts.map(d => ({week: d.week, count: d.active_contributors}))))`. Smaller change but the mapping clutters the script.
 
-Preference: API returns the shape the factory expects. The factory is consumed by every chart; matching it keeps the templates simple.
+Preference: API returns the shape the factory expects. The factory is consumed by every chart; matching it keeps the scripts simple.
 
 ## Patterns to follow
 
@@ -177,7 +177,7 @@ Use the existing `makeChart` defaults unless you have a specific reason to devia
 
 ### Comparison page differences
 
-If your chart should also appear on `/compare`, that template is separate. The comparison page wraps `makeChart` with a `renderComparisonChart` that handles multiple data series + the mode toggle (Raw / 100% / Z-Score). Search for `renderComparisonChart` in the template file.
+If your chart should also appear on `/compare`, that page has its own script, `internal/static/compare.js`, whose `renderComparisonChart` handles multiple data series + the mode toggle (Raw / 100% / Z-Score). Search for `renderComparisonChart` there.
 
 The contract: each repo's data is a separate dataset in the same chart. The mode toggle is a UI control above the charts that re-renders with normalized values. Implement the normalization in JS.
 
@@ -227,8 +227,14 @@ func TestRepoDetailTemplateRenders(t *testing.T) {
     if !strings.Contains(body, `id="chart-contributors"`) {
         t.Error("expected chart-contributors canvas to be present")
     }
-    if !strings.Contains(body, `/contributor-timeseries`) {
-        t.Error("expected fetch to /contributor-timeseries endpoint")
+    // The page carries no fetch URL (its script is a /static/ file): assert
+    // the script is loaded and the fetch lives in it, as the page tests do
+    // (pageScripts in internal/web/page_assets_test.go).
+    if !strings.Contains(body, `<script src="/static/repo-detail.js">`) {
+        t.Error("expected the repository page to load its script")
+    }
+    if !strings.Contains(pageScripts(t)["repo-detail.js"], `/contributor-timeseries`) {
+        t.Error("expected repo-detail.js to fetch /contributor-timeseries")
     }
 }
 ```
@@ -245,7 +251,7 @@ House rule: **for UI/frontend changes, use the feature in a browser before repor
 
 If your chart should also appear in `/compare`:
 
-1. Find the comparison template (search for `renderComparisonChart`).
+1. Open `internal/static/compare.js` (search for `renderComparisonChart`).
 2. Add a `<canvas id="cmp-contributors"></canvas>` next to the existing comparison canvases.
 3. Add a `renderComparisonChart('cmp-contributors', 'Active contributors / week', 'weekly_counts');` call alongside the existing ones.
 4. Make sure your REST API endpoint accepts the comparison page's repos-list pattern (`ids=1,2,3`).

@@ -1900,9 +1900,9 @@ SPDX-License-Identifier: MIT
 <p>If your API returns <code class="docutils literal notranslate"><span class="pre">active_contributors</span></code> instead of <code class="docutils literal notranslate"><span class="pre">count</span></code>, either:</p>
 <ul class="simple">
 <li><p><strong>Adapt the response shape</strong> in your REST endpoint to use <code class="docutils literal notranslate"><span class="pre">count</span></code>. Cleanest.</p></li>
-<li><p><strong>Map at fetch time</strong>: <code class="docutils literal notranslate"><span class="pre">.then(ts</span> <span class="pre">=&gt;</span> <span class="pre">makeChart(...,</span> <span class="pre">ts.weekly_counts.map(d</span> <span class="pre">=&gt;</span> <span class="pre">({week:</span> <span class="pre">d.week,</span> <span class="pre">count:</span> <span class="pre">d.active_contributors}))))</span></code>. Smaller change but the mapping clutters the template.</p></li>
+<li><p><strong>Map at fetch time</strong>: <code class="docutils literal notranslate"><span class="pre">.then(ts</span> <span class="pre">=&gt;</span> <span class="pre">makeChart(...,</span> <span class="pre">ts.weekly_counts.map(d</span> <span class="pre">=&gt;</span> <span class="pre">({week:</span> <span class="pre">d.week,</span> <span class="pre">count:</span> <span class="pre">d.active_contributors}))))</span></code>. Smaller change but the mapping clutters the script.</p></li>
 </ul>
-<p>Preference: API returns the shape the factory expects. The factory is consumed by every chart; matching it keeps the templates simple.</p>
+<p>Preference: API returns the shape the factory expects. The factory is consumed by every chart; matching it keeps the scripts simple.</p>
 </section>
 </section>
 <section id="patterns-to-follow">
@@ -1953,7 +1953,7 @@ SPDX-License-Identifier: MIT
 </section>
 <section id="comparison-page-differences">
 <h3>Comparison page differences<a class="headerlink" href="#comparison-page-differences" title="Link to this heading"></a></h3>
-<p>If your chart should also appear on <code class="docutils literal notranslate"><span class="pre">/compare</span></code>, that template is separate. The comparison page wraps <code class="docutils literal notranslate"><span class="pre">makeChart</span></code> with a <code class="docutils literal notranslate"><span class="pre">renderComparisonChart</span></code> that handles multiple data series + the mode toggle (Raw / 100% / Z-Score). Search for <code class="docutils literal notranslate"><span class="pre">renderComparisonChart</span></code> in the template file.</p>
+<p>If your chart should also appear on <code class="docutils literal notranslate"><span class="pre">/compare</span></code>, that page has its own script, <code class="docutils literal notranslate"><span class="pre">internal/static/compare.js</span></code>, whose <code class="docutils literal notranslate"><span class="pre">renderComparisonChart</span></code> handles multiple data series + the mode toggle (Raw / 100% / Z-Score). Search for <code class="docutils literal notranslate"><span class="pre">renderComparisonChart</span></code> there.</p>
 <p>The contract: each repo’s data is a separate dataset in the same chart. The mode toggle is a UI control above the charts that re-renders with normalized values. Implement the normalization in JS.</p>
 </section>
 <section id="time-zones">
@@ -2001,8 +2001,14 @@ SPDX-License-Identifier: MIT
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">strings</span><span class="p">.</span><span class="nx">Contains</span><span class="p">(</span><span class="nx">body</span><span class="p">,</span><span class="w"> </span><span class="s">`id=&quot;chart-contributors&quot;`</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Error</span><span class="p">(</span><span class="s">&quot;expected chart-contributors canvas to be present&quot;</span><span class="p">)</span>
 <span class="w">    </span><span class="p">}</span>
-<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">strings</span><span class="p">.</span><span class="nx">Contains</span><span class="p">(</span><span class="nx">body</span><span class="p">,</span><span class="w"> </span><span class="s">`/contributor-timeseries`</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Error</span><span class="p">(</span><span class="s">&quot;expected fetch to /contributor-timeseries endpoint&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="c1">// The page carries no fetch URL (its script is a /static/ file): assert</span>
+<span class="w">    </span><span class="c1">// the script is loaded and the fetch lives in it, as the page tests do</span>
+<span class="w">    </span><span class="c1">// (pageScripts in internal/web/page_assets_test.go).</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">strings</span><span class="p">.</span><span class="nx">Contains</span><span class="p">(</span><span class="nx">body</span><span class="p">,</span><span class="w"> </span><span class="s">`&lt;script src=&quot;/static/repo-detail.js&quot;&gt;`</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Error</span><span class="p">(</span><span class="s">&quot;expected the repository page to load its script&quot;</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">strings</span><span class="p">.</span><span class="nx">Contains</span><span class="p">(</span><span class="nx">pageScripts</span><span class="p">(</span><span class="nx">t</span><span class="p">)[</span><span class="s">&quot;repo-detail.js&quot;</span><span class="p">],</span><span class="w"> </span><span class="s">`/contributor-timeseries`</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Error</span><span class="p">(</span><span class="s">&quot;expected repo-detail.js to fetch /contributor-timeseries&quot;</span><span class="p">)</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
@@ -2019,7 +2025,7 @@ SPDX-License-Identifier: MIT
 <h2>Updating the comparison page<a class="headerlink" href="#updating-the-comparison-page" title="Link to this heading"></a></h2>
 <p>If your chart should also appear in <code class="docutils literal notranslate"><span class="pre">/compare</span></code>:</p>
 <ol class="arabic simple">
-<li><p>Find the comparison template (search for <code class="docutils literal notranslate"><span class="pre">renderComparisonChart</span></code>).</p></li>
+<li><p>Open <code class="docutils literal notranslate"><span class="pre">internal/static/compare.js</span></code> (search for <code class="docutils literal notranslate"><span class="pre">renderComparisonChart</span></code>).</p></li>
 <li><p>Add a <code class="docutils literal notranslate"><span class="pre">&lt;canvas</span> <span class="pre">id=&quot;cmp-contributors&quot;&gt;&lt;/canvas&gt;</span></code> next to the existing comparison canvases.</p></li>
 <li><p>Add a <code class="docutils literal notranslate"><span class="pre">renderComparisonChart('cmp-contributors',</span> <span class="pre">'Active</span> <span class="pre">contributors</span> <span class="pre">/</span> <span class="pre">week',</span> <span class="pre">'weekly_counts');</span></code> call alongside the existing ones.</p></li>
 <li><p>Make sure your REST API endpoint accepts the comparison page’s repos-list pattern (<code class="docutils literal notranslate"><span class="pre">ids=1,2,3</span></code>).</p></li>
