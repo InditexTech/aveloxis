@@ -71,9 +71,11 @@ else
 		exit 2
 	fi
 	export SKIP_CENSUS_NESTED=1
-	# SKIP_CENSUS_GOFLAGS: extra go test flags (CI passes -race -shuffle=on).
+	# SKIP_CENSUS_GOFLAGS: go test flags. The default is what CI passes
+	# (integration.yml): a closing run without -race read green while CI's
+	# found a data race in internal/api six runs out of six (0.29.105).
 	# shellcheck disable=SC2086
-	go test ${SKIP_CENSUS_GOFLAGS:-} ./... -count=1 -json > "$OUT/suite.json" 2> "$OUT/stderr.txt"
+	go test ${SKIP_CENSUS_GOFLAGS:--race -shuffle=on} ./... -count=1 -json > "$OUT/suite.json" 2> "$OUT/stderr.txt"
 	suite_status=$?
 fi
 

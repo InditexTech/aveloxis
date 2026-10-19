@@ -108,7 +108,7 @@ func TestServerErrorBodyIsGeneric(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logs strings.Builder
+	var logs lockedBuffer
 	s := New(servedStore(t, dsn), slog.New(slog.NewTextHandler(&logs, nil)))
 	get := func() *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/groups", nil)
@@ -131,8 +131,14 @@ func TestServerErrorBodyIsGeneric(t *testing.T) {
 	if strings.Contains(body, "closed pool") || strings.Contains(body, "pgx") || strings.Contains(body, "aveloxis_ops") {
 		t.Errorf("the 500 body carries the store's error text: %q", body)
 	}
-	if !strings.Contains(logs.String(), "level=ERROR") || !strings.Contains(logs.String(), "closed pool") {
-		t.Errorf("the failure's cause is not in the log:\n%s", logs.String())
+	// The ERROR line itself names the cause (the capacity refresh's WARN
+	// also carries "closed pool" once the pool is closed under it).
+	logged := false
+	for _, line := range strings.Split(logs.String(), "\n") {
+		logged = logged || (strings.Contains(line, "level=ERROR") && strings.Contains(line, "closed pool"))
+	}
+	if !logged {
+		t.Errorf("the failure's cause is not on an ERROR line in the log:\n%s", logs.String())
 	}
 }
 
@@ -245,7 +251,7 @@ func TestGroupAddRepoBustsTheTokenCache(t *testing.T) {
 // failure — nobody is listening — and its sibling refuseStoreError already
 // classifies it as Debug; an ERROR per abandoned navigation is noise.
 func TestServerErrorIsQuietOnACanceledRequest(t *testing.T) {
-	var logs strings.Builder
+	var logs lockedBuffer
 	s := &Server{logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))}
 	rec := httptest.NewRecorder()
 	// NET-6 review r5 F1: "cancelled" is the REQUEST's context being done.
@@ -317,7 +323,7 @@ func TestGroupListsAreNot403OnAStoreFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logs strings.Builder
+	var logs lockedBuffer
 	s := New(servedStore(t, dsn), slog.New(slog.NewTextHandler(&logs, nil)))
 	get := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -395,7 +401,7 @@ func TestRepoLookupsAreNot404OnAStoreFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logs strings.Builder
+	var logs lockedBuffer
 	s := New(servedStore(t, dsn), slog.New(slog.NewTextHandler(&logs, nil)))
 	get := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -493,7 +499,7 @@ func TestSBOMDownloadAnswers404ForARepoNobodyHas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logs strings.Builder
+	var logs lockedBuffer
 	s := New(servedStore(t, dsn), slog.New(slog.NewTextHandler(&logs, nil)))
 	get := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)

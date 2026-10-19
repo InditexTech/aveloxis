@@ -611,6 +611,14 @@ var deployChecklists = map[string][]deployStep{
 	// now answers its one body-shape text, its unreadable-body WARN
 	// removed). No schema change — same ladder as 0.29.102.
 	"0.29.104": v029102DeployChecklist,
+	// v0.29.105 (2026-10-19 UTC): test-only. The integration job on PR #238
+	// found a data race in the API package's tests: four tests handed a
+	// server a bare strings.Builder as its log sink and read it while the
+	// capacity policy's refresh goroutine was still logging into it. The
+	// sinks are the package's lockedBuffer now, and a test function that
+	// constructs a server declares no bare buffer (pinned). No code a host
+	// runs changed — same ladder as 0.29.102.
+	"0.29.105": v029102DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,
