@@ -12,9 +12,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// fkExtraConstraint is one of the 50 FKs identified by the
-// 2026-05-17 audit that needs ON UPDATE CASCADE ON DELETE
-// RESTRICT DEFERRABLE INITIALLY DEFERRED applied. Same
+// fkExtraConstraint is one of the 55 FKs (the original 50 identified
+// by the 2026-05-17 audit, plus the five v0.29.97 appended below) that
+// need ON UPDATE CASCADE ON DELETE RESTRICT DEFERRABLE INITIALLY
+// DEFERRED applied. Same
 // (child_table, child_column) groupings as fkExtraIndexes.
 //
 // constraintName is Postgres's auto-generated name for the FK
@@ -168,8 +169,9 @@ func applyFullBehaviorFK(ctx context.Context, pg *PostgresStore, logger *slog.Lo
 
 // ensureExtraFKConstraints is the v0.22.7 migration step that
 // applies ON UPDATE CASCADE ON DELETE RESTRICT DEFERRABLE
-// INITIALLY DEFERRED to the 50 child FKs identified by the
-// 2026-05-17 audit.
+// INITIALLY DEFERRED to the 55 child FKs of fkExtraConstraints (the
+// original 50 identified by the 2026-05-17 audit, plus the five
+// v0.29.97 traffic tables).
 //
 // Idempotent via constraintStateMatches — already-migrated FKs
 // (constraint already in the desired state) are skipped. Fresh

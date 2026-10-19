@@ -32,7 +32,7 @@ import (
 //
 // Companion to v0.22.7's fkExtraConstraints, which adds
 // ON UPDATE CASCADE ON DELETE RESTRICT DEFERRABLE INITIALLY
-// DEFERRED to the same 50 FKs. Indexes are built CONCURRENTLY
+// DEFERRED to the same 55 FKs. Indexes are built CONCURRENTLY
 // BEFORE the constraint flip so the new RESTRICT/CASCADE
 // behavior runs against indexed lookups from minute one.
 //
@@ -115,8 +115,9 @@ var fkExtraIndexes = []fkExtraIndex{
 }
 
 // ensureExtraFKIndexes is the v0.22.7 migration step that adds
-// btree indexes on the 50 unindexed FK columns identified by the
-// 2026-05-17 audit. Uses execCreateIndexConcurrently so production
+// btree indexes on the 55 FK columns of fkExtraIndexes (the original
+// 50 unindexed ones identified by the 2026-05-17 audit, plus the five
+// v0.29.97 traffic tables). Uses execCreateIndexConcurrently so production
 // keeps accepting writes during the build.
 //
 // The largest tables — pull_request_commits (~42M rows on
