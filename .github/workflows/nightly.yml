@@ -1,0 +1,138 @@
+# Nightly — what every push cannot afford and a PR cannot see (0.29.107,
+# after the PR #238 loops). A scheduled workflow runs on the DEFAULT branch
+# only (main's head, never a pull request); workflow_dispatch runs the same
+# jobs by hand on any branch.
+#
+#   race-stress: the goroutine-heavy packages under -race, many times,
+#     with few CPUs — the sink race of 0.29.105 hit CI about half the time
+#     and never a single local run; a failure prints its shuffle seed.
+#   golden-collection: the data test (aveloxis data-test) between the
+#     newest release tag and main over a small fixed set — the GitLab
+#     display-name defect of 0.29.106 survived because no test collected a
+#     project whose name differs from its slug. Row loss fails the job;
+#     the report is kept. The run's own token is the GitHub key; a GitLab
+#     key and the GitLab project come from the repository's secrets and
+#     variables (GITLAB_TOKEN, GOLDEN_GITLAB_PROJECT) and the GitLab half
+#     runs only when both are set — the log says so loudly either way.
+
+name: Nightly
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  race-stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aveloxis_test
+          POSTGRES_PASSWORD: aveloxis_test
+          POSTGRES_DB: aveloxis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AVELOXIS_TEST_DB: postgres://aveloxis_test:aveloxis_test@localhost:5432/aveloxis_test?sslmode=disable
+      TZ: America/Chicago
+      PGTZ: America/Chicago
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Stress the goroutine-heavy packages under the race detector
+        run: |
+          go test ./internal/api/ ./internal/web/ ./internal/scheduler/ ./internal/platform/ \
+            -race -count=8 -cpu=2 -shuffle=on -timeout 100m 2>&1 | tee "$RUNNER_TEMP/race-stress.log"
+          test "${PIPESTATUS[0]}" -eq 0
+      - name: Keep the stress log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: race-stress
+          path: ${{ runner.temp }}/race-stress.log
+
+  golden-collection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aveloxis_test
+          POSTGRES_PASSWORD: aveloxis_test
+          POSTGRES_DB: aveloxis_golden
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TZ: America/Chicago
+      PGTZ: America/Chicago
+      CFG: ${{ runner.temp }}/ci-golden.json
+      WORK: ${{ runner.temp }}/golden
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install the analysis tools the collection pipeline calls
+        run: |
+          go build -o "$RUNNER_TEMP/aveloxis" ./cmd/aveloxis
+          "$RUNNER_TEMP/aveloxis" install-tools || echo "::warning::install-tools failed; scorecard/scc/scancode phases will be skipped by the pipeline"
+      - name: Migrate the primary database and store the keys
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          cat > "$CFG" <<'CFG'
+          {"database": {"host": "localhost", "port": 5432,
+            "dbname": "aveloxis_golden", "user": "aveloxis_test",
+            "password": "aveloxis_test", "sslmode": "disable"}}
+          CFG
+          "$RUNNER_TEMP/aveloxis" migrate -c "$CFG"
+          "$RUNNER_TEMP/aveloxis" add-key "$GITHUB_TOKEN" --platform github --name nightly -c "$CFG" >/dev/null
+          if [ -n "$GITLAB_TOKEN" ]; then
+            "$RUNNER_TEMP/aveloxis" add-key "$GITLAB_TOKEN" --platform gitlab --name nightly -c "$CFG" >/dev/null
+          fi
+      - name: Data test between the newest release tag and this branch
+        env:
+          GOLDEN_GITHUB_REPO: ${{ vars.GOLDEN_GITHUB_REPO || 'https://github.com/aveloxis/aveloxis' }}
+          GOLDEN_GITLAB_PROJECT: ${{ vars.GOLDEN_GITLAB_PROJECT }}
+          HAVE_GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          tag=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          [ -n "$tag" ] || { echo "no v* tag to compare against"; exit 1; }
+          repos=(--repo "$GOLDEN_GITHUB_REPO")
+          if [ -n "$GOLDEN_GITLAB_PROJECT" ] && [ "$HAVE_GITLAB_TOKEN" = "true" ]; then
+            repos+=(--repo "$GOLDEN_GITLAB_PROJECT")
+          else
+            echo "::notice::GitLab half not run: set the GOLDEN_GITLAB_PROJECT variable (a small public project in a subgroup whose display name differs from its path) and the GITLAB_TOKEN secret"
+          fi
+          echo "data test: $tag → $(git rev-parse --short HEAD) over ${repos[*]}"
+          "$RUNNER_TEMP/aveloxis" data-test -c "$CFG" --released-tag "$tag" "${repos[@]}" --work-dir "$WORK"
+      - name: Keep the data test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-collection
+          path: ${{ runner.temp }}/golden/*.md
+          if-no-files-found: ignore

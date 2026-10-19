@@ -18,6 +18,43 @@ import (
 	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
+// joinedLiteral is the path a filepath.Join / path.Join call of string
+// literals builds, with "/" between the segments; ok is false for any
+// other call or a non-literal segment.
+func joinedLiteral(call *ast.CallExpr) (string, bool) {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Join" || len(call.Args) == 0 {
+		return "", false
+	}
+	if pkg, ok := sel.X.(*ast.Ident); !ok || (pkg.Name != "filepath" && pkg.Name != "path") {
+		return "", false
+	}
+	segs := make([]string, 0, len(call.Args))
+	for i, a := range call.Args {
+		lit, ok := a.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			if i == 0 && len(call.Args) > 1 {
+				// filepath.Join(root, "internal", "web", "server.go"): the
+				// head is the module root in every test that reads this way
+				// (srctest.Root, a root variable); the trailing literals name
+				// the file from the root (review round 1 of 0.29.106: the
+				// root-headed shape was the one the scan still missed).
+				continue
+			}
+			return "", false
+		}
+		s, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			return "", false
+		}
+		segs = append(segs, s)
+	}
+	if len(segs) == 0 {
+		return "", false
+	}
+	return path.Join(segs...), true
+}
+
 // TestSourceFileReadsOnlyShrink — N26 (summary/59 §7b, stage 0.5 P-1): a
 // source-contract test that finds its subject by reading a production
 // .go file BY NAME breaks (or, worse, passes vacuously on a negative
@@ -26,7 +63,8 @@ import (
 // this baseline makes sure no NEW by-name read appears meanwhile. Every
 // string literal in a test file that names a non-test .go file is a read
 // site, keyed by the test file and the file it names (resolved: a bare
-// name is package-local, a path is repo-relative). The baseline only
+// name is package-local, a path is repo-relative, and a filepath.Join or
+// path.Join of literal segments is the path it builds). The baseline only
 // shrinks: a new site fails, and a site that is gone must leave the list.
 func TestSourceFileReadsOnlyShrink(t *testing.T) {
 	root := srctest.Root(t)
@@ -48,12 +86,32 @@ func TestSourceFileReadsOnlyShrink(t *testing.T) {
 			}
 			examined++
 			ast.Inspect(f, func(n ast.Node) bool {
-				lit, ok := n.(*ast.BasicLit)
-				if !ok || lit.Kind != token.STRING {
+				var v string
+				switch n := n.(type) {
+				case *ast.CallExpr:
+					// A read assembled from segments — filepath.Join("..",
+					// "collector", "staged.go") — names its file as surely as
+					// one literal does (whole-branch review of PR #238, I1:
+					// the bare "staged.go" segment resolved package-local and
+					// the site was invisible).
+					joined, ok := joinedLiteral(n)
+					if !ok {
+						return true
+					}
+					v = joined
+				case *ast.BasicLit:
+					if n.Kind != token.STRING {
+						return true
+					}
+					s, err := strconv.Unquote(n.Value)
+					if err != nil {
+						return true
+					}
+					v = s
+				default:
 					return true
 				}
-				v, err := strconv.Unquote(lit.Value)
-				if err != nil || !strings.HasSuffix(v, ".go") || strings.HasSuffix(v, "_test.go") || strings.ContainsAny(v, " \n%*") {
+				if !strings.HasSuffix(v, ".go") || strings.HasSuffix(v, "_test.go") || strings.ContainsAny(v, " \n%*") {
 					return true
 				}
 				var target string

@@ -3660,9 +3660,9 @@ func startupMigrateRefusal(stamp string, stampErr error, sight OtherServe) error
 		ErrOtherServeConnected, sight.Describe(), stampDesc, ToolVersion, sight.Advice(), DeployStepsAdvice)
 }
 
-// schemaVersionProbe is GetSchemaVersion with the error arm kept (SR-5:
-// a lookup ERROR is not "no"). Copilot round 8: GetSchemaVersion maps
-// EVERY failure to "", and runOnceSeedIfApplied reads "" as "no stamp,
+// schemaVersionProbe reads the stamp with the error arm kept (SR-5: a
+// lookup ERROR is not "no"). Its predecessor GetSchemaVersion (deleted in
+// stage 0.5 of summary/59) mapped EVERY failure to "", and runOnceSeedIfApplied reads "" as "no stamp,
 // so the step has not run" — a transient catalog or connection error
 // during migrate therefore re-flagged the ENTIRE GitLab fleet for a
 // full recollect, which is the outcome the seed exists to prevent.
@@ -3697,8 +3697,8 @@ func (s *PostgresStore) schemaVersionProbe(ctx context.Context) (string, error) 
 // `start serve` refuses while the stamp is behind, so restarting serve is
 // not the remedy.
 func (s *PostgresStore) CheckSchemaVersion(ctx context.Context, logger *slog.Logger) {
-	// schemaVersionProbe, not GetSchemaVersion: the latter maps every read
-	// failure to "", which reported a timeout or a missing grant as "migrate
+	// schemaVersionProbe keeps the error arm: the former GetSchemaVersion
+	// mapped every read failure to "", which reported a timeout or a missing grant as "migrate
 	// has not run" (SR-5, v0.29.57 L10 round 3).
 	stamp, err := s.schemaVersionProbe(ctx)
 	logSchemaVersionCheck(logger, stamp, err)
@@ -4146,7 +4146,7 @@ func addSessionTokenHashedColumn(ctx context.Context, pg *PostgresStore, logger 
 	// hashed made the value a database read or a backup showed BEFORE the
 	// migrate a working credential after it (L10 round 2 on 0.29.87). Their
 	// sessions are signed out once, the contract a rollback already had.
-	// The default is FALSE (CreateSessionToken writes TRUE); SET DEFAULT is
+	// The default is FALSE (createSessionToken, the one writer, writes TRUE); SET DEFAULT is
 	// for fleets that added the column TRUE (0.29.82–0.29.86).
 	//
 	// A database last migrated by 0.29.82–0.29.86 still has the default

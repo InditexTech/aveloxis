@@ -1003,6 +1003,7 @@ internal/scheduler/org_rejected_gate_test.go internal/scheduler/scheduler.go
 internal/scheduler/org_scan_dedup_test.go internal/scheduler/scheduler.go
 internal/scheduler/org_scan_forge_id_test.go internal/scheduler/scheduler.go
 internal/scheduler/org_scan_newcount_test.go internal/scheduler/scheduler.go
+internal/scheduler/pool_demand_test.go internal/collector/staged.go
 internal/scheduler/rebuild_cancel_test.go internal/scheduler/scheduler.go
 internal/scheduler/repo_metadata_backfill_keyset_test.go internal/db/repo_metadata.go
 internal/scheduler/repo_metadata_fork_test.go internal/scheduler/repo_metadata_backfill.go
@@ -1037,6 +1038,7 @@ internal/showcase/mobile_css_test.go internal/showcase/templates.go
 internal/spdx/data_test.go scripts/gen_spdx_data/main.go
 internal/srctest/srctest_test.go internal/srctest/srctest.go
 internal/srctest/srctest_test.go internal/web/server.go
+internal/testdb/guard_test.go internal/testdb/prepare/prepare.go
 internal/testdb/testdb_test.go internal/testdb/testdb.go
 internal/web/admin_routes_test.go internal/web/server.go
 internal/web/monitor_search_test.go internal/db/queue.go

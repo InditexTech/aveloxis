@@ -106,7 +106,7 @@ func TestApprovedAddRequestsToRetry(t *testing.T) {
 	if _, err := store.pool.Exec(ctx, `UPDATE aveloxis_ops.collection_add_requests SET decided_at = NOW() - interval '2 hours' WHERE request_id = $1`, rejReq); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RejectGroup(ctx, gid2, uid); err != nil {
+	if _, err := store.RejectGroup(ctx, gid2, uid); err != nil {
 		t.Fatal(err)
 	}
 	if ids, err := store.ApprovedAddRequestsToRetry(ctx, time.Hour); err != nil || slices.Contains(ids, rejReq) {
@@ -179,7 +179,7 @@ func TestRejectedGroupTakesNoApprovalOrMoreItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RejectGroup(ctx, gid, uid); err != nil {
+	if _, err := store.RejectGroup(ctx, gid, uid); err != nil {
 		t.Fatal(err)
 	}
 	if _, changed, err := store.DecideAddRequest(ctx, pend, uid, true, "", ""); !errors.Is(err, ErrGroupRejected) || changed {

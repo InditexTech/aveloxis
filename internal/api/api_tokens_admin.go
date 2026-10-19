@@ -121,7 +121,7 @@ func (s *Server) handleAdminAPITokenGrant(w http.ResponseWriter, r *http.Request
 		UserID: body.UserID, Label: body.Label, CreatedBy: info.UserID,
 		Lifetime: time.Duration(days) * 24 * time.Hour, RateLimitPerHour: int(limit), RateLimitPerDay: int(daily),
 	})
-	if errors.Is(err, db.ErrAPITokenOwnerNotFound) {
+	if errors.Is(err, db.ErrUserNotFound) {
 		writeAuthError(w, http.StatusBadRequest, "no account with that user_id")
 		return
 	}

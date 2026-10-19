@@ -18,7 +18,7 @@
 <p style="color:#586069;font-size:13px;margin-bottom:12px">Select up to 5 repositories from your groups to compare side-by-side. Use 100% mode to normalize by relative size, or Z-Score to compare trends controlling for community size.</p>
 
 <div class="compare-controls">
-<div style="position:relative;width:350px">
+<div class="search-box">
 <input type="text" id="repo-search" placeholder="Type to search repositories..." autocomplete="off" style="width:100%">
 <div id="search-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid #d1d5da;border-top:none;border-radius:0 0 6px 6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);max-height:250px;overflow-y:auto;z-index:100"></div>
 </div>
@@ -48,7 +48,7 @@
 </div>
 <div id="compare-msg" class="form-msg" hidden></div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+<div class="chart-grid spaced">
 <div><canvas id="cmp-commits" height="220"></canvas></div>
 <div><canvas id="cmp-prs-opened" height="220"></canvas></div>
 <div><canvas id="cmp-prs-merged" height="220"></canvas></div>

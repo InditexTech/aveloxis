@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Aveloxis 0.29.105 documentation</title>
+  <title>Testing &mdash; Aveloxis 0.29.107 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=d690a2c1"></script>
+      <script src="../_static/documentation_options.js?v=4510acb2"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -1995,8 +1995,8 @@ execution from a root function (the migrate analyzer’s resolver).</p></li>
 </ul>
 <p>The split of a file migrates only the pins it breaks (the strangler rule, N26)
 and each migrated pin is re-redded. <code class="docutils literal notranslate"><span class="pre">scripts/source_file_reads_baseline.txt</span></code>
-lists every remaining by-name read (<code class="docutils literal notranslate"><span class="pre">TestSourceFileReadsOnlyShrink</span></code>) and only
-shrinks; a per-file count registry that stays keyed by file is listed there too.</p>
+lists every remaining by-name read (<code class="docutils literal notranslate"><span class="pre">TestSourceFileReadsOnlyShrink</span></code>; one
+literal, or a <code class="docutils literal notranslate"><span class="pre">filepath.Join</span></code> of literal segments) and only shrinks; a per-file count registry that stays keyed by file is listed there too.</p>
 </section>
 <section id="sql-write-scanning-internal-srctest-sqlscan-v0-27-124">
 <h3>SQL write scanning: <code class="docutils literal notranslate"><span class="pre">internal/srctest/sqlscan</span></code> (v0.27.124)<a class="headerlink" href="#sql-write-scanning-internal-srctest-sqlscan-v0-27-124" title="Link to this heading"></a></h3>
@@ -2345,7 +2345,22 @@ go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>./
 <p>GitHub Actions runs:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">test.yml</span></code>: <code class="docutils literal notranslate"><span class="pre">go</span> <span class="pre">test</span> <span class="pre">./...</span></code> (with <code class="docutils literal notranslate"><span class="pre">-race</span></code>) on every push.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">integration.yml</span></code>: PostgreSQL service container + <code class="docutils literal notranslate"><span class="pre">AVELOXIS_TEST_DB</span></code> integration tests.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">integration.yml</span></code>: PostgreSQL service container + <code class="docutils literal notranslate"><span class="pre">AVELOXIS_TEST_DB</span></code> integration tests
+(the <code class="docutils literal notranslate"><span class="pre">migrate</span></code> job), plus two deployment jobs (0.29.107): <code class="docutils literal notranslate"><span class="pre">upgrade-path</span></code>
+(the base release — the PR’s base branch, or the newest release tag on a
+push — migrates an empty database and populates it; the head release
+migrates it again plain, <code class="docutils literal notranslate"><span class="pre">--skip-views</span></code> and plain, then the stamp, the
+seeded rows, index validity and data-verify must hold;
+<code class="docutils literal notranslate"><span class="pre">scripts/ci-upgrade-path.sh</span></code>) and <code class="docutils literal notranslate"><span class="pre">processes</span></code> (serve, api and web from
+one binary against one database, the contracts between them over HTTP:
+anonymous API refused, session → Bearer exchange, the form guard’s 415/413
+before any gate, privilege per request, sign-out in web = 401 in api,
+clean SIGTERM; <code class="docutils literal notranslate"><span class="pre">scripts/ci-process-contracts.sh</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">nightly.yml</span></code> (scheduled on <code class="docutils literal notranslate"><span class="pre">main</span></code>, and by hand on any branch): <code class="docutils literal notranslate"><span class="pre">race-stress</span></code>
+(api, web, scheduler, platform under <code class="docutils literal notranslate"><span class="pre">-race</span> <span class="pre">-count=8</span> <span class="pre">-cpu=2</span> <span class="pre">-shuffle=on</span></code>)
+and <code class="docutils literal notranslate"><span class="pre">golden-collection</span></code> (<code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">data-test</span></code> between the newest release
+tag and the branch over a small fixed set; the GitLab half needs the
+<code class="docutils literal notranslate"><span class="pre">GITLAB_TOKEN</span></code> secret and the <code class="docutils literal notranslate"><span class="pre">GOLDEN_GITLAB_PROJECT</span></code> variable).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">lint.yml</span></code>: <code class="docutils literal notranslate"><span class="pre">go</span> <span class="pre">vet</span></code> → <code class="docutils literal notranslate"><span class="pre">staticcheck</span></code> → <code class="docutils literal notranslate"><span class="pre">golangci-lint</span></code> (pinned version), all blocking.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">codeql.yml</span></code>: security scanning.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">cifuzz.yml</span></code>: ClusterFuzzLite over the 7 native Go fuzz targets.</p></li>

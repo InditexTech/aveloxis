@@ -66,8 +66,9 @@ func TestUserOrgPassListsGitLabGroups(t *testing.T) {
 		// path escaped as one segment.
 		if r.URL.EscapedPath() == "/api/v4/groups/"+group+"%2F"+sub+"/projects" && r.URL.Query().Get("page") == "1" {
 			_ = json.NewEncoder(w).Encode([]map[string]any{{
-				"id": 7001, "web_url": server0(r) + "/" + group + "/" + sub + "/one", "name": "one",
-				"created_at": "2024-01-02T03:04:05Z", "namespace": map[string]any{"full_path": group + "/" + sub},
+				"id": 7001, "web_url": server0(r) + "/" + group + "/" + sub + "/one", "name": "Sub One", "path": "one",
+				"path_with_namespace": group + "/" + sub + "/one",
+				"created_at":          "2024-01-02T03:04:05Z", "namespace": map[string]any{"full_path": group + "/" + sub},
 			}})
 			return
 		}
@@ -164,6 +165,17 @@ func TestUserOrgPassListsGitLabGroups(t *testing.T) {
 	}
 	if n := fx.linkCount(t, ctx, groupID, group+"/"+sub); n != 1 {
 		t.Errorf("links = %d; want the one project linked into the group", n)
+	}
+	// The stored name is the project's PATH (what every later API call
+	// addresses as owner/name), not its display name "Sub One" (0.29.106
+	// whole-branch review P1: a project whose name differed from its slug
+	// was recorded uncollectable).
+	var owner, name string
+	if err := pool.QueryRow(ctx, `SELECT repo_owner, repo_name FROM aveloxis_data.repos WHERE repo_git = $1`, server.URL+"/"+group+"/"+sub+"/one").Scan(&owner, &name); err != nil {
+		t.Fatal(err)
+	}
+	if owner != group+"/"+sub || name != "one" {
+		t.Errorf("stored owner/name = %q/%q; want %q/\"one\" (the path, never the display name)", owner, name, group+"/"+sub)
 	}
 	mu.Lock()
 	joined := strings.Join(paths, " ")

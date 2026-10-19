@@ -147,8 +147,15 @@ func (s *Service) RejectGroup(ctx context.Context, a Actor, groupID int64) error
 		}
 		return fmt.Errorf("%s %d by %s: %w", op, groupID, a, err)
 	}
-	if err := s.st.RejectGroup(ctx, groupID, a.UserID); err != nil {
+	changed, err := s.st.RejectGroup(ctx, groupID, a.UserID)
+	if err != nil {
 		return fmt.Errorf("%s %d by %s: %w", op, groupID, a, err)
+	}
+	if !changed {
+		// Already rejected (or gone since the owner read): idempotent, and
+		// an audit line records a change (whole-branch review of PR #238, A4).
+		s.logger.Info("admin: group already rejected — no change, not audited", "actor", a.String(), "group_id", groupID)
+		return nil
 	}
 	s.audit(op, a, "group_id", groupID)
 	return nil

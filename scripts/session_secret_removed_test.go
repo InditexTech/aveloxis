@@ -19,8 +19,11 @@ import (
 // example configuration, or in a public page (a reader would set it).
 func TestSessionSecretNotReintroduced(t *testing.T) {
 	root := srctest.Root(t)
-	if src := srctest.StripGoComments(srctest.PackageSource(t, "internal/config", 1)); strings.Contains(src, "SessionSecret") || strings.Contains(src, "session_secret") {
-		t.Error("internal/config declares web.session_secret again")
+	// The one allowed spelling in internal/config is the removedKeys entry
+	// that reports a file still carrying the key (0.29.106, P3) — never a
+	// field.
+	if src := srctest.StripGoComments(srctest.PackageSource(t, "internal/config", 1)); strings.Contains(src, "SessionSecret") || strings.Count(src, "session_secret") != 1 {
+		t.Error("internal/config declares web.session_secret again (want the one removedKeys entry)")
 	}
 	var checked int
 	// The tracked example configurations only: an operator's own file (the

@@ -619,6 +619,18 @@ var deployChecklists = map[string][]deployStep{
 	// constructs a server declares no bare buffer (pinned). No code a host
 	// runs changed — same ladder as 0.29.102.
 	"0.29.105": v029102DeployChecklist,
+	// v0.29.106 (2026-10-19 UTC): the whole-branch review of PR #238 (six
+	// areas). Code a host runs: the GitLab group lister stores the project's
+	// path, not its display name (a project whose name differs from its slug
+	// was uncollectable); the web CSRF guard bounds and restricts the form
+	// bodies it parses; sign-out and the token mint serialise on the session
+	// row; the chart grids reflow on narrow screens. No schema change — same
+	// ladder as 0.29.102. Full record: the ledger's v0.29.106 entry.
+	"0.29.106": v029102DeployChecklist,
+	// v0.29.107 (2026-10-19 UTC): CI only — the upgrade-path and processes
+	// jobs in integration.yml and the nightly race stress + golden
+	// collection. No code a host runs changed — same ladder as 0.29.102.
+	"0.29.107": v029102DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,
@@ -669,7 +681,7 @@ var v029102DeployChecklist = func() []deployStep {
 	copy(out, prev)
 	for i := range out {
 		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.102 (stage 2 of the admin-console program): two columns and one CONCURRENTLY index on aveloxis_ops.user_session_tokens (migrate --skip-views is enough). Web sessions are database rows from this release (a restart no longer signs everyone out; a demotion takes effect at the next request; signing out of the web GUI ends the API tokens that sign-in minted); e-mail confirmation links outstanding at the deploy stop working (stored hashed now — the owner requests a new one). Deploy aveloxis-gui's matching release WITH this one — its login page and sign-out send POST to /auth/token and /logout, which answer 405 to a GET from this release on (check-setup.sh requires 0.29.102). web.session_secret is removed (a file that still carries it loads). Every POST to the web process is origin-checked: if aveloxis-gui runs on another origin, web.spa_url must name it. The pages serve their scripts and Chart.js from /static/ (no CDN) with a Content-Security-Policy and a framing refusal — a proxy that adds its own CSP must let the web process's through. " + out[i].desc
+			out[i].desc = "0.29.102 (stage 2 of the admin-console program): two columns and one CONCURRENTLY index on aveloxis_ops.user_session_tokens (migrate --skip-views is enough). Web sessions are database rows from this release (a restart no longer signs everyone out; a demotion takes effect at the next request; signing out of the web GUI ends the API tokens that sign-in minted); e-mail confirmation links outstanding at the deploy stop working (stored hashed now — the owner requests a new one). Deploy aveloxis-gui's matching release WITH this one — its login page and sign-out send POST to /auth/token and /logout, which answer 405 to a GET from this release on (check-setup.sh requires 0.29.102). web.session_secret is removed (a file that still carries it loads, and from 0.29.106 logs a warning at start). Every POST to the web process is origin-checked: if aveloxis-gui runs on another origin, web.spa_url must name it. The pages serve their scripts and Chart.js from /static/ (no CDN) with a Content-Security-Policy and a framing refusal — a proxy that adds its own CSP must let the web process's through. " + out[i].desc
 		}
 	}
 	return out

@@ -228,3 +228,112 @@ func TestOneSecretTokenMinting(t *testing.T) {
 		}
 	}
 }
+
+// TestSignOutAndTheMintSerialiseOnTheSessionRow (whole-branch review of
+// PR #238, DB-F4): a sign-out and a /auth/token mint from the same session
+// can run at once (two tabs). Whichever goes first, the result is the same:
+// the session and every token minted from it are gone, and a mint that
+// lost the race answers ErrNoWebSession. Before 0.29.106 the logout was one
+// statement whose tree delete saw only the children committed before its
+// snapshot; a child committed under a deferred FK check after it was set
+// parentless by the FK action and lived on for 30 days.
+func TestSignOutAndTheMintSerialiseOnTheSessionRow(t *testing.T) {
+	store, uid := webSessionFixture(t)
+	ctx := context.Background()
+	const wait = 300 * time.Millisecond
+	countAPITokens := func() int {
+		var n int
+		if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM aveloxis_ops.user_session_tokens WHERE user_id = $1 AND kind = 'api'`, uid).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	// A mint in flight (its session row key-shared, its child written, not
+	// yet committed): the sign-out waits for it and then sweeps the child.
+	web, err := store.CreateWebSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // a committed transaction's rollback is a no-op
+	if _, err := tx.Exec(ctx, `SELECT token FROM aveloxis_ops.user_session_tokens WHERE token = $1 FOR KEY SHARE`, hashToken(web)); err != nil {
+		t.Fatal(err)
+	}
+	child := hashToken("in-flight-child")
+	now := time.Now().Unix()
+	if _, err := tx.Exec(ctx, `INSERT INTO aveloxis_ops.user_session_tokens (token, user_id, created_at, expiration, token_hashed, kind, parent_token)
+		VALUES ($1, $2, $3, $4, TRUE, 'api', $5)`, child, uid, now, now+3600, hashToken(web)); err != nil {
+		t.Fatal(err)
+	}
+	logout := make(chan error, 1)
+	go func() { logout <- store.DeleteWebSession(ctx, web) }()
+	select {
+	case err := <-logout:
+		t.Fatalf("the sign-out returned (%v) while a mint from the session was in flight; it must wait for the row", err)
+	case <-time.After(wait):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-logout:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the sign-out did not finish after the mint committed")
+	}
+	if n := countAPITokens(); n != 0 {
+		t.Errorf("%d API token(s) of the user survive the sign-out; the child committed during the sign-out must go with the session", n)
+	}
+
+	// A sign-out in flight (the session row locked, not yet committed): the
+	// mint waits and then answers ErrNoWebSession, minting nothing.
+	web2, err := store.CreateWebSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx2, err := store.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx2.Rollback(ctx) //nolint:errcheck // see above
+	if _, err := tx2.Exec(ctx, `SELECT token FROM aveloxis_ops.user_session_tokens WHERE token = $1 FOR UPDATE`, hashToken(web2)); err != nil {
+		t.Fatal(err)
+	}
+	type minted struct {
+		token string
+		err   error
+	}
+	mint := make(chan minted, 1)
+	go func() {
+		tok, err := store.MintTokenForWebSession(ctx, web2)
+		mint <- minted{tok, err}
+	}()
+	select {
+	case m := <-mint:
+		t.Fatalf("the mint returned (%q, %v) while the sign-out held the session row; it must wait", m.token, m.err)
+	case <-time.After(wait):
+	}
+	if _, err := tx2.Exec(ctx, deleteSessionTreeSQL("token = $1 AND kind = $2"), hashToken(web2), sessionKindWeb); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx2.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case m := <-mint:
+		if !errors.Is(m.err, ErrNoWebSession) {
+			t.Errorf("a mint that lost the race to the sign-out = (%q, %v); want ErrNoWebSession", m.token, m.err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the mint did not finish after the sign-out committed")
+	}
+	if n := countAPITokens(); n != 0 {
+		t.Errorf("%d API token(s) of the user exist after a sign-out that beat the mint; want 0", n)
+	}
+}

@@ -8,9 +8,12 @@ package db
 //
 // The aveloxis_ops.user_session_tokens table (present in the schema
 // since the Augur-compat era, previously unused) becomes the shared
-// session store: the web process mints a token at OAuth login, the
-// api process validates the same token from the SPA's Authorization
-// Bearer header. DB-backed also fixes the long-standing "restart web
+// session store: the web process minted a token at OAuth login, the
+// api process validated the same token from the SPA's Authorization
+// Bearer header. Since 0.29.102 (stage 2c of summary/59) the row the
+// login mints is the browser session itself (kind "web", web_sessions.go)
+// and /auth/token mints the Bearer token (kind "api") from it, recording
+// it as the parent. DB-backed also fixed the long-standing "restart web
 // and everyone is logged out" limitation of in-memory sessions.
 //
 // v0.29.82: the table holds only the SHA-256 hex of each token
@@ -34,13 +37,14 @@ var ErrInvalidSessionToken = errors.New("invalid or expired session token")
 // DefaultSessionTokenLifetime is how long an SPA session token lives.
 const DefaultSessionTokenLifetime = 30 * 24 * time.Hour
 
-// CreateSessionToken mints a cryptographically random token for the
-// user and stores it with the given lifetime (zero = default 30
-// days). Expired tokens are purged opportunistically.
+// CreateSessionToken mints a Bearer token for the user with the given
+// lifetime, bound to no web session. No production path mints one this
+// way since 0.29.102 (the web process mints through MintTokenForWebSession
+// and an operator-issued API token is CreateAPIToken); it stays as the
+// one minter the tests of OTHER packages (internal/api) use for a loose
+// Bearer, which an in-package test helper cannot give them (0.29.106,
+// whole-branch review DB-F3). Expired tokens are purged on the way.
 func (s *PostgresStore) CreateSessionToken(ctx context.Context, userID int, lifetime time.Duration) (string, error) {
-	if lifetime <= 0 {
-		lifetime = DefaultSessionTokenLifetime
-	}
 	return s.createSessionToken(ctx, userID, lifetime, sessionKindAPI, "")
 }
 
@@ -76,11 +80,29 @@ func (s *PostgresStore) createSessionToken(ctx context.Context, userID int, life
 		return "", err
 	}
 	now := time.Now().Unix()
-	_, err = s.pool.Exec(ctx, `
+	if parentHash != "" {
+		// Minted FROM a web session: the user is the session's, and the
+		// row is written only while that session is live, under KEY SHARE
+		// on it so a concurrent sign-out serialises (DeleteWebSession).
+		tag, err := s.pool.Exec(ctx, `
+			INSERT INTO aveloxis_ops.user_session_tokens (token, user_id, created_at, expiration, token_hashed, kind, parent_token)
+			SELECT $1, p.user_id, $2, $3, TRUE, $4, p.token
+			FROM aveloxis_ops.user_session_tokens p
+			WHERE p.token = $5 AND p.kind = $6 AND p.expiration > $2
+			FOR KEY SHARE`, hashToken(token), now, now+int64(lifetime.Seconds()), kind, parentHash, sessionKindWeb)
+		if err != nil {
+			return "", fmt.Errorf("create %s session token: %w", kind, err)
+		}
+		if tag.RowsAffected() == 0 {
+			return "", ErrNoWebSession
+		}
+	} else {
+		_, err = s.pool.Exec(ctx, `
 		INSERT INTO aveloxis_ops.user_session_tokens (token, user_id, created_at, expiration, token_hashed, kind, parent_token)
-		VALUES ($1, $2, $3, $4, TRUE, $5, NULLIF($6, ''))`, hashToken(token), userID, now, now+int64(lifetime.Seconds()), kind, parentHash)
-	if err != nil {
-		return "", fmt.Errorf("create %s session token: %w", kind, err)
+		VALUES ($1, $2, $3, $4, TRUE, $5, NULL)`, hashToken(token), userID, now, now+int64(lifetime.Seconds()), kind)
+		if err != nil {
+			return "", fmt.Errorf("create %s session token: %w", kind, err)
+		}
 	}
 	// Opportunistic hygiene — keeps the table from accumulating
 	// expired rows without a dedicated ticker.

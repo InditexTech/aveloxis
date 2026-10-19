@@ -256,6 +256,10 @@ func (s *Server) handleRemoveRepoConfirm(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	repo, err := s.store.GetRepoByID(r.Context(), repoID)
+	if errors.Is(err, db.ErrRepoNotFound) {
+		http.NotFound(w, r) // the row went between the authorization and the read: the caller's 404, as on the repository page
+		return
+	}
 	if err != nil {
 		s.serverError(w, r, "handleRemoveRepoConfirm", fmt.Errorf("repository %d: %w", repoID, err))
 		return

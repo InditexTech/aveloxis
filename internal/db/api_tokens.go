@@ -57,9 +57,6 @@ var ErrInvalidAPIToken = errors.New("invalid, revoked or expired API token")
 // ErrAPITokenNotFound is a token id that names no token.
 var ErrAPITokenNotFound = errors.New("API token not found")
 
-// ErrAPITokenOwnerNotFound is a grant whose owner account does not exist.
-var ErrAPITokenOwnerNotFound = errors.New("no account with that user id")
-
 type adminPrivilegeDroppedKey struct{}
 
 // WithoutAdminPrivilege marks a request's context as acting without admin
@@ -162,7 +159,7 @@ func (s *PostgresStore) CreateAPIToken(ctx context.Context, g APITokenGrant) (st
 		hashToken(raw), g.UserID, label, createdBy, g.Lifetime.Seconds(), g.RateLimitPerHour, g.RateLimitPerDay).
 		Scan(&t.TokenID, &t.CreatedAt, &t.ExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", APIToken{}, fmt.Errorf("user id %d: %w", g.UserID, ErrAPITokenOwnerNotFound)
+		return "", APIToken{}, fmt.Errorf("user id %d: %w", g.UserID, ErrUserNotFound)
 	}
 	if err != nil {
 		return "", APIToken{}, fmt.Errorf("create API token: %w", err)

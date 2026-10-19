@@ -4,9 +4,15 @@
 package db
 
 import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/aveloxis/aveloxis/internal/platform"
 	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
@@ -102,5 +108,56 @@ func TestAddOrgToGroupCanonicalizesSchemeEndToEnd(t *testing.T) {
 		t.Errorf("stored org_url = %q, want the canonical %q — schemeless "+
 			"storage silently defeats every org_url prefix/equality matcher",
 			stored, "https://github.com/avtest-schemeless-org")
+	}
+}
+
+// TestAnOrgURLNoParserAcceptsIsRefusedAtRegistration (0.29.106 review
+// round 1): once ParseOrgURL refused a non-http(s) scheme, the registration
+// gate's "a URL that does not parse is left to later checks" arm let
+// `ftp://github.com/chaoss` register with an empty org_name — audited
+// "registered", never counted by the demand probe, logged as off-host by
+// every 4 h pass, stamped by none. It is the caller's input, refused here.
+func TestAnOrgURLNoParserAcceptsIsRefusedAtRegistration(t *testing.T) {
+	dsn := os.Getenv("AVELOXIS_TEST_DB")
+	if dsn == "" {
+		t.Skip("AVELOXIS_TEST_DB not set")
+	}
+	ctx := context.Background()
+	store, err := NewPostgresStore(ctx, dsn, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(store.Close)
+	const login = "_avtest_badscheme_org"
+	_, _ = store.pool.Exec(ctx, `DELETE FROM aveloxis_ops.users WHERE login_name = $1`, login)
+	userID, err := store.UpsertOAuthUser(ctx, OAuthUserInfo{Login: login, Provider: "github"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		c := context.Background()
+		_, _ = store.pool.Exec(c, `DELETE FROM aveloxis_ops.user_org_requests WHERE user_id = $1`, userID)
+		_, _ = store.pool.Exec(c, `DELETE FROM aveloxis_ops.user_groups WHERE user_id = $1`, userID)
+		_, _ = store.pool.Exec(c, `DELETE FROM aveloxis_ops.users WHERE user_id = $1`, userID)
+	})
+	var groupID int64
+	if err := store.pool.QueryRow(ctx, `INSERT INTO aveloxis_ops.user_groups (user_id, name, status)
+		VALUES ($1, 'avtest-badscheme-group', 'approved') RETURNING group_id`, userID).Scan(&groupID); err != nil {
+		t.Fatal(err)
+	}
+	for raw, want := range map[string]error{
+		"ftp://github.com/chaoss":      ErrInvalidOrgURL,
+		"ftp://gitlab.com/gnome":       ErrInvalidOrgURL,
+		"ssh://git@github.com/chaoss":  platform.ErrURLUserinfo, // the credentials rule answers first (0.29.57)
+		"ftp://github.com/chaoss/repo": ErrInvalidOrgURL,
+	} {
+		out, err := store.AddOrgToGroup(ctx, userID, groupID, raw, "", "")
+		if !errors.Is(err, want) || out.Registered {
+			t.Errorf("AddOrgToGroup(%q) = (%+v, %v); want %v and nothing registered", raw, out, err, want)
+		}
+	}
+	var n int
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM aveloxis_ops.user_org_requests WHERE user_id = $1`, userID).Scan(&n); err != nil || n != 0 {
+		t.Errorf("%d org registration(s) exist for the refused URLs (%v); want 0", n, err)
 	}
 }

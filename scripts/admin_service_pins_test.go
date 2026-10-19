@@ -334,7 +334,7 @@ type adminParityRow struct {
 // adminParity is the registry: one row per exported method of
 // *admin.Service.
 var adminParity = map[string]adminParityRow{
-	"IsAdmin":                   {API: "-", Web: "-", CLI: "-", Why: "the decision every operation makes; the API's requireAdmin and the web's requireAdmin ask the store directly today (stage 2 moves them onto it)"},
+	"IsAdmin":                   {API: "-", Web: "-", CLI: "-", Why: "the decision every operation makes for itself; the web's requireAdmin reads the privilege from the session row's per-request lookup (LookupWebSession, 0.29.102) and the API's from IsUserAdmin under its 60 s identity cache — neither is a service operation"},
 	"Options":                   {API: "-", Web: "-", CLI: "-", Why: "an accessor"},
 	"SubmitAccountEmail":        {API: "POST /api/v1/me/email", Web: "POST /account/email", CLI: "-", Why: "an account's own address; the CLI has no account"},
 	"ConfirmAccountEmail":       {API: "POST /api/v1/me/email/confirm", Web: "GET /account/email/confirm", CLI: "-", Why: "follows a mailed link; the CLI has no account"},
@@ -342,7 +342,7 @@ var adminParity = map[string]adminParityRow{
 	"CreateGroup":               {API: "POST /api/v1/groups", Web: "POST /groups/new", CLI: "aveloxis load-numfocus-projects, load-numfocus-orgs, load-foundation-orgs, load-foundation-core-repos", Why: ""},
 	"GroupAccess":               {API: "GET /api/v1/groups/{groupID}/repos, GET /api/v1/groups/{groupID}/orgs, GET /api/v1/groups/{groupID}/pending-adds, GET /api/v1/supply-chain/*?group=", Web: "-", CLI: "-", Why: "the web's group page reads through the store's owner-only GetGroupDetail (one listing query with its page and search; GroupAccess would be a second read before it — left as is, recorded in stage 2); the CLI reads no group"},
 	"AuthorizeGroupRepo":        {API: "-", Web: "GET /groups/{gid}/repos/{rid}, GET /groups/{gid}/repos/{rid}/sbom, GET /groups/{gid}/repos/{rid}/remove", CLI: "-", Why: "the API's repository routes are scoped by authInfo (repoScope), not by group"},
-	"AddToGroup":                {API: "POST /api/v1/groups/{groupID}/repos (kind repo)", Web: "POST /groups/add-repo", CLI: "-", Why: "aveloxis add-repo queues collection without a group (the legacy repo group); the loaders link through the operator door (AddOperatorRepoToGroupByID)"},
+	"AddToGroup":                {API: "POST /api/v1/groups/{groupID}/repos (kind repo)", Web: "POST /groups/add-repo", CLI: "aveloxis load-numfocus-projects", Why: "aveloxis add-repo queues collection without a group (the legacy repo group); load-numfocus-projects adds through the service (0.29.100 round 3) while load-foundation-core-repos links through the operator door (AddOperatorRepoToGroupByID)"},
 	"AddOrgToGroup":             {API: "POST /api/v1/groups/{groupID}/repos (kind org)", Web: "POST /groups/add-org", CLI: "aveloxis load-numfocus-orgs, load-foundation-orgs", Why: ""},
 	"RemoveFromGroup":           {API: "POST /api/v1/groups/{groupID}/repos/{repoID}/remove", Web: "POST /groups/remove-repo", CLI: "-", Why: "no CLI command removes a repository from a user's group"},
 	"DecideAddRequest":          {API: "POST /api/v1/admin/add-requests/{requestID}/{decision}", Web: "POST /admin/add-requests/{id}/approve, POST /admin/add-requests/{id}/reject", CLI: "-", Why: "approval is an administrator's decision in a GUI; no CLI command decides requests"},

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Production Deployment &mdash; Aveloxis 0.29.105 documentation</title>
+  <title>Production Deployment &mdash; Aveloxis 0.29.107 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=d690a2c1"></script>
+      <script src="../_static/documentation_options.js?v=4510acb2"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -1930,7 +1930,7 @@ large repositories stop hitting the database. Cached GETs answer
 24 hours from login for a session, 30 days for a token): a restart of
 <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> signs nobody out, and signing out ends the tokens the
 sign-in minted. <code class="docutils literal notranslate"><span class="pre">web.session_secret</span></code> was removed in 0.29.102; a file that
-still carries it loads.</p></li>
+still carries it loads, and from 0.29.106 logs a warning naming it at start.</p></li>
 </ul>
 <p>Every other key keeps its default. The loader refuses an invalid file
 (a malformed value, a non-canonical <code class="docutils literal notranslate"><span class="pre">trusted_proxy</span></code>, a <code class="docutils literal notranslate"><span class="pre">front_end_secret</span></code>

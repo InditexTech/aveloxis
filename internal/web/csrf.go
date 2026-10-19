@@ -6,11 +6,17 @@ package web
 import (
 	"crypto/rand"
 	"crypto/subtle"
+	"errors"
+	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
+	"github.com/aveloxis/aveloxis/internal/httpserver"
+	"github.com/aveloxis/aveloxis/internal/platform"
 )
 
 // csrfCookieName carries the session's form token (0.29.102, stage 2f of
@@ -74,6 +80,21 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 //     forges nothing: the route's gate answers it.
 //
 // Refusals are 403 and logged at WARN with the path and the origin.
+//
+// The form the guard reads the token from is bounded and typed first
+// (0.29.106, W1 of the whole-branch review): the guard runs before the mux
+// and every gate, so until then an anonymous request with any cookie value
+// had its body parsed as a 32 MiB-in-memory multipart form with temp files
+// for the rest. Every body on a form route is wrapped in ONE
+// http.MaxBytesReader of formBodyMaxBytes — the handlers' own FormValue
+// reads the same wrapped body — and only application/x-www-form-urlencoded
+// is parsed (no page posts multipart): an overrun is a 413, another type a
+// 415, a malformed form a 400, each logged — on the form path, where the
+// guard parses; a request that carries the token in X-CSRF-Token (no
+// first-party client does) is not parsed here and meets the handler's own
+// refusal of the bounded body instead. The API reverse proxy is left out:
+// the API bounds its own bodies, and a bound here would turn its 413 into
+// a proxy failure.
 func (s *Server) csrfGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -86,11 +107,18 @@ func (s *Server) csrfGuard(next http.Handler) http.Handler {
 			http.Error(w, "cross-site request refused", http.StatusForbidden)
 			return
 		}
-		if _, err := r.Cookie("aveloxis_session"); err == nil && !csrfExempt[r.URL.Path] && !strings.HasPrefix(r.URL.Path, "/api/") {
+		proxied := strings.HasPrefix(r.URL.Path, "/api/")
+		if !proxied {
+			r.Body = http.MaxBytesReader(w, r.Body, formBodyMaxBytes)
+		}
+		if _, err := r.Cookie("aveloxis_session"); err == nil && !csrfExempt[r.URL.Path] && !proxied {
 			cookie, err := r.Cookie(csrfCookieName)
 			given := r.Header.Get("X-CSRF-Token")
 			if given == "" {
-				given = r.PostFormValue("csrf_token")
+				if !s.parseForm(w, r) {
+					return
+				}
+				given = r.PostForm.Get("csrf_token")
 			}
 			if err != nil || cookie.Value == "" || given == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(given)) != 1 {
 				s.logger.Warn("form token missing or stale; the form was refused", "method", r.Method, "path", r.URL.Path)
@@ -100,6 +128,34 @@ func (s *Server) csrfGuard(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// parseForm parses a server-rendered form's body under the guard's bound
+// and type rule; false means it answered (413, 415 or 400, logged).
+func (s *Server) parseForm(w http.ResponseWriter, r *http.Request) bool {
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		media, _, err := mime.ParseMediaType(ct)
+		if err != nil || media != "application/x-www-form-urlencoded" {
+			s.logger.Warn("form body refused: not a URL-encoded form", "path", r.URL.Path, "content_type", platform.TruncateForLog([]byte(ct), 120))
+			http.Error(w, "forms are application/x-www-form-urlencoded", http.StatusUnsupportedMediaType)
+			return false
+		}
+	}
+	err := r.ParseForm()
+	var tooLarge *http.MaxBytesError
+	switch {
+	case err == nil:
+		return true
+	case errors.As(err, &tooLarge):
+		s.logger.Warn("form body refused: over the bound", "path", r.URL.Path, "limit_bytes", tooLarge.Limit)
+		http.Error(w, "the form is too large", http.StatusRequestEntityTooLarge)
+	default:
+		// Through LogFailure: a read error can be the request's own end
+		// (the client went away), which is not a failure.
+		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "form body refused: malformed", "path", r.URL.Path, "error", err)
+		http.Error(w, "invalid form data", http.StatusBadRequest)
+	}
+	return false
 }
 
 // requestOrigin reports whether the request's origin is this deployment's
@@ -120,6 +176,13 @@ func (s *Server) requestOrigin(r *http.Request) (string, bool) {
 	if err != nil || u.Host == "" {
 		return origin, false
 	}
+	// The Host arm compares the host only, the SPA arm scheme and host
+	// (0.29.106 review, W3 — left apart with the reason): behind the
+	// reverse proxy the request's own scheme is not knowable here (r.TLS
+	// is nil; a forwarded-proto header is only as trustworthy as the
+	// proxy), while web.spa_url is configured, so its scheme is known. A
+	// plain-http page on the same host name posting into an https
+	// deployment is the one case this admits; HSTS closes it.
 	return origin, strings.EqualFold(u.Host, r.Host) || s.isSPAOrigin(origin)
 }
 
@@ -150,3 +213,24 @@ func (s *Server) csrfToken(w http.ResponseWriter, r *http.Request) string {
 	http.SetCookie(w, s.cookie(csrfCookieName, token, int(db.WebSessionLifetime.Seconds())))
 	return token
 }
+
+// formBodyMaxBytes bounds every form body the web process parses (0.29.106,
+// W1): the largest legal form is the repository paste — admin.MaxPasteURLs
+// lines of db.MaxAddURLBytes, each byte percent-encoded (three bytes) and
+// each line ending in the CRLF a browser normalises a textarea to (%0D%0A,
+// six) — plus the fixed fields: the three names, an int64 group id and the
+// csrf token (review round 1 of 0.29.106: the first derivation counted LF
+// and hid the difference in a 4 KiB allowance). TestFormBodyBoundIsDerived
+// builds that maximal encoding and holds it within one line terminator of
+// the bound. Whitespace the handler strips (blank lines, padding) counts
+// against the bound too, so a maximal paste with padding is refused with
+// a loud 413, never trimmed (review round 2 of 0.29.106: declined, by
+// design). The API's JSON routes carry their own bounds (decodeJSONBody);
+// the reverse proxy forwards those bodies unbounded here.
+const (
+	formBodyMaxBytes     int64 = int64(admin.MaxPasteURLs)*(3*int64(db.MaxAddURLBytes)+int64(len(formLineTerminator))) + int64(formFixedFieldsBytes)
+	formLineTerminator         = "%0D%0A"
+	formFixedFieldsBytes       = len("repo_urls=&group_id=&csrf_token=") + maxInt64Digits + csrfTokenLen
+	maxInt64Digits             = 19 // len(strconv.FormatInt(math.MaxInt64, 10))
+	csrfTokenLen               = 26 // rand.Text(): 26 base32 characters (160 bits), pinned by the test
+)

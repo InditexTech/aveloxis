@@ -42,13 +42,17 @@ func TestListGroupProjectsPaginatesWithTheInstanceKey(t *testing.T) {
 		if r.URL.Query().Get("include_subgroups") != "true" {
 			t.Error("the listing must include subgroups")
 		}
+		if r.URL.Query().Get("with_shared") != "false" {
+			t.Error("the listing must leave out projects shared into the group (GitHub lists an organization's own repositories; parity)")
+		}
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		w.Header().Set("Content-Type", "application/json")
 		switch page {
 		case 1:
 			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": 11, "web_url": "https://gitlab.example.invalid/my-group/a", "name": "a", "created_at": created, "namespace": map[string]any{"full_path": "my-group"}},
-				{"id": 12, "web_url": "https://gitlab.example.invalid/my-group/sub/b", "name": "b", "namespace": map[string]any{"full_path": "my-group/sub"}},
+				{"id": 11, "web_url": "https://gitlab.example.invalid/my-group/a", "name": "a", "path": "a", "path_with_namespace": "my-group/a", "created_at": created, "namespace": map[string]any{"full_path": "my-group"}},
+				// GitLab's name is the DISPLAY name; the path is the slug every API call addresses (0.29.106 whole-branch review P1).
+				{"id": 12, "web_url": "https://gitlab.example.invalid/my-group/sub/b", "name": "B Display Name", "path": "b", "path_with_namespace": "my-group/sub/b", "namespace": map[string]any{"full_path": "my-group/sub"}},
 			})
 		default:
 			_ = json.NewEncoder(w).Encode([]map[string]any{})
@@ -62,7 +66,7 @@ func TestListGroupProjectsPaginatesWithTheInstanceKey(t *testing.T) {
 		got = append(got, p)
 	}
 	if len(got) != 2 || got[1].WebURL != "https://gitlab.example.invalid/my-group/sub/b" || got[1].Owner != "my-group/sub" || got[1].Name != "b" || got[1].ForgeID != "12" {
-		t.Errorf("ListGroupProjects = %+v", got)
+		t.Errorf("ListGroupProjects = %+v; want Name = the project's path (its slug), never its display name", got)
 	}
 	if !got[0].CreatedAt.Equal(created) || !got[1].CreatedAt.IsZero() {
 		t.Errorf("created_at = %v, %v; want the forge's time and zero when absent", got[0].CreatedAt, got[1].CreatedAt)

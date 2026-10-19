@@ -203,10 +203,17 @@ func ParseAnyRepoURLWithHints(rawURL string, gitlabWebBases []string) (RepoURL, 
 
 // ParseOrgURL extracts the host and org/group name from an org URL like
 // https://github.com/torvalds or https://gitlab.com/gitlab-org. The org
-// name is the FIRST path segment only (top-level org/group) — matching the
-// historical inline parsers in AddOrgToGroup and scanOrgRepos this
-// consolidates. Schemeless input ("github.com/chaoss") is tolerated
-// because the web org-add path historically accepted it.
+// name is the FIRST path segment only (top-level org/group), the grammar of
+// the legacy repo_groups org rows and the stored user_org_requests.org_name
+// column it was consolidated from (the historical inline parser of
+// AddOrgToGroup; the scan it also served is gone). Schemeless input
+// ("github.com/chaoss") is tolerated because the web org-add path
+// historically accepted it. ParseOrgRef is the classifier (the forge, the
+// instance's web base, GitLab's full group path); this parser is kept apart
+// on purpose (0.29.106 whole-branch review P5): it answers OrgOnGitHubHost
+// for every stored org_url, including rows written under the old grammar,
+// and v0.30's forge-instances design replaces both. The scheme rule is
+// ParseOrgRef's: http or https, nothing a browser or the API cannot reach.
 func ParseOrgURL(rawURL string) (host, orgName string, err error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
@@ -226,6 +233,9 @@ func ParseOrgURL(rawURL string) (host, orgName string, err error) {
 	u, perr := url.Parse(rawURL)
 	if perr != nil {
 		return "", "", fmt.Errorf("%w: %v", ErrInvalidRepoURL, perr)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", "", fmt.Errorf("%w: scheme must be http or https, got %q", ErrInvalidRepoURL, u.Scheme)
 	}
 	if u.Host == "" {
 		return "", "", fmt.Errorf("%w: missing host", ErrInvalidRepoURL)

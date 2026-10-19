@@ -132,7 +132,9 @@ type groupStore interface {
 	AddReposToGroup(ctx context.Context, userID int, groupID int64, repoURLs []string, autoApproveLimit int, glWebBase string) (db.AddOutcome, error)
 	AddOrgToGroup(ctx context.Context, userID int, groupID int64, orgURL, ghAPIBase, glWebBase string) (db.OrgAddOutcome, error)
 	RemoveRepoFromGroup(ctx context.Context, userID int, groupID, repoID int64) (bool, error)
-	RejectGroup(ctx context.Context, groupID int64, adminID int) error
+	// RejectGroup reports whether it changed the row: a group already
+	// rejected (or gone between the owner read and the flip) is no change.
+	RejectGroup(ctx context.Context, groupID int64, adminID int) (bool, error)
 }
 
 type addRequestStore interface {

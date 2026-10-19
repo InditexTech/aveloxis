@@ -47,3 +47,23 @@ func TestRemovedGitLabHostsKeyIsWarnedAboutAndNeverRead(t *testing.T) {
 		t.Errorf("warnings = %q; want none", w)
 	}
 }
+
+// TestSessionSecretIsAReportedRemovedKey (0.29.106 whole-branch review P3):
+// web.session_secret was removed in 0.29.102 by the same program that built
+// the removed-key report; a file still carrying it is reported like
+// gitlab.gitlab_hosts, not loaded in silence.
+func TestSessionSecretIsAReportedRemovedKey(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "old.json")
+	if err := os.WriteFile(p, []byte(`{"web": {"addr": ":8082", "session_secret": "x"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := cfg.LoadWarnings()
+	if len(w) != 1 || !strings.Contains(w[0], "web.session_secret") || !strings.Contains(w[0], "user_session_tokens") {
+		t.Errorf("warnings = %q; want one naming web.session_secret and what replaced it", w)
+	}
+}

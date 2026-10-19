@@ -33,14 +33,17 @@ func TestRequireAdminMiddlewareExists(t *testing.T) {
 	}
 }
 
-// TestSessionStructHasIsAdmin pins that the in-memory session carries
-// the admin flag so requireAdmin doesn't need a DB roundtrip per request.
+// TestSessionStructHasIsAdmin pins that the request's Session carries the
+// privilege requireAdmin gates on. Since 0.29.102 (stage 2c) that field is
+// filled per request from the session row's join with the users row
+// (LookupWebSession → storeSession), never at login: a demotion shows at
+// the next request. The gate reads the Session, not the store, so the
+// field is where the per-request read lands.
 func TestSessionStructHasIsAdmin(t *testing.T) {
 	// Session stays in server.go with Server, New and Handler (P-2).
 	decl := srctest.TypeBody(t, srctest.Read(t, "internal/web/server.go"), "Session")
 	if !strings.Contains(decl, "IsAdmin") {
-		t.Error("Session struct must hold IsAdmin so requireAdmin can gate without a DB lookup. " +
-			"Set it from the OAuth callback's UpsertOAuthUser return.")
+		t.Error("Session struct must hold IsAdmin, filled per request from the session row's users join; requireAdmin gates on it")
 	}
 }
 

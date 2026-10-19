@@ -137,7 +137,10 @@ is announced the same way.
 
 1. Open a group from the dashboard.
 2. Click **Add Organization**.
-3. Paste the org URL (e.g., `https://github.com/chaoss` or `https://gitlab.com/gnome`).
+3. Paste the org URL (e.g., `https://github.com/chaoss` or `https://gitlab.com/gnome`; GitHub's own
+   `https://github.com/orgs/chaoss/repositories` spelling and GitLab's `/groups/gnome` are accepted). Both
+   forges list the organization's **own** repositories: a GitLab project shared into the group from another
+   namespace is not added — add it by its own URL.
 4. Click **Add**. All current repositories in the org are added to the group and queued.
 
 Behind the scenes, a row is inserted into the `user_org_requests` table to track the org for ongoing discovery.
@@ -232,7 +235,7 @@ You can run them on different hosts as long as both can reach the database.
 
 ## Security Considerations
 
-- **OAuth tokens**: The access tokens obtained during login are used only to fetch the user's profile and are not stored persistently. They are held in the session for the duration of the login.
+- **OAuth tokens**: The access token obtained during login is used only to fetch the user's profile and is dropped once the callback has done so. The session row holds the user id, never the token.
 - **Session cookies**: a random 256-bit token whose hash is a row of `aveloxis_ops.user_session_tokens` (since 0.29.102; unguessable rather than signed, and it survives a restart of `aveloxis web`). All cookies set `HttpOnly`, `SameSite=Lax` and, in production, `Secure`.
 - **Cross-site request forgery** (since 0.29.102): every state change a page can start is a `POST` (the e-mail confirmation link and the OAuth callbacks are `GET`s each guarded by a one-time secret), and every `POST` is checked before its handler — the request's `Origin` (or `Referer`) must be the web GUI's own host or the origin in `web.spa_url`, a browser's `Sec-Fetch-Site: cross-site` is refused, and a signed-in form must carry the session's form token (the `csrf_token` field every server-rendered form includes, matched against the `aveloxis_csrf` cookie). A refusal is a `403` and a WARN line in the log. If aveloxis-gui runs on another origin, set `web.spa_url` to it, or its sign-in and sign-out calls are refused. A proxy that rewrites the `Host` header has the same effect as another origin: the guard compares the browser's origin (host and port) with `Host`, so a proxy must forward the public host — `proxy_set_header Host $host`, or `$http_host` when the public port is not the default.
 - **Response headers** (since 0.29.102): every answer carries a `Content-Security-Policy` that names the web process as the only script source (the pages carry no inline script and load no CDN; Chart.js is served from `/static/`), forbids framing (`frame-ancestors 'none'`, `X-Frame-Options: DENY`), plugins and a `<base>`, plus `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`. Inline `style` attributes stay allowed (`style-src 'unsafe-inline'`); they are not a script vector.

@@ -158,10 +158,13 @@ func (s *Service) AddToGroup(ctx context.Context, a Actor, groupID int64, paste 
 	}
 	urls := make([]string, 0, len(lines))
 	for _, line := range lines {
-		if scpStyleAddress(line) {
+		if platform.SCPCloneAddress(line) {
 			// git@host:owner/repo is a git address, not a web URL; said so,
 			// rather than "credentials" after the scheme is supplied
-			// (review round 1 F11).
+			// (review round 1 F11). The platform's one predicate decides,
+			// with its boundary against a credential-shaped paste
+			// (0.29.106 whole-branch review A1: a second spelling here
+			// disagreed on `git@host:1234/repo`).
 			out.Invalid = append(out.Invalid, logURL(line)+": a git SSH address, not a web URL (expected https://host/owner/repo)")
 			continue
 		}
@@ -270,20 +273,4 @@ func (s *Service) RemoveFromGroup(ctx context.Context, a Actor, groupID, repoID 
 		s.audit(op, a, "group_id", groupID, "repo_id", repoID)
 	}
 	return removed, nil
-}
-
-// scpStyleAddress reports git's SCP-like address form, "user@host:path"
-// (no scheme, a colon after the host that is not a port): what a clone
-// command takes and a browser does not.
-func scpStyleAddress(line string) bool {
-	if strings.Contains(line, "://") {
-		return false
-	}
-	at := strings.Index(line, "@")
-	colon := strings.Index(line, ":")
-	if at <= 0 || colon <= at+1 {
-		return false
-	}
-	rest := line[colon+1:]
-	return rest != "" && !strings.ContainsRune(rest[:1], '/') && strings.IndexFunc(rest, func(r rune) bool { return r < '0' || r > '9' }) >= 0
 }

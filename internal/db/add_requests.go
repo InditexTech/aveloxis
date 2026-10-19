@@ -554,6 +554,13 @@ func (s *PostgresStore) DecideAddRequest(ctx context.Context, requestID int64, a
 // (v0.29.57, round 2 on the Copilot 5260961848 fixes).
 var ErrOrgOffGitHubHost = errors.New("organization is not on this deployment's GitHub host")
 
+// ErrInvalidOrgURL is an organization URL no parser accepts (a scheme
+// other than http(s), no host, no name): refused at registration, because
+// a row the scan could never enumerate would sit unstamped forever
+// (0.29.106 review round 1: `ftp://github.com/chaoss` registered with an
+// empty org_name once ParseOrgURL refused the scheme).
+var ErrInvalidOrgURL = errors.New("not an organization URL")
+
 // ErrOrgOffGitLabInstance is ErrOrgOffGitHubHost's GitLab twin (round-3
 // review of 0.29.100): a GitLab group not on the configured instance
 // (gitlab.base_url) — or any GitLab group when none is configured — can
@@ -603,13 +610,14 @@ func GitLabInstanceLabel(glWebBase string) string {
 // where it is written): a "github"-labelled org must be on the deployment's
 // GitHub host; a "gitlab"-labelled group must be on the configured
 // instance (glWebBase; none configured → refused). A URL that does not
-// PARSE is not "off the host" — it is left to the checks that name that
-// defect (the database's value rejection, ErrURLTooLong), so a caller's
-// error text stays true (the NUL-byte case in TestGroupAddRepoErrorStatus).
+// PARSE is refused as ErrInvalidOrgURL (0.29.106): no later check names a
+// wrong scheme, and the registration would never be enumerated. The
+// service classifies it as the caller's input with the same words as the
+// database's value rejection, so a NUL byte reads as before.
 func orgRegistrable(platformName, orgURL, ghAPIBase, glWebBase string) error {
 	host, _, err := platform.ParseOrgURL(orgURL)
 	if err != nil {
-		return nil
+		return fmt.Errorf("%w: %w", ErrInvalidOrgURL, err)
 	}
 	switch platformName {
 	case "github":

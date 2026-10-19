@@ -135,8 +135,8 @@ func TestAccountByLoginRefusesAmbiguity(t *testing.T) {
 	if a, err := store.AccountByLogin(ctx, "_avsolo"); err != nil || a.Login != "_avSolo" || a.Provider != "github" {
 		t.Errorf("one case-insensitive match = %+v, %v; want it, with its provider", a, err)
 	}
-	if _, err := store.AccountByLogin(ctx, "_avnobody"); !errors.Is(err, ErrNoSuchUser) {
-		t.Errorf("no account = %v; want ErrNoSuchUser", err)
+	if _, err := store.AccountByLogin(ctx, "_avnobody"); !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("no account = %v; want ErrUserNotFound", err)
 	}
 }
 

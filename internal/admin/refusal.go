@@ -228,7 +228,7 @@ func Classify(err error) (Refusal, bool) {
 		return Refusal{Kind: OffHost, Detail: db.ErrOrgOffGitHubHost.Error()}, true
 	case errors.Is(err, db.ErrOrgOffGitLabInstance):
 		return Refusal{Kind: OffHost, Detail: db.ErrOrgOffGitLabInstance.Error()}, true
-	case errors.Is(err, db.ErrURLTooLong), errors.Is(err, platform.ErrURLUserinfo), db.IsRejectedValue(err):
+	case errors.Is(err, db.ErrURLTooLong), errors.Is(err, db.ErrInvalidOrgURL), errors.Is(err, platform.ErrURLUserinfo), db.IsRejectedValue(err):
 		return Refusal{Kind: InvalidInput, Detail: urlInputDetail}, true
 	case errors.Is(err, db.ErrAddItemsFailed):
 		return Refusal{Kind: Partial, Detail: err.Error()}, true

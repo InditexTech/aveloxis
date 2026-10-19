@@ -63,7 +63,8 @@ func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, `<!DOCTYPE html><html><head><title>Approvals</title>
+	fmt.Fprint(w, `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Approvals</title>
+<link rel="stylesheet" href="/static/app.css">
 <style>
   body { font-family: system-ui, sans-serif; margin: 2rem; background: #f5f5f5; color: #333; }
   h1 { margin-bottom: 0.5rem; }
@@ -77,7 +78,7 @@ func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request
   .reject { background: #dc2626; color: white; border-color: #b91c1c; }
   .empty { color: #6b7280; font-style: italic; padding: 2rem; text-align: center; }
   .navlinks a { margin-right: 1rem; }
-  .urls { color: #6b7280; font-size: 0.8rem; max-width: 28rem; word-break: break-all; }
+  .urls { color: #6b7280; font-size: 0.8rem; overflow-wrap: anywhere; }
 </style></head><body>
 <h1>Approvals</h1>
 <div class="sub navlinks">
@@ -90,7 +91,7 @@ func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request
 	if len(requests) == 0 {
 		fmt.Fprint(w, `<div class="empty">No pending additions awaiting review.</div>`)
 	} else {
-		fmt.Fprint(w, `<table><tr><th>#</th><th>Requested by</th><th>Group</th><th>Kind</th><th>Items</th><th>Sample</th><th>Action</th></tr>`)
+		fmt.Fprint(w, `<table class="tbl-stack"><thead><tr><th>#</th><th>Requested by</th><th>Group</th><th>Kind</th><th>Items</th><th>Sample</th><th>Action</th></tr></thead><tbody>`)
 		for _, q := range requests {
 			var sample string
 			count := q.ItemCount
@@ -104,7 +105,7 @@ func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request
 				}
 				sample = strings.Join(escaped, "<br>")
 			}
-			fmt.Fprintf(w, `<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td class="urls">%s</td><td>
+			fmt.Fprintf(w, `<tr><td data-label="#">%d</td><td data-label="Requested by">%s</td><td data-label="Group">%s</td><td data-label="Kind">%s</td><td data-label="Items">%d</td><td class="urls" data-label="Sample">%s</td><td data-label="Action">
 <form method="POST" action="/admin/add-requests/%d/approve" style="display:inline"><input type="hidden" name="csrf_token" value="%s"><button class="btn approve" type="submit">Approve</button></form>
 <form method="POST" action="/admin/add-requests/%d/reject" style="display:inline"><input type="hidden" name="csrf_token" value="%s"><button class="btn reject" type="submit">Reject</button></form>
 </td></tr>`,
@@ -115,7 +116,7 @@ func (s *Server) handleAdminPendingGroups(w http.ResponseWriter, r *http.Request
 				count, sample,
 				q.RequestID, tok, q.RequestID, tok)
 		}
-		fmt.Fprint(w, `</table>`)
+		fmt.Fprint(w, `</tbody></table>`)
 	}
 
 	fmt.Fprint(w, `</body></html>`)
@@ -146,7 +147,8 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request, sess *
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, `<!DOCTYPE html><html><head><title>Users</title>
+	fmt.Fprint(w, `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Users</title>
+<link rel="stylesheet" href="/static/app.css">
 <style>
   body { font-family: system-ui, sans-serif; margin: 2rem; background: #f5f5f5; color: #333; }
   h1 { margin-bottom: 0.5rem; }
@@ -167,7 +169,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request, sess *
   <a href="/dashboard">Back to dashboard</a>
   <a href="/admin/groups/pending">Approvals</a>
 </div>
-<table><tr><th>ID</th><th>Login</th><th>Email</th><th>Provider</th><th>Role</th><th>Action</th></tr>`)
+<table class="tbl-stack"><thead><tr><th>ID</th><th>Login</th><th>Email</th><th>Provider</th><th>Role</th><th>Action</th></tr></thead><tbody>`)
 
 	for _, u := range users {
 		role := `<span class="badge">user</span>`
@@ -182,14 +184,14 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request, sess *
 		} else {
 			action = fmt.Sprintf(`<form method="POST" action="/admin/users/%d/admin" style="display:inline"><input type="hidden" name="csrf_token" value="%s"><input type="hidden" name="admin" value="true"><button class="btn promote" type="submit">Promote to admin</button></form>`, u.UserID, tok)
 		}
-		fmt.Fprintf(w, `<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
+		fmt.Fprintf(w, `<tr><td data-label="ID">%d</td><td data-label="Login">%s</td><td data-label="Email">%s</td><td data-label="Provider">%s</td><td data-label="Role">%s</td><td data-label="Action">%s</td></tr>`,
 			u.UserID,
 			template.HTMLEscapeString(u.Login),
 			template.HTMLEscapeString(u.Email),
 			template.HTMLEscapeString(u.Provider),
 			role, action)
 	}
-	fmt.Fprint(w, `</table></body></html>`)
+	fmt.Fprint(w, `</tbody></table></body></html>`)
 }
 
 func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request, sess *Session) {
@@ -202,7 +204,13 @@ func (s *Server) handleSetUserAdmin(w http.ResponseWriter, r *http.Request, sess
 		http.Error(w, "invalid form data", http.StatusBadRequest)
 		return
 	}
-	isAdmin := strings.EqualFold(strings.TrimSpace(r.FormValue("admin")), "true")
+	// The field is required and boolean, as the API twin's is (58 §7 item
+	// 18: `{}` demoted the account; 0.29.106 review A2 for this form).
+	isAdmin, ok := map[string]bool{"true": true, "false": false}[strings.TrimSpace(r.FormValue("admin"))]
+	if !ok {
+		http.Error(w, "the admin field must be true or false", http.StatusBadRequest)
+		return
+	}
 	// The service refuses self-demotion (the page shows no Demote button
 	// for the signed-in admin, so only a crafted POST gets here) and,
 	// atomically in the store, the last administrator's; both are answered

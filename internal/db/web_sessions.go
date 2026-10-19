@@ -78,9 +78,34 @@ func (s *PostgresStore) LookupWebSession(ctx context.Context, raw string) (WebSe
 // Bearer token /auth/token minted from it go together (B4: sign-out means
 // signed out everywhere), with their refresh rows. A session already gone
 // is not an error.
+//
+// It is one transaction that first locks the session row (FOR UPDATE):
+// a mint in flight from the same session holds the row KEY SHARE until
+// it commits (createSessionToken), so the sign-out waits for it and the
+// tree delete, a second statement with its own snapshot, sees the child;
+// a mint that arrives later waits on the lock and then finds no live
+// session (0.29.106, whole-branch review DB-F4: as one statement the tree
+// delete missed a child committed after its snapshot, and the FK action
+// set it parentless — a token that outlived the sign-out by 30 days).
 func (s *PostgresStore) DeleteWebSession(ctx context.Context, raw string) error {
-	_, err := s.pool.Exec(ctx, deleteSessionTreeSQL("token = $1 AND kind = $2"), hashToken(raw), sessionKindWeb)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
+		return fmt.Errorf("delete web session: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // a committed transaction's rollback is a no-op
+	var token string
+	err = tx.QueryRow(ctx, `SELECT token FROM aveloxis_ops.user_session_tokens WHERE token = $1 AND kind = $2 FOR UPDATE`,
+		hashToken(raw), sessionKindWeb).Scan(&token)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // already signed out
+	}
+	if err != nil {
+		return fmt.Errorf("delete web session: %w", err)
+	}
+	if _, err := tx.Exec(ctx, deleteSessionTreeSQL("token = $1 AND kind = $2"), token, sessionKindWeb); err != nil {
+		return fmt.Errorf("delete web session: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("delete web session: %w", err)
 	}
 	return nil
@@ -88,13 +113,13 @@ func (s *PostgresStore) DeleteWebSession(ctx context.Context, raw string) error 
 
 // MintTokenForWebSession mints the Bearer token /auth/token answers for a
 // live web session (the default Bearer lifetime), recording the session
-// as its parent; ErrNoWebSession when the raw token names none.
+// as its parent; ErrNoWebSession when the raw token names none — read and
+// written in one statement that holds the session row KEY SHARE, so a
+// concurrent sign-out either waits for the mint and sweeps the token, or
+// finishes first and the mint answers ErrNoWebSession (see
+// DeleteWebSession).
 func (s *PostgresStore) MintTokenForWebSession(ctx context.Context, webRaw string) (string, error) {
-	ws, err := s.LookupWebSession(ctx, webRaw)
-	if err != nil {
-		return "", err
-	}
-	return s.createSessionToken(ctx, ws.UserID, DefaultSessionTokenLifetime, sessionKindAPI, hashToken(webRaw))
+	return s.createSessionToken(ctx, 0, DefaultSessionTokenLifetime, sessionKindAPI, hashToken(webRaw))
 }
 
 // deleteSessionTreeSQL deletes the sessions `where` selects AND every

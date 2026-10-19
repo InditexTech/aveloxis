@@ -2607,14 +2607,21 @@ func (s *Scheduler) maybeScanNewOrgs(ctx context.Context) {
 	if !s.dbHealthy.Load() {
 		return
 	}
-	// A GitLab row counts only while a GitLab key exists (the pass leaves
-	// it unstamped otherwise, and counting it would re-fire this probe
-	// every tick); a GitHub row's gate is the pool check in the pass.
+	// A row counts only while its forge has a usable key: the pass leaves
+	// it unstamped otherwise, and counting it would announce a scan every
+	// tick that the pass then skips (0.29.106 whole-branch review P2: the
+	// GitHub arm's only gate was the pool check in the pass, three INFO
+	// lines per 10 s poll forever). GitLab's "no key" word is the empty
+	// base; GitHub's is platform.NoGitHubHost, since "" is public GitHub.
+	ghBase := platform.NoGitHubHost
+	if s.githubKeysAvailable() {
+		ghBase = s.ghAPIBase
+	}
 	glBase := ""
 	if s.gitlabKeysAvailable() {
 		glBase = s.gitlabWebBase()
 	}
-	pending, err := s.store.HasNeverScannedOrgs(ctx, s.ghAPIBase, glBase)
+	pending, err := s.store.HasNeverScannedOrgs(ctx, ghBase, glBase)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return // shutdown, not a failure (the v0.27.28 ClassCanceled rule)

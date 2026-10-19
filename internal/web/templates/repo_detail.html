@@ -26,7 +26,7 @@
 <div class="stat"><div class="value" {{if .Stats}}{{if .Stats.CriticalVulns}}style="color:#dc2626"{{end}}{{end}}>{{if .Stats}}{{.Stats.Vulnerabilities}}{{else}}0{{end}}</div><div class="label">Vulns{{if .Stats}}{{if .Stats.CriticalVulns}} ({{.Stats.CriticalVulns}} crit){{end}}{{if .Stats.VulnsVersionUnknown}} · {{.Stats.VulnsVersionUnknown}} version unknown{{end}}{{end}}</div></div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+<div class="chart-grid">
 <div><canvas id="chart-commits" height="200"></canvas></div>
 <div><canvas id="chart-prs-opened" height="200"></canvas></div>
 <div><canvas id="chart-prs-merged" height="200"></canvas></div>

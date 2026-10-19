@@ -1164,10 +1164,11 @@ Token semantics:
   drop the cache in the process that served them. An approval decided in
   the **web** process reaches the **api** process only when its cache
   entry expires — up to 60 seconds; the two processes share no memory.
-  Signing out (`POST /api/v1/auth/logout`) ends the session at once in the
-  api process that served it; another api process may still accept it for
-  up to those 60 seconds (one api process, the usual deployment, has no
-  such window). An API token is rechecked on every call in every process.
+  Signing out (`POST /api/v1/auth/logout`, or the web GUI's sign-out,
+  which deletes the tokens it minted) ends the token at once in every api
+  process: a session token and an API token are both rechecked against
+  their row on every call. Only the role and the repository scope keep
+  the 60-second window.
 - A server-side failure is a **500** whose body never carries the cause
   (`internal error; try again`, or a fixed phrase such as `package list
   failed`, v0.29.68); the cause is in the api log. Client-side refusals

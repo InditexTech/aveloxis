@@ -14,6 +14,7 @@ import (
 
 	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/db"
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 func TestCreateGroupBounds(t *testing.T) {
@@ -521,5 +522,56 @@ func TestAddOrgToGroupOffTheGitLabInstanceIsOffHost(t *testing.T) {
 		if !strings.Contains(logs.String(), "refused") {
 			t.Errorf("no refusal line:\n%s", logs.String())
 		}
+	}
+}
+
+// TestAddToGroupNamesAnSCPAddressByThePlatformsRule (0.29.106 whole-branch
+// review A1): the "a git SSH address" reason is given exactly where the
+// platform's one predicate (platform.SCPCloneAddress) says so; a line the
+// platform refuses as credentials (`git@host:1234/repo`: an all-digit owner
+// reads as a port — the decided collateral) is named as credentials here
+// too, never as a git address. The service had a second spelling.
+func TestAddToGroupNamesAnSCPAddressByThePlatformsRule(t *testing.T) {
+	for _, tc := range []struct {
+		line, reason string
+	}{
+		{"git@github.com:org/repo.git", "git SSH address"},
+		{"deploy@gitlab.example.org:group/sub/project", "git SSH address"},
+		{"git@host:1234/repo", "credentials"},
+		{"token@host:8443/o/n", "credentials"},
+		{"user@host:22/x", "credentials"},
+	} {
+		st := &fakeStore{addReposToGroup: func(_ context.Context, _ int, _ int64, urls []string, _ int, _ string) (db.AddOutcome, error) {
+			if len(urls) != 1 || urls[0] != "https://github.com/chaoss/augur" {
+				t.Errorf("%q reached the store as %q", tc.line, urls)
+			}
+			return db.AddOutcome{Linked: 1}, nil
+		}}
+		svc, _, _ := testService(t, st, Options{})
+		out, err := svc.AddToGroup(context.Background(), Actor{7, Session}, 5, []string{tc.line, "https://github.com/chaoss/augur"})
+		if err != nil {
+			t.Fatalf("%q: %v", tc.line, err)
+		}
+		if len(out.Invalid) != 1 || !strings.Contains(out.Invalid[0], tc.reason) {
+			t.Errorf("%q: Invalid = %q; want one line naming %q", tc.line, out.Invalid, tc.reason)
+		}
+	}
+}
+
+// TestServiceDecidesNoAddressShapeItself pins the owner: the service asks
+// the platform whether a line is a clone address or carries credentials
+// and spells no "@" rule of its own (comment-stripped; a second spelling is
+// the defect A1 found). Scope, declared: the ban is on the "@" and '@'
+// literals; a spelling that reaches the byte another way (a raw-string
+// regexp, strings.IndexByte(s, 64), a byte compare) is outside it — the
+// wiring half (AddToGroup calls platform.SCPCloneAddress) is the pin that
+// holds against those.
+func TestServiceDecidesNoAddressShapeItself(t *testing.T) {
+	src := srctest.StripGoComments(srctest.PackageSource(t, "internal/admin", 5))
+	if strings.Contains(src, `"@"`) || strings.Contains(src, "'@'") {
+		t.Error("internal/admin decides on an \"@\" itself; the one rule is platform.SCPCloneAddress / platform.RefuseURLUserinfo")
+	}
+	if !strings.Contains(srctest.PackageFunc(t, "internal/admin", "func (s *Service) AddToGroup("), "platform.SCPCloneAddress(") {
+		t.Error("AddToGroup does not ask platform.SCPCloneAddress for the git-address reason")
 	}
 }

@@ -164,7 +164,7 @@ func TestAddNoticesAreShownToTheUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RejectGroup(ctx, rejected, uid); err != nil {
+	if _, err := store.RejectGroup(ctx, rejected, uid); err != nil {
 		t.Fatal(err)
 	}
 	w = post("/groups/add-org", url.Values{"group_id": {fmt.Sprint(rejected)}, "org_url": {orgPrefix + "-to-rejected"}})

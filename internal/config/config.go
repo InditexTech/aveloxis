@@ -239,6 +239,7 @@ type PlatformConfig struct {
 // against).
 var removedKeys = map[string]string{
 	"gitlab.gitlab_hosts": "the GitLab instance is gitlab.base_url; a repository URL under its web URL is classified as GitLab (the key was never read)",
+	"web.session_secret":  "sessions are hashed rows of aveloxis_ops.user_session_tokens that sign nothing (0.29.102; the key was never read)",
 }
 
 // LoadWarnings are the warnings Load collected about the file: one line
@@ -253,9 +254,9 @@ type WebConfig struct {
 	// web.session_secret was REMOVED in 0.29.102 (CORE-11): sessions are
 	// hashed random rows of aveloxis_ops.user_session_tokens that survive a
 	// restart and sign nothing, so nothing could ever read it. A file that
-	// still carries the key loads (unknown keys are ignored);
-	// scripts/session_secret_removed_test.go keeps it out of the code, the
-	// examples and the docs.
+	// still carries the key loads with a LoadWarnings line (removedKeys,
+	// 0.29.106); scripts/session_secret_removed_test.go keeps it out of the
+	// code, the examples and the docs.
 
 	// BaseURL is the external URL for OAuth callbacks (e.g., "https://aveloxis.example.com").
 	BaseURL string `json:"base_url"`

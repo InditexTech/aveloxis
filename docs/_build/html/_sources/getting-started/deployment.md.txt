@@ -151,7 +151,7 @@ What the values mean:
   24 hours from login for a session, 30 days for a token): a restart of
   `aveloxis web` signs nobody out, and signing out ends the tokens the
   sign-in minted. `web.session_secret` was removed in 0.29.102; a file that
-  still carries it loads.
+  still carries it loads, and from 0.29.106 logs a warning naming it at start.
 
 Every other key keeps its default. The loader refuses an invalid file
 (a malformed value, a non-canonical `trusted_proxy`, a `front_end_secret`

@@ -101,6 +101,19 @@ func TestAdminRoutesRefuseTrailingJSONBeforeTheService(t *testing.T) {
 	}
 }
 
+// readsRequestBody: the body itself (r.Body), or the form readers that
+// consume it without naming it (whole-branch review of PR #238, API-F3:
+// ParseForm, ParseMultipartForm, FormValue, PostFormValue, PostForm,
+// MultipartReader read r.Body behind the request's own methods).
+func readsRequestBody(body string) bool {
+	for _, needle := range []string{"r.Body", "ParseForm(", "ParseMultipartForm(", "FormValue(", "PostFormValue(", "PostForm", "FormFile(", "MultipartReader("} {
+		if strings.Contains(body, needle) {
+			return true
+		}
+	}
+	return false
+}
+
 // TestEveryRequestBodyIsReadThroughDecodeJSONBody (round 1 F1, lens L18 /
 // SR-18): seven routes read their JSON body with a bare Decode of their
 // own — no trailing-data check at all, a worse shape than the one the
@@ -109,10 +122,11 @@ func TestAdminRoutesRefuseTrailingJSONBeforeTheService(t *testing.T) {
 // json.Unmarshal, which a "json.NewDecoder over r.Body" predicate cannot
 // see. So the predicate is the owning layer's: decodeJSONBody is the one
 // function in the package that touches r.Body at all — a decoder, a
-// ReadAll, a LimitReader or a helper handed the body all name it. Every
-// handler names its request r (the residuals: a handler whose request is
-// named otherwise; a METHOD named decodeJSONBody, which FuncParts folds
-// under the function's key). The floors guard the denominator; the
+// ReadAll, a LimitReader or a helper handed the body all name it — and the
+// request's own form readers, which consume the body without naming it,
+// count as reads too (readsRequestBody). Every handler names its request r
+// (the residuals: a handler whose request is named otherwise; a METHOD
+// named decodeJSONBody, which FuncParts folds under the function's key). The floors guard the denominator; the
 // definition is not a caller.
 func TestEveryRequestBodyIsReadThroughDecodeJSONBody(t *testing.T) {
 	readers, callers, functions := 0, 0, 0
@@ -128,7 +142,7 @@ func TestEveryRequestBodyIsReadThroughDecodeJSONBody(t *testing.T) {
 			if name != "decodeJSONBody" {
 				callers += strings.Count(body, "decodeJSONBody(")
 			}
-			if !strings.Contains(body, "r.Body") {
+			if !readsRequestBody(body) {
 				continue
 			}
 			readers++

@@ -174,7 +174,7 @@ func (s *Server) handleAdminCapacityAccount(w http.ResponseWriter, r *http.Reque
 	} else {
 		a, err = s.store.CapacityAccountByLogin(r.Context(), r.URL.Query().Get("login"))
 	}
-	if errors.Is(err, db.ErrNoSuchUser) {
+	if errors.Is(err, db.ErrUserNotFound) {
 		writeAuthError(w, http.StatusNotFound, "no such account")
 		return
 	}
@@ -232,7 +232,7 @@ func (s *Server) handleAdminCapacityOverride(w http.ResponseWriter, r *http.Requ
 	case errors.Is(err, db.ErrInvalidCapacitySettings):
 		writeAuthError(w, http.StatusBadRequest, "each value must be a positive number (or null for the quota's value); the note is at most "+strconv.Itoa(db.MaxCapacityNoteLength)+" characters")
 		return
-	case errors.Is(err, db.ErrNoSuchUser):
+	case errors.Is(err, db.ErrUserNotFound):
 		writeAuthError(w, http.StatusNotFound, "no account with that user id")
 		return
 	case err != nil:

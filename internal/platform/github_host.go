@@ -99,6 +99,15 @@ func CanonicalWebHost(host string) string {
 	return strings.TrimSuffix(strings.TrimSuffix(host, ":443"), ":80")
 }
 
+// NoGitHubHost is an API base that names no web host, so IsGitHubHost and
+// OrgOnGitHubHost match nothing against it. The never-scanned probe is
+// handed it while no GitHub key is usable (0.29.106 whole-branch review P2:
+// a never-scanned GitHub registration with no GitHub key announced a scan
+// every 10 s poll that the pass then skipped), the twin of the GitLab arm's
+// empty base — "" cannot be that word for GitHub, where it means public
+// GitHub (the configuration's default).
+const NoGitHubHost = "no-github-host"
+
 // OrgOnGitHubHost is IsGitHubHost for a registered org URL: true when the
 // URL parses and its host is the deployment's GitHub host. The store's
 // registration gate, the never-scanned probe and both periodic refreshes

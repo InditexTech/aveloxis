@@ -72,7 +72,7 @@ func TestGroupAddRepoErrorStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RejectGroup(ctx, rejected, uid); err != nil {
+	if _, err := store.RejectGroup(ctx, rejected, uid); err != nil {
 		t.Fatal(err)
 	}
 	var notOwned int64

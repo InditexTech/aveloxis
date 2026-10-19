@@ -23,6 +23,12 @@ func TestParseOrgRef(t *testing.T) {
 		// GitHub: one segment, whatever follows (a repository URL names its owner).
 		{"https://github.com/chaoss/augur", OrgRef{model.PlatformGitHub, "github.com", "https://github.com", "chaoss"}},
 		{"https://GitHub.com:443/Chaoss", OrgRef{model.PlatformGitHub, "github.com:443", "https://github.com", "Chaoss"}},
+		// GitHub's own org page spelling (0.29.106 whole-branch review P4): "orgs" alone names nothing.
+		{"https://github.com/orgs/chaoss/repositories", OrgRef{model.PlatformGitHub, "github.com", "https://github.com", "chaoss"}},
+		{"https://github.com/orgs/chaoss", OrgRef{model.PlatformGitHub, "github.com", "https://github.com", "chaoss"}},
+		// GitHub's paths are case-insensitive (review round 2 of 0.29.106).
+		{"https://github.com/Orgs/chaoss", OrgRef{model.PlatformGitHub, "github.com", "https://github.com", "chaoss"}},
+		{"https://github.com/ORGS/chaoss/repositories", OrgRef{model.PlatformGitHub, "github.com", "https://github.com", "chaoss"}},
 		// GitLab: the full group path (N14).
 		{"https://gitlab.com/gnome", OrgRef{model.PlatformGitLab, "gitlab.com", "https://gitlab.com", "gnome"}},
 		{"https://gitlab.com/gnome/sub", OrgRef{model.PlatformGitLab, "gitlab.com", "https://gitlab.com", "gnome/sub"}},
@@ -45,6 +51,8 @@ func TestParseOrgRef(t *testing.T) {
 		{"https://github.com", ErrInvalidRepoURL},
 		{"https://github.com/", ErrInvalidRepoURL},
 		{"https://gitlab.com/groups/", ErrInvalidRepoURL},
+		{"https://github.com/orgs/", ErrInvalidRepoURL},
+		{"https://github.com/orgs", ErrInvalidRepoURL},
 		{"https://gitlab.com/-/profile", ErrInvalidRepoURL},
 		{"https://user:tok@github.com/chaoss", ErrURLUserinfo},
 		{"tok@github.com/chaoss", ErrURLUserinfo},

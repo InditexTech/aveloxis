@@ -73,6 +73,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	// expire on its own soon, but cleaning it on explicit logout
 	// is the principled behavior.)
 	http.SetCookie(w, s.expireCookie("oauth_state"))
+	// "Sign out & clear cookies" (the login page's control): the form token
+	// and a pending post-login target go too (0.29.106 review, W7).
+	http.SetCookie(w, s.expireCookie(csrfCookieName))
+	http.SetCookie(w, s.expireCookie("oauth_next"))
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 

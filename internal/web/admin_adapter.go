@@ -37,8 +37,8 @@ func linkOrigin(r *http.Request) admin.LinkOrigin {
 // web.spa_url for the confirmation link, the GitHub base for org
 // registrations, the auto-approve limit, and the mailer when one is
 // attached. No hooks: the web process caches nothing the service changes
-// (a session's IsAdmin is refreshed at login; stage 2 moves sessions to
-// the store).
+// — a session is a store row since 0.29.102, and its privilege is read
+// from the users row on every request (LookupWebSession).
 func (s *Server) newAdminService(m *mailer.Mailer) *admin.Service {
 	opts := admin.Options{
 		GitHubAPIBase:       s.ghAPIBase,

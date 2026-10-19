@@ -213,3 +213,67 @@ func TestRedactNeverPanicsAndAgreesWithRefusal(t *testing.T) {
 		}
 	}
 }
+
+// TestSCPCloneAddress (0.29.106 whole-branch review A1): git's SCP-like
+// clone address, `[user@]host:path`, is decided by ONE platform predicate
+// whose boundary against a credential-shaped paste is credentialShapedPaste's
+// own — the admin service had a second spelling that called
+// `git@host:1234/repo` a git address while the platform refuses it as
+// credentials.
+func TestSCPCloneAddress(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"git@github.com:org/repo.git", true},
+		{"  git@github.com:org/repo.git ", true},
+		{"deploy@gitlab.example.org:group/sub/project", true},
+		{"git@host:1234/repo", false},                  // the DECIDED collateral: an all-digit owner reads as a port
+		{"token@host:8443/o/n", false},                 // a paste with a port
+		{"user@host:22/x", false},                      // likewise
+		{"token@host/o/n", false},                      // no ":" after the host: a paste, credential-shaped
+		{"user:pw@host:path", false},                   // a password before the "@"
+		{"https://git@github.com:org/repo.git", false}, // a scheme: a URL, not a clone address
+		{"//git@host:path", false},
+		{"github.com:org/repo", false}, // no user part: nothing to confuse with credentials
+		{"git@[::1]:org/repo", true},
+		{"", false},
+	} {
+		if got := SCPCloneAddress(tc.in); got != tc.want {
+			t.Errorf("SCPCloneAddress(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+	// The property, over the refusal corpus's generator: the two predicates
+	// never both hold, so a line named as a clone address is never one the
+	// platform would refuse as credentials.
+	const alphabet = "abc:/@?#%.-1 \t"
+	seed := uint64(0x9E3779B97F4A7C15)
+	next := func() uint64 {
+		seed ^= seed << 13
+		seed ^= seed >> 7
+		seed ^= seed << 17
+		return seed
+	}
+	pieces := []string{"https://", "http://", "//", "", "user:", "s3cret", "@", "host", "/x", "://y", "?a=b", "#f", ":443", ":org/repo", "git@", "%zz"}
+	both := 0
+	for n := 0; n < 200000; n++ {
+		var b strings.Builder
+		for k := int(next()%8) + 1; k > 0; k-- {
+			if next()%3 == 0 {
+				b.WriteByte(alphabet[next()%uint64(len(alphabet))])
+			} else {
+				b.WriteString(pieces[next()%uint64(len(pieces))])
+			}
+		}
+		in := strings.TrimSpace(b.String())
+		if SCPCloneAddress(in) && credentialShapedPaste(in) {
+			both++
+			if both <= 5 {
+				t.Errorf("SCPCloneAddress and credentialShapedPaste both hold for %q", in)
+			}
+		}
+		if SCPCloneAddress(in) && RefuseURLUserinfo(in) != nil {
+			t.Fatalf("SCPCloneAddress(%q) holds but the platform refuses it as credentials", in)
+		}
+	}
+}

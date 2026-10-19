@@ -147,3 +147,20 @@ func TestIsPublicGitHubBase(t *testing.T) {
 		}
 	}
 }
+
+// TestOrgOnGitHubHostMatchesNothingAgainstNoGitHubHost: NoGitHubHost names
+// no web host, so no org URL is on it. The never-scanned probe relies on
+// this: the scheduler passes it for GitHub while no GitHub key is usable
+// (0.29.106 whole-branch review P2), as it passes "" for GitLab, so an
+// unenumerable row never re-fires the 10 s demand scan. "" is NOT that word
+// for GitHub: it is public GitHub, the configuration's default.
+func TestOrgOnGitHubHostMatchesNothingAgainstNoGitHubHost(t *testing.T) {
+	for _, org := range []string{"https://github.com/chaoss", "https://github.example.org/chaoss", "https://no-github-host/chaoss"} {
+		if OrgOnGitHubHost(org, NoGitHubHost) {
+			t.Errorf("OrgOnGitHubHost(%q, NoGitHubHost) = true; it must match nothing", org)
+		}
+	}
+	if !OrgOnGitHubHost("https://github.com/chaoss", "") || !OrgOnGitHubHost("https://github.com/chaoss", PublicGitHubAPIBase) {
+		t.Error("an empty base is public GitHub; github.com must be on it")
+	}
+}

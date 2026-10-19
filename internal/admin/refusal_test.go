@@ -43,6 +43,7 @@ func TestClassifyNamesEveryRefusalTheServiceReturns(t *testing.T) {
 		{db.ErrGroupRejected, GroupRejected, db.ErrGroupRejected.Error()},
 		{db.ErrOrgOffGitHubHost, OffHost, db.ErrOrgOffGitHubHost.Error()},
 		{db.ErrURLTooLong, InvalidInput, urlInputDetail},
+		{db.ErrInvalidOrgURL, InvalidInput, urlInputDetail},
 		{platform.ErrURLUserinfo, InvalidInput, urlInputDetail},
 		{db.ErrAddItemsFailed, Partial, db.ErrAddItemsFailed.Error()},
 		{db.ErrLastAdmin, LastAdmin, db.ErrLastAdmin.Error()},
@@ -93,7 +94,7 @@ func TestClassifyNamesEveryRefusalTheServiceReturns(t *testing.T) {
 		{"db.ErrGroupNotOwned", db.ErrGroupNotOwned}, {"db.ErrNotGroupOwner", db.ErrNotGroupOwner},
 		{"db.ErrGroupRejected", db.ErrGroupRejected}, {"db.ErrOrgOffGitHubHost", db.ErrOrgOffGitHubHost},
 		{"db.ErrOrgOffGitLabInstance", db.ErrOrgOffGitLabInstance},
-		{"db.ErrURLTooLong", db.ErrURLTooLong}, {"db.ErrAddItemsFailed", db.ErrAddItemsFailed},
+		{"db.ErrURLTooLong", db.ErrURLTooLong}, {"db.ErrInvalidOrgURL", db.ErrInvalidOrgURL}, {"db.ErrAddItemsFailed", db.ErrAddItemsFailed},
 		{"db.ErrLastAdmin", db.ErrLastAdmin}, {"db.ErrUserNotFound", db.ErrUserNotFound},
 		{"db.ErrNoPendingForgeIDChange", db.ErrNoPendingForgeIDChange}, {"db.ErrForgeIDNotAsExpected", db.ErrForgeIDNotAsExpected},
 		// Named in the package but never returned to an adapter: the

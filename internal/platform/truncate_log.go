@@ -3,9 +3,13 @@
 
 package platform
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
-// TruncateForLog returns a string-safe slice of body capped at max bytes,
+// TruncateForLog returns body as a log attribute capped at max bytes, cut
+// on a rune boundary so the result is valid UTF-8 whatever the body was,
 // suitable for a log attribute without flooding it when an upstream
 // returns an HTML error page or other large body. The inputs are untrusted
 // (third-party response bodies, request paths, user-typed values): newlines
@@ -25,5 +29,9 @@ func TruncateForLog(body []byte, max int) string {
 	if len(s) <= max {
 		return s
 	}
-	return s[:max] + "...(truncated)"
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut-- // never split a rune (0.29.106 whole-branch review P6)
+	}
+	return s[:cut] + "...(truncated)"
 }

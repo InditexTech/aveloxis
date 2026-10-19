@@ -949,13 +949,16 @@ func (s *PostgresStore) MarkOrgRequestScanned(ctx context.Context, orgRequestID 
 // pending group into add requests at v0.27.20, and the only INSERT writes
 // 'approved'. A group that does not exist touches no row: the admin
 // service answers NotFound ahead of this.
-func (s *PostgresStore) RejectGroup(ctx context.Context, groupID int64, adminID int) error {
-	_, err := s.pool.Exec(ctx, `
+func (s *PostgresStore) RejectGroup(ctx context.Context, groupID int64, adminID int) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE aveloxis_ops.user_groups
 		SET status = 'rejected', approved_by = $2, approved_at = NOW()
 		WHERE group_id = $1 AND status IS DISTINCT FROM 'rejected'`,
 		groupID, adminID)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // AdminUser is the row shape for the admin user-management page.
@@ -1001,9 +1004,12 @@ func (s *PostgresStore) ListUsers(ctx context.Context) ([]AdminUser, error) {
 // failures became logged generic 500s). Handlers answer it 409.
 var ErrLastAdmin = errors.New("refusing to demote the last admin — promote another user first")
 
-// ErrUserNotFound is SetUserAdmin's refusal when the target does not
-// exist (the UPDATE touched no row): the caller's input, not a failure.
-var ErrUserNotFound = errors.New("no user with that id")
+// ErrUserNotFound is the ONE answer for an account that does not exist:
+// SetUserAdmin's target (the UPDATE touched no row), a capacity account
+// read by id or login, an API token grant's owner. The caller's input,
+// not a failure (0.29.106, whole-branch review DB-F5: three sentinels for
+// one condition, each classified at a different layer).
+var ErrUserNotFound = errors.New("no such account")
 
 // adminRoleLockClass is the two-argument advisory lock space SetUserAdmin
 // serialises on (key 0): the "another administrator remains" rule is a

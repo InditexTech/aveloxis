@@ -365,8 +365,16 @@ func TestPerAddApprovalEndToEnd(t *testing.T) {
 
 	// --- rejected group refuses adds (the abuse lever works on
 	// approved groups now) ---
-	if err := store.RejectGroup(ctx, groupID, adminID); err != nil {
-		t.Fatal(err)
+	if changed, err := store.RejectGroup(ctx, groupID, adminID); err != nil || !changed {
+		t.Fatalf("RejectGroup = (%v, %v); want the row flipped", changed, err)
+	}
+	// Idempotent: the second rejection flips nothing and says so (the
+	// service audits only a change; whole-branch review of PR #238, A4).
+	if changed, err := store.RejectGroup(ctx, groupID, adminID); err != nil || changed {
+		t.Errorf("second RejectGroup = (%v, %v); want no change", changed, err)
+	}
+	if changed, err := store.RejectGroup(ctx, groupID+1000000, adminID); err != nil || changed {
+		t.Errorf("RejectGroup of a missing group = (%v, %v); want no change", changed, err)
 	}
 	if _, err := store.AddReposToGroup(ctx, userID, groupID, []string{mkURL("blocked")}, 0, ""); err == nil {
 		t.Error("adds to a rejected group must error")

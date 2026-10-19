@@ -72,8 +72,8 @@ else
 	fi
 	export SKIP_CENSUS_NESTED=1
 	# SKIP_CENSUS_GOFLAGS: go test flags. The default is what CI passes
-	# (integration.yml): a closing run without -race read green while CI's
-	# found a data race in internal/api six runs out of six (0.29.105).
+	# (integration.yml): a closing run without -race read green while every
+	# CI run that executed internal/api under -race raced (0.29.105).
 	# shellcheck disable=SC2086
 	go test ${SKIP_CENSUS_GOFLAGS:--race -shuffle=on} ./... -count=1 -json > "$OUT/suite.json" 2> "$OUT/stderr.txt"
 	suite_status=$?
@@ -155,7 +155,7 @@ if [ "$suite_status" -ne 0 ]; then
 	echo "  raw output kept in $OUT (suite.json, stderr.txt)"
 	status=1
 elif [ -n "$gone" ]; then
-	echo "skip-census: these reviewed entries ran this time — remove them from the baseline (it only shrinks):"
+	echo "skip-census: these reviewed entries did not skip this time (they ran, or no test of that name exists any more) — remove them from the baseline (it only shrinks):"
 	echo "$gone" | sed 's/^/  /'
 fi
 exit $status

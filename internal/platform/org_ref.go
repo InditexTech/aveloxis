@@ -70,7 +70,10 @@ func ParseOrgRef(raw string, gitlabWebBases []string) (OrgRef, error) {
 	segments := strings.Split(strings.Trim(path, "/"), "/")
 	switch ref.Platform {
 	case model.PlatformGitHub:
-		if segments[0] == "" {
+		if strings.EqualFold(segments[0], "orgs") { // GitHub's /orgs/<org>/… web spelling (the org page's own URL; paths are case-insensitive there); "orgs" alone names nothing
+			segments = segments[1:]
+		}
+		if len(segments) == 0 || segments[0] == "" {
 			return OrgRef{}, fmt.Errorf("%w: missing org name in path", ErrInvalidRepoURL)
 		}
 		ref.Path = segments[0]

@@ -1082,7 +1082,7 @@ Both platforms collect the same data types. Most fields have full parity; known 
 
 ### GitHub vs GitLab — Known Data Gaps
 
-The following fields are available from GitHub but not from GitLab due to platform API limitations:
+The following fields differ between the two forges — most are available from GitHub but not from GitLab, due to platform API limitations; a row marked "parity by design" records a choice made the same way on both:
 
 | Field | GitHub | GitLab | Notes |
 |---|---|---|---|
@@ -1093,6 +1093,7 @@ The following fields are available from GitHub but not from GitLab due to platfo
 | GraphQL node IDs (`pr_src_node_id`) | Available on all entities | Not applicable | GitLab uses numeric IDs, not GraphQL node IDs — architectural difference |
 | Contributor URL fields (`gh_followers_url`, etc.) | 10+ URL fields per contributor | Not available | GitLab API doesn't expose follower/following/gist/etc. URLs |
 | Contributor type (User/Bot/Organization) | `type` field on user objects | Not available | GitLab doesn't distinguish user types the same way |
+| Organization / group scans (**Add Organization**) | `/orgs/{org}/repos`: the organization's own repositories | `/groups/:id/projects` with `include_subgroups=true` and `with_shared=false`: the group's and its subgroups' own projects | Parity by design (0.29.106): a GitLab project *shared into* a group from another namespace is that namespace's and is not added; add it by its own URL |
 | Label numeric IDs (`issue_labels.platform_label_id`, `pull_request_labels.platform_label_id`) | REST `id` — populated on the REST child paths only | Populated (REST) | On GitHub's GraphQL child paths these columns stay `0`: GraphQL's `Label` type exposes no `databaseId`. No SELECT/JOIN consumers exist; the trade-off is that label renames within a project cannot be distinguished from delete+create |
 
 ### Unified Message Architecture

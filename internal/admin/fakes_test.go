@@ -28,7 +28,7 @@ type fakeStore struct {
 	addReposToGroup           func(ctx context.Context, userID int, groupID int64, urls []string, limit int, glWebBase string) (db.AddOutcome, error)
 	addOrgToGroup             func(ctx context.Context, userID int, groupID int64, orgURL, ghAPIBase, glWebBase string) (db.OrgAddOutcome, error)
 	removeRepoFromGroup       func(ctx context.Context, userID int, groupID, repoID int64) (bool, error)
-	rejectGroup               func(ctx context.Context, groupID int64, adminID int) error
+	rejectGroup               func(ctx context.Context, groupID int64, adminID int) (bool, error)
 	getAddRequest             func(ctx context.Context, requestID int64) (db.AddRequest, error)
 	decideAddRequest          func(ctx context.Context, requestID int64, adminID int, approve bool, ghAPIBase, glWebBase string) (db.AddRequest, bool, error)
 	processApprovedAddRequest func(ctx context.Context, requestID int64, glWebBase string) (int, int, error)
@@ -91,10 +91,10 @@ func (f *fakeStore) RemoveRepoFromGroup(ctx context.Context, userID int, groupID
 	}
 	return f.removeRepoFromGroup(ctx, userID, groupID, repoID)
 }
-func (f *fakeStore) RejectGroup(ctx context.Context, groupID int64, adminID int) error {
+func (f *fakeStore) RejectGroup(ctx context.Context, groupID int64, adminID int) (bool, error) {
 	if f.rejectGroup == nil {
 		f.unexpected("RejectGroup")
-		return nil
+		return false, nil
 	}
 	return f.rejectGroup(ctx, groupID, adminID)
 }

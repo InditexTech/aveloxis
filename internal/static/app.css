@@ -47,6 +47,16 @@ h3{font-size:16px;margin-bottom:12px;color:#24292e}
 .pagination span.disabled{color:#d1d5da;border:1px solid #eee}
 .result-info{color:#586069;font-size:13px;margin-bottom:12px}
 
+/* Chart grids and the compare search box (0.29.106, W2 of the whole-branch
+   review; the operator's no-horizontal-scrolling rule): tracks wrap at
+   280 px — a canvas's intrinsic width is 300 px, so two fixed 1fr tracks
+   were 660 px at a 500 px viewport — canvases shrink with their track, and
+   the search box is at most 350 px, never exactly. */
+.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px}
+.chart-grid.spaced{margin-top:16px}
+canvas{max-width:100%}
+.search-box{position:relative;width:100%;max-width:350px}
+
 /* Tables reflow on narrow screens, never scroll sideways (operator rule;
    ported from aveloxis-gui's .tbl-stack, stage 2e): the header stays for
    screen readers, each row becomes a labelled card up to 1000 px. */

@@ -304,12 +304,12 @@ func TestNotifyAddRequestSubmitted(t *testing.T) {
 
 func TestRejectGroup(t *testing.T) {
 	var got int64
-	st := &fakeStore{isUserAdmin: adminIs(true), groupOwner: func(context.Context, int64) (int, string, error) { return 7, "g", nil }, rejectGroup: func(_ context.Context, gid int64, adminID int) error {
+	st := &fakeStore{isUserAdmin: adminIs(true), groupOwner: func(context.Context, int64) (int, string, error) { return 7, "g", nil }, rejectGroup: func(_ context.Context, gid int64, adminID int) (bool, error) {
 		got = gid
 		if adminID != 1 {
 			t.Errorf("adminID = %d", adminID)
 		}
-		return nil
+		return true, nil
 	}}
 	svc, hooks, logs := testService(t, st, Options{})
 	if err := svc.RejectGroup(context.Background(), adminSession, 5); err != nil || got != 5 {
@@ -321,15 +321,25 @@ func TestRejectGroup(t *testing.T) {
 	if !strings.Contains(logs.String(), "admin: reject group") {
 		t.Errorf("no audit line:\n%s", logs.String())
 	}
-	st.rejectGroup = func(context.Context, int64, int) error { return errors.New("closed pool") }
+	// A second rejection is idempotent (the store flips no row) and audits
+	// nothing: an audit line records a change (whole-branch review A4).
+	st.rejectGroup = func(context.Context, int64, int) (bool, error) { return false, nil }
+	audits := strings.Count(logs.String(), "admin: reject group")
+	if err := svc.RejectGroup(context.Background(), adminSession, 5); err != nil {
+		t.Fatalf("second rejection = %v", err)
+	}
+	if n := strings.Count(logs.String(), "admin: reject group"); n != audits {
+		t.Errorf("a rejection that changed nothing was audited (%d audit lines, was %d):\n%s", n, audits, logs.String())
+	}
+	st.rejectGroup = func(context.Context, int64, int) (bool, error) { return false, errors.New("closed pool") }
 	if err := svc.RejectGroup(context.Background(), adminSession, 5); err == nil || !strings.Contains(err.Error(), "group 5") {
 		t.Errorf("failure = %v", err)
 	}
 	// A group that does not exist is NotFound, never audited (round 1 F7).
 	st.groupOwner = func(context.Context, int64) (int, string, error) { return 0, "", db.ErrGroupNotFound }
-	st.rejectGroup = func(context.Context, int64, int) error {
+	st.rejectGroup = func(context.Context, int64, int) (bool, error) {
 		t.Error("the store must not be asked to reject a missing group")
-		return nil
+		return false, nil
 	}
 	if err := svc.RejectGroup(context.Background(), adminSession, 6); !errors.Is(err, db.ErrGroupNotFound) {
 		t.Errorf("missing group = %v", err)
