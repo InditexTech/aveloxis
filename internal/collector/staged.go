@@ -1413,7 +1413,7 @@ func (p *Processor) processOne(ctx context.Context, repoID int64, platID int16, 
 	case EntityCloneStats:
 		return p.processStagedCloneStats(ctx, repoID, platID, payload)
 	case EntityTraffic:
-		return errTrafficWriterMissing
+		return p.processStagedTraffic(ctx, repoID, platID, payload)
 	default:
 		return fmt.Errorf("unknown entity type: %s", entityType)
 	}
@@ -1789,10 +1789,18 @@ func (p *Processor) processStagedCloneStats(ctx context.Context, repoID int64, p
 	return p.store.UpsertRepoClone(ctx, &clone)
 }
 
-// errTrafficWriterMissing is what processing a staged traffic row
-// returns until the store writes traffic: the row is logged as a
-// processing failure instead of being marked processed in silence.
-var errTrafficWriterMissing = errors.New("no store writer for staged traffic yet")
+// processStagedTraffic handles one staged EntityTraffic row: one
+// traffic read (daily views, the path and referrer snapshot, the
+// window and complete-week rows), written in one transaction so the
+// window rows never exist without the rest of their read (v0.29.97).
+// The read's daily clones are separate EntityCloneStats rows.
+func (p *Processor) processStagedTraffic(ctx context.Context, repoID int64, platID int16, payload json.RawMessage) error {
+	var tr model.RepoTraffic
+	if err := json.Unmarshal(payload, &tr); err != nil {
+		return err
+	}
+	return p.store.UpsertRepoTraffic(ctx, repoID, &tr)
+}
 
 // trafficStager is the part of db.StagingWriter the traffic step uses.
 type trafficStager interface {

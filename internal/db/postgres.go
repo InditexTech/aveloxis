@@ -2647,9 +2647,15 @@ func (s *PostgresStore) InsertRepoInfo(ctx context.Context, info *model.RepoInfo
 	})
 }
 
+// UpsertRepoClone writes one daily clones bucket. The latest read of a
+// day wins (GitHub can still revise the newest day after the first
+// read), and the write stamps repos.data_changed_at in the same
+// statement: the repository page's traffic answer reads these rows and
+// the staged processor runs outside collection jobs too (v0.29.97).
 func (s *PostgresStore) UpsertRepoClone(ctx context.Context, clone *model.RepoClone) error {
 	return s.withRetry(ctx, func(ctx context.Context) error {
 		_, err := s.pool.Exec(ctx, `
+			WITH ins AS (
 			INSERT INTO aveloxis_data.repo_clones
 				(repo_id, clone_timestamp, total_clones, unique_clones, data_source)
 			VALUES ($1,$2,$3,$4,$5)
@@ -2657,7 +2663,10 @@ func (s *PostgresStore) UpsertRepoClone(ctx context.Context, clone *model.RepoCl
 				total_clones = EXCLUDED.total_clones,
 				unique_clones = EXCLUDED.unique_clones,
 				tool_version = EXCLUDED.tool_version,
-				data_collection_date = NOW()`,
+				data_collection_date = NOW()
+			RETURNING repo_id
+			)
+			`+stampRepoCacheStateSQL+` WHERE repo_id IN (SELECT repo_id FROM ins)`,
 			clone.RepoID, clone.Timestamp, clone.TotalClones, clone.UniqueClones,
 			clone.Origin.DataSource,
 		)
