@@ -49,6 +49,7 @@ const (
 	EntityContributor   = "contributor"
 	EntityRepoInfo      = "repo_info"
 	EntityCloneStats    = "clone_stats"
+	EntityTraffic       = "traffic"
 )
 
 // LargeRepoCommitThreshold is the commit count above which parallel collection
@@ -314,14 +315,7 @@ func (sc *StagedCollector) CollectRepo(ctx context.Context, repoID int64, owner,
 		result.Releases++
 	}
 
-	clones, cloneErr := sc.client.FetchCloneStats(ctx, owner, repo)
-	if cloneErr == nil {
-		for _, clone := range clones {
-			if err := sw.Stage(ctx, EntityCloneStats, clone); err != nil {
-				result.Errors = append(result.Errors, fmt.Errorf("stage clone stats: %w", err))
-			}
-		}
-	}
+	sc.collectTraffic(ctx, sw, owner, repo, time.Now(), result)
 
 	// Flush and process metadata immediately so it's in the DB before
 	// the minutes-long issue/PR/event collection begins. This ensures
@@ -331,7 +325,7 @@ func (sc *StagedCollector) CollectRepo(ctx context.Context, repoID int64, owner,
 		result.Errors = append(result.Errors, fmt.Errorf("metadata flush: %w", err))
 	}
 	proc := NewProcessor(sc.store, sc.logger)
-	for _, et := range []string{EntityRepoInfo, EntityCloneStats, EntityRelease} {
+	for _, et := range []string{EntityRepoInfo, EntityCloneStats, EntityTraffic, EntityRelease} {
 		if err := sc.store.ProcessStaged(ctx, repoID, et, 500, func(rows []db.StagedRow) error {
 			return proc.processBatch(ctx, repoID, sc.platID, et, rows)
 		}); err != nil {
@@ -1193,6 +1187,7 @@ func (p *Processor) ProcessRepo(ctx context.Context, repoID int64, platID int16)
 	entityTypes := []string{
 		EntityRepoInfo,
 		EntityCloneStats,
+		EntityTraffic,
 		EntityRelease,
 		EntityContributor,
 		EntityIssue,
@@ -1417,6 +1412,8 @@ func (p *Processor) processOne(ctx context.Context, repoID int64, platID int16, 
 		return p.processStagedRepoInfo(ctx, repoID, platID, payload)
 	case EntityCloneStats:
 		return p.processStagedCloneStats(ctx, repoID, platID, payload)
+	case EntityTraffic:
+		return errTrafficWriterMissing
 	default:
 		return fmt.Errorf("unknown entity type: %s", entityType)
 	}
@@ -1790,6 +1787,69 @@ func (p *Processor) processStagedCloneStats(ctx context.Context, repoID int64, p
 	}
 	clone.RepoID = repoID
 	return p.store.UpsertRepoClone(ctx, &clone)
+}
+
+// errTrafficWriterMissing is what processing a staged traffic row
+// returns until the store writes traffic: the row is logged as a
+// processing failure instead of being marked processed in silence.
+var errTrafficWriterMissing = errors.New("no store writer for staged traffic yet")
+
+// trafficStager is the part of db.StagingWriter the traffic step uses.
+type trafficStager interface {
+	Stage(ctx context.Context, entityType string, payload any) error
+}
+
+// collectTraffic reads the repository's traffic in the metadata step and
+// stages it: the daily clones as EntityCloneStats rows and the rest of
+// the read, with its derived windows and weeks, as one EntityTraffic row;
+// now keys the snapshot date. Errors follow the releases endpoint: a
+// routine skip (403 without push access, 404) logs one Info line and
+// stops the step, so a key that cannot read traffic spends one request;
+// any other error goes to result.Errors and collection goes on. A failed
+// clones read still stages the views read, without a clones window.
+func (sc *StagedCollector) collectTraffic(ctx context.Context, sw trafficStager, owner, repo string, now time.Time, result *CollectResult) {
+	clones, cloneErr := sc.client.FetchCloneStats(ctx, owner, repo)
+	if cloneErr != nil {
+		if isOptionalEndpointSkip(cloneErr) {
+			sc.logger.Info("skipping traffic endpoints",
+				"owner", owner, "repo", repo, "reason", cloneErr)
+			return
+		}
+		if !errors.Is(cloneErr, context.Canceled) && ctx.Err() == nil {
+			result.Errors = append(result.Errors, fmt.Errorf("clone stats: %w", cloneErr))
+		}
+		clones = nil
+	}
+	for _, clone := range clones {
+		if err := sw.Stage(ctx, EntityCloneStats, clone); err != nil {
+			result.Errors = append(result.Errors, fmt.Errorf("stage clone stats: %w", err))
+		}
+	}
+
+	traffic, trafficErr := sc.client.FetchTraffic(ctx, owner, repo)
+	if trafficErr != nil {
+		if isOptionalEndpointSkip(trafficErr) {
+			sc.logger.Info("skipping traffic endpoints",
+				"owner", owner, "repo", repo, "reason", trafficErr)
+			return
+		}
+		if !errors.Is(trafficErr, context.Canceled) && ctx.Err() == nil {
+			// The client's error already reads "traffic <endpoint>: <cause>".
+			result.Errors = append(result.Errors, trafficErr)
+		}
+		return
+	}
+	if traffic == nil {
+		return
+	}
+	y, m, d := now.UTC().Date()
+	traffic.SnapshotDate = time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	traffic.Windows, traffic.Weeks = deriveTrafficRows(traffic, clones)
+	if err := sw.Stage(ctx, EntityTraffic, traffic); err != nil {
+		if !errors.Is(err, context.Canceled) && ctx.Err() == nil {
+			result.Errors = append(result.Errors, fmt.Errorf("stage traffic: %w", err))
+		}
+	}
 }
 
 // trafficWeekLastDay is how many days after its Monday a weekly
