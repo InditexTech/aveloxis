@@ -29,7 +29,7 @@ tags:
   - name: Service
     description: Liveness and the anonymous fleet figures.
   - name: Repositories
-    description: One collected repository's statistics, series, licenses, SBOMs and scan results.
+    description: One collected repository's statistics, series, licenses, SBOMs, scan results and traffic.
   - name: Vulnerabilities
     description: Vulnerability findings and the OpenSSF Scorecard.
   - name: Contributors
@@ -1724,24 +1724,14 @@ paths:
       operationId: repositoryTraffic
       summary: Returns a repository's stored GitHub traffic history.
       description: |
-        Everything Aveloxis stored from GitHub's traffic API for the
-        repository, in one answer without paging or date parameters: every
-        daily row of clones and views, every 14-day window and complete
-        Monday-to-Sunday week, and the top paths and referrers of the latest
-        snapshot date. Days, windows and weeks are in date order (then
-        kind); paths and referrers by `count`, then `uniques`, descending.
-        Days are `YYYY-MM-DD` UTC days. A day with a row was read, even when
-        its counts are 0; a day without one was not. No total is stored: a
-        period's clones or views are the sum of its daily rows, and its
-        distinct visitors or cloners exist only for the windows and weeks.
-
-        A repository without traffic answers empty lists and a `null`
-        `snapshot_date`: a GitLab repository (GitLab has no traffic API for
-        non-administrators), or one whose collection key cannot read
-        GitHub's traffic (push access with a classic token; the
-        "Administration" repository permission, read, with a fine-grained
-        token). The lists grow by about 730 daily rows a year; the read is
-        indexed by repository.
+        Everything stored from GitHub's traffic API, in one answer without
+        paging: every daily row of clones and views, every 14-day window and
+        complete week, and the latest top paths and referrers. A day with a
+        row was read, even when its counts are 0. A GitLab repository, or
+        one whose key GitHub refuses, answers empty lists and a `null`
+        `snapshot_date`; so does an id with no repository, to an unscoped
+        caller (a scoped caller gets the `403`). Grows by about 730 daily
+        rows a year; the read is indexed by repository.
 
         Handler: `handleRepoTraffic`.
       tags: [Repositories]
