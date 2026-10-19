@@ -109,7 +109,7 @@ func TestCachedRepoGETAuthorizesBeforeAnyLookup(t *testing.T) {
 // the next collection.
 func TestCachedHandlersDegradeOnlyThroughPartialAnswer(t *testing.T) {
 	files := map[string]string{}
-	for _, f := range []string{"server.go", "metrics.go", "vulnerabilities.go", "contributions.go", "top_contributors.go"} {
+	for _, f := range []string{"server.go", "metrics.go", "vulnerabilities.go", "contributions.go", "top_contributors.go", "traffic.go"} {
 		files[f] = srctest.StripGoComments(srctest.Read(t, "internal/api/"+f))
 	}
 	discarded := regexp.MustCompile(`(, _ :?=|_ = )s\.store\.`)
@@ -242,7 +242,7 @@ var helperFiles = map[string]string{
 // what it reads: Query().Get literals and the window helpers.
 func TestPageParamsMatchTheHandlers(t *testing.T) {
 	files := map[string]string{}
-	for _, f := range []string{"server.go", "metrics.go", "vulnerabilities.go", "contributions.go", "top_contributors.go"} {
+	for _, f := range []string{"server.go", "metrics.go", "vulnerabilities.go", "contributions.go", "top_contributors.go", "traffic.go"} {
 		files[f] = srctest.StripGoComments(srctest.Read(t, "internal/api/"+f))
 	}
 	files["page_query.go"] = srctest.StripGoComments(srctest.Read(t, "internal/api/page_query.go"))

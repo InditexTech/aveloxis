@@ -6,6 +6,7 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -116,4 +117,151 @@ func (s *PostgresStore) UpsertRepoTraffic(ctx context.Context, repoID int64, tr 
 		}
 		return tx.Commit(ctx)
 	})
+}
+
+// RepoTrafficHistory is everything stored about one repository's
+// GitHub traffic, as GET /api/v1/repos/{repoID}/traffic serves it: every
+// stored day, window and complete week, and the path and referrer
+// snapshot of the latest snapshot date. The lists are never nil, so a
+// repository without traffic answers empty arrays; SnapshotDate is nil
+// when no path or referrer was ever stored.
+type RepoTrafficHistory struct {
+	RepoID       int64             `json:"repo_id"`
+	Clones       []TrafficDay      `json:"clones"`
+	Views        []TrafficDay      `json:"views"`
+	Windows      []TrafficWindow   `json:"windows"`
+	Weeks        []TrafficWeek     `json:"weeks"`
+	SnapshotDate *string           `json:"snapshot_date"`
+	Paths        []TrafficPath     `json:"paths"`
+	Referrers    []TrafficReferrer `json:"referrers"`
+}
+
+// TrafficDay is one stored UTC day of clones or views. The counts are
+// pointers because the columns are nullable, like repo_clones'; a NULL
+// is never read as 0.
+type TrafficDay struct {
+	Date    string `json:"date"`
+	Count   *int   `json:"count"`
+	Uniques *int   `json:"uniques"`
+}
+
+// TrafficWindow is one stored 14-day window: its first and last UTC
+// days and the distinct visitors or cloners GitHub reported for it.
+type TrafficWindow struct {
+	Kind    model.TrafficKind `json:"kind"`
+	Start   string            `json:"start"`
+	End     string            `json:"end"`
+	Uniques *int              `json:"uniques"`
+}
+
+// TrafficWeek is one stored complete Monday-to-Sunday week.
+type TrafficWeek struct {
+	Kind      model.TrafficKind `json:"kind"`
+	WeekStart string            `json:"week_start"`
+	Uniques   *int              `json:"uniques"`
+}
+
+// TrafficPath is one entry of a stored top-paths snapshot.
+type TrafficPath struct {
+	Path    string `json:"path"`
+	Title   string `json:"title"`
+	Count   *int   `json:"count"`
+	Uniques *int   `json:"uniques"`
+}
+
+// TrafficReferrer is one entry of a stored top-referrers snapshot.
+type TrafficReferrer struct {
+	Referrer string `json:"referrer"`
+	Count    *int   `json:"count"`
+	Uniques  *int   `json:"uniques"`
+}
+
+// GetRepoTraffic returns the repository's whole stored traffic history
+// in one read (about 730 daily rows a year; not paged). Dates are
+// "YYYY-MM-DD" UTC days formatted in SQL, so the session's TimeZone
+// cannot move them. Paths and referrers both come from the latest
+// snapshot date: a read whose referrer list was empty answers none,
+// never an older read's, and a read with both lists empty stores no
+// snapshot, so the latest one keeps its earlier date. One read-only
+// REPEATABLE READ transaction keeps a window row from outrunning its days.
+func (s *PostgresStore) GetRepoTraffic(ctx context.Context, repoID int64) (*RepoTrafficHistory, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, fmt.Errorf("begin traffic read: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }() // read-only: nothing to undo
+
+	h := &RepoTrafficHistory{RepoID: repoID}
+	if h.Clones, err = readTrafficRows[TrafficDay](ctx, tx, "clones", `
+		SELECT to_char(clone_timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD'), total_clones, unique_clones
+		FROM aveloxis_data.repo_clones
+		WHERE repo_id = $1
+		ORDER BY clone_timestamp`, repoID); err != nil {
+		return nil, err
+	}
+	if h.Views, err = readTrafficRows[TrafficDay](ctx, tx, "views", `
+		SELECT to_char(view_timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD'), total_views, unique_views
+		FROM aveloxis_data.repo_views
+		WHERE repo_id = $1
+		ORDER BY view_timestamp`, repoID); err != nil {
+		return nil, err
+	}
+	if h.Windows, err = readTrafficRows[TrafficWindow](ctx, tx, "windows", `
+		SELECT traffic_kind, to_char(window_start, 'YYYY-MM-DD'), to_char(window_end, 'YYYY-MM-DD'), uniques
+		FROM aveloxis_data.repo_traffic_windows
+		WHERE repo_id = $1
+		ORDER BY window_start, window_end, traffic_kind`, repoID); err != nil {
+		return nil, err
+	}
+	if h.Weeks, err = readTrafficRows[TrafficWeek](ctx, tx, "weeks", `
+		SELECT traffic_kind, to_char(week_start, 'YYYY-MM-DD'), uniques
+		FROM aveloxis_data.repo_traffic_weeks
+		WHERE repo_id = $1
+		ORDER BY week_start, traffic_kind`, repoID); err != nil {
+		return nil, err
+	}
+	if err := tx.QueryRow(ctx, `
+		SELECT to_char(MAX(snapshot_date), 'YYYY-MM-DD') FROM (
+			SELECT snapshot_date FROM aveloxis_data.repo_traffic_paths WHERE repo_id = $1
+			UNION ALL
+			SELECT snapshot_date FROM aveloxis_data.repo_traffic_referrers WHERE repo_id = $1
+		) d`, repoID).Scan(&h.SnapshotDate); err != nil {
+		return nil, fmt.Errorf("read traffic snapshot date: %w", err)
+	}
+	h.Paths, h.Referrers = []TrafficPath{}, []TrafficReferrer{}
+	if h.SnapshotDate != nil {
+		if h.Paths, err = readTrafficRows[TrafficPath](ctx, tx, "paths", `
+			SELECT path, COALESCE(title, ''), total_views, unique_views
+			FROM aveloxis_data.repo_traffic_paths
+			WHERE repo_id = $1 AND snapshot_date = $2::date
+			ORDER BY total_views DESC NULLS LAST, unique_views DESC NULLS LAST, path`, repoID, *h.SnapshotDate); err != nil {
+			return nil, err
+		}
+		if h.Referrers, err = readTrafficRows[TrafficReferrer](ctx, tx, "referrers", `
+			SELECT referrer, total_views, unique_views
+			FROM aveloxis_data.repo_traffic_referrers
+			WHERE repo_id = $1 AND snapshot_date = $2::date
+			ORDER BY total_views DESC NULLS LAST, unique_views DESC NULLS LAST, referrer`, repoID, *h.SnapshotDate); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("end traffic read: %w", err)
+	}
+	return h, nil
+}
+
+// readTrafficRows runs one query of GetRepoTraffic and maps its columns,
+// in order, onto T's fields. The result is never nil (pgx.CollectRows
+// starts from an empty slice), so an empty list encodes as [].
+func readTrafficRows[T any](ctx context.Context, tx pgx.Tx, what, query string, args ...any) ([]T, error) {
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read traffic %s: %w", what, err)
+	}
+	out, err := pgx.CollectRows(rows, pgx.RowToStructByPos[T])
+	if err != nil {
+		return nil, fmt.Errorf("read traffic %s: %w", what, err)
+	}
+	return out, nil
 }
