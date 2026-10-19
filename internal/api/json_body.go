@@ -16,8 +16,9 @@ import (
 // pass their own bounds.
 const adminJSONBodyLimit int64 = 1 << 16
 
-// decodeJSONBody is the one reader of a JSON request body in this package
-// (pinned: no other function constructs a json.Decoder over r.Body): at
+// decodeJSONBody is the one reader of a request body in this package
+// (pinned: no other function touches r.Body at all — not a decoder, a
+// ReadAll, a LimitReader or a helper handed the body): at
 // most limit bytes (http.MaxBytesReader), one value, then nothing but
 // whitespace. The caller answers the error with its own body-shape
 // message.

@@ -607,7 +607,9 @@ var deployChecklists = map[string][]deployStep{
 	// the value (a second Decode must answer io.EOF; Decoder.More answered
 	// false for both — Copilot on PR #238). The one visible change: a tail
 	// after the body, `{"admin":true}}`, is a 400 on every JSON route
-	// instead of accepted. No schema change — same ladder as 0.29.102.
+	// (sixteen accepted it; the forge-id adopt route already refused it and
+	// now answers its one body-shape text, its unreadable-body WARN
+	// removed). No schema change — same ladder as 0.29.102.
 	"0.29.104": v029102DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,

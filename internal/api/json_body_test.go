@@ -110,8 +110,10 @@ func TestAdminRoutesRefuseTrailingJSONBeforeTheService(t *testing.T) {
 // see. So the predicate is the owning layer's: decodeJSONBody is the one
 // function in the package that touches r.Body at all — a decoder, a
 // ReadAll, a LimitReader or a helper handed the body all name it. Every
-// handler names its request r (the residual: one named otherwise). The
-// floors guard the denominator; the definition is not a caller.
+// handler names its request r (the residuals: a handler whose request is
+// named otherwise; a METHOD named decodeJSONBody, which FuncParts folds
+// under the function's key). The floors guard the denominator; the
+// definition is not a caller.
 func TestEveryRequestBodyIsReadThroughDecodeJSONBody(t *testing.T) {
 	readers, callers, functions := 0, 0, 0
 	for path, file := range srctest.PackageFiles(t, "internal/api", 20) {
