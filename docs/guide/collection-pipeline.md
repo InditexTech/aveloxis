@@ -34,7 +34,7 @@ Repo info and metadata are collected **first** (Phase 0) to provide commit count
 When `CommitCount >= 10,000` (from repo_info metadata):
 
 ```
-Phase 0: Repo info, releases, clone stats (sequential)
+Phase 0: Repo info, releases, clone stats and traffic (sequential)
 Phase 1: Contributors (sequential)
 Phase 2: Issues | PRs | Events (3 parallel goroutines)
          ─── wait ───
@@ -42,6 +42,14 @@ Phase 3: Messages (sequential, after parallel phase)
 ```
 
 A 404 from `/releases` is treated as *zero releases* (non-fatal). Not every repo has cut a release, and legacy rows with a stray `.git` in their slug — though now prevented at write time by `model.NormalizeRepoName()` in `db.UpsertRepo` — used to cause this 404. The staged collector logs `no releases endpoint (404) — treating as zero releases` and continues. See the troubleshooting guide for the underlying fix.
+
+GitHub traffic (v0.29.97) is read after the releases. The daily clones read (`/traffic/clones`) comes first; unless it was skipped, five more reads follow: `/traffic/views?per=day`, `/traffic/views?per=week`, `/traffic/clones?per=week`, `/traffic/popular/paths` and `/traffic/popular/referrers`. GitHub serves traffic only to a key with push access to the repository (classic token) or with the "Administration" repository permission set to read (fine-grained token):
+
+- A `403` from a key without access, or any other routine skip such as a `404`, is skipped as for releases: one Info line `skipping traffic endpoints` with the owner, repository and reason, nothing recorded and no further traffic request, so a key without access spends one request per collection.
+- Any other error is recorded as an error of the repository's collection, as a releases error is (`clone stats: <cause>`, or `traffic <endpoint>: <cause>` naming the failed read), and the later phases still run. The first failing read of the five stops the rest, and nothing of that read is stored. A failed daily clones read does not stop the five: their read is stored with the views window only. An error caused by a shutdown is neither recorded nor logged.
+- On GitLab the client reads no traffic: it makes no request, and nothing is stored or logged.
+
+A successful read is staged as one row (beside the daily clones rows) and written in one transaction: the daily views (`repo_views`), one 14-day window per kind with GitHub's unique visitors or cloners (`repo_traffic_windows`), the complete Monday-to-Sunday weeks inside that window (`repo_traffic_weeks`), and the top paths and referrers (`repo_traffic_paths`, `repo_traffic_referrers`) as the snapshot of the UTC collection date, which replaces any earlier snapshot of that date. Days, windows and weeks take the latest read's figures. Zeros are stored, never skipped, so a stored day was read even when nobody visited; no totals are stored, a period's views or clones being the sum of its daily rows. The writer refuses a read without a snapshot date. See [the schema](../schema.md#repo_views) and [the API](api.md#traffic-v02997).
 
 The 3 extra goroutines claim parallel slots tracked by an atomic counter. The scheduler's `fillWorkerSlots` pauses new job starts while the total active count (semaphore + parallel slots) exceeds the configured worker limit.
 
@@ -124,7 +132,7 @@ Entities are processed in this order to satisfy foreign key constraints:
 3. **Pull requests** -- upserted with resolved `author_id`
 4. **Events** -- issue and PR events with resolved `cntrb_id`
 5. **Messages** -- issue comments, PR comments, review comments with resolved `cntrb_id`
-6. **Metadata** -- repo info, releases, clone stats
+6. **Metadata** -- repo info, clone stats, traffic, releases
 
 ### Contributor resolution
 

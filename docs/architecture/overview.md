@@ -84,7 +84,7 @@ All collected open source community health data:
 | Messages | 3 | `messages`, `review_comments`, `pull_request_teams` |
 | Commits | 3 | `commits`, `commit_parents`, `commit_messages` |
 | Releases | 1 | `releases` |
-| Repo metadata | 6 | `repo_info`, `repo_clones`, `repo_badging`, `dei_badging`, `repo_insights`, `repo_insights_records` |
+| Repo metadata | 11 | `repo_info`, `repo_clones`, `repo_views`, `repo_traffic_paths`, `repo_traffic_referrers`, `repo_traffic_windows`, `repo_traffic_weeks`, `repo_badging`, `dei_badging`, `repo_insights`, `repo_insights_records` |
 | Dependencies | 5 | `repo_dependencies`, `repo_deps_libyear`, `repo_deps_scorecard`, `repo_sbom_scans`, `libraries` |
 | Aggregates | 6 | `dm_repo_annual`, `dm_repo_monthly`, `dm_repo_weekly`, `dm_repo_group_annual`, `dm_repo_group_monthly`, `dm_repo_group_weekly` |
 | Code complexity | 4 | `repo_labor`, `repo_meta`, `repo_stats`, `repo_test_coverage` |

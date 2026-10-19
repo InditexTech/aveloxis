@@ -1064,6 +1064,7 @@ Both platforms collect the same data types. Most fields have full parity; known 
 | Repo Info (metadata) | GraphQL API (counts, community profile, license, status) | `/projects/{id}?statistics=true` + `/issues_statistics` + MR counts via `X-Total` | `repo_info` (latest) + `repo_info_history` |
 | Contributors | `/repos/{o}/{r}/contributors` | `/projects/{id}/members/all` + `/repository/contributors` | `contributors` + `contributor_identities` |
 | Clone Stats | `/traffic/clones` | Not available via API | `repo_clones` |
+| Traffic: views, top paths and referrers, 14-day and weekly unique visitors and cloners (v0.29.97) | `/traffic/views` (daily and weekly), `/traffic/clones?per=week`, `/traffic/popular/paths`, `/traffic/popular/referrers` | Not available via API | `repo_views` + `repo_traffic_paths` + `repo_traffic_referrers` + `repo_traffic_windows` + `repo_traffic_weeks` |
 | Commits (git) | `git clone --bare` + `git log --numstat` (default branch) | Same | `commits` + `commit_parents` + `commit_messages` |
 | Facade Aggregates | Computed from commits table | Same | `dm_repo_annual/monthly/weekly` |
 | Commit Author Resolution | Noreply parse + Commits API + Search API (GitHub only) | N/A (GitLab identity from API) | `contributors` + `contributor_aliases` |
@@ -1091,6 +1092,7 @@ The following fields are available from GitHub but not from GitLab due to platfo
 | `repo_info.commit_count` | REST `/repos/{o}/{r}` — accurate | `GET /projects/:id?statistics=true` → often 0 for mirrored or private-low-scope projects | v0.16.9+ backfills from facade's `git log` count after a successful clone so the monitor/web "Metadata commits" column matches reality |
 | Watcher count (`repo_info`) | GraphQL `watchers.totalCount` | Not available | GitLab has no public "watchers" API; `star_count` is the closest analog |
 | Clone statistics (`repo_clones`) | `/traffic/clones` (requires push access) | Not available | GitLab exposes clone data only via admin-only endpoints |
+| Traffic (`repo_views`, `repo_traffic_paths`, `repo_traffic_referrers`, `repo_traffic_windows`, `repo_traffic_weeks`) | `/traffic/views` (daily and weekly), `/traffic/clones?per=week`, `/traffic/popular/paths`, `/traffic/popular/referrers` (push access with a classic token, or the "Administration" repository permission set to read with a fine-grained token) | Not available | GitLab has no API for page views, popular paths, referrers or unique visitors and cloners; the GitLab client makes no traffic request, so GitLab repositories have no traffic rows |
 | GraphQL node IDs (`pr_src_node_id`) | Available on all entities | Not applicable | GitLab uses numeric IDs, not GraphQL node IDs — architectural difference |
 | Contributor URL fields (`gh_followers_url`, etc.) | 10+ URL fields per contributor | Not available | GitLab API doesn't expose follower/following/gist/etc. URLs |
 | Contributor type (User/Bot/Organization) | `type` field on user objects | Not available | GitLab doesn't distinguish user types the same way |
