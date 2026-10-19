@@ -75,13 +75,15 @@ func TestAdminRoutesRefuseTrailingJSONBeforeTheService(t *testing.T) {
 	}{
 		{"set admin", "/api/v1/admin/users/7/admin", `{"admin":true}}`, s.handleAdminSetUserAdmin},
 		{"capacity contact", "/api/v1/admin/capacity/contact", `{"contact_email":"a@b.example"}]`, s.handleAdminCapacityContact},
-		{"collection create", "/api/v1/admin/collections", `{"name":"x"} {"name":"y"}`, s.handleAdminCollectionCreate},
+		{"collection create", "/api/v1/admin/collections", `{"name":"x"}}`, s.handleAdminCollectionCreate}, // a stray delimiter: the one tail More() let through (round 2 F4)
 		{"signup allowlist add", "/api/v1/admin/capacity/signup-allowlist", `{"cidr":"10.0.0.0/8"}}}garbage`, s.handleAdminSignupAllowlistAdd},
 		{"group add", "/api/v1/groups/1/repos", `{"url":"https://github.com/a/b"}}`, s.handleGroupAddRepo},
+		{"forge-id adopt", "/api/v1/admin/forge-id-changes/1/adopt", `{"old_forge_id":"1","new_forge_id":"2","note":"x"}}`, s.handleAdminForgeIDAdopt},
 	} {
 		r := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)).WithContext(admin)
 		r.SetPathValue("userID", "7")  // read by set-admin
 		r.SetPathValue("groupID", "1") // read by group add (round 2: without it the 400 was "invalid group id", not the decoder's)
+		r.SetPathValue("repoID", "1")  // read by forge-id adopt
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		reached := false
@@ -103,35 +105,39 @@ func TestAdminRoutesRefuseTrailingJSONBeforeTheService(t *testing.T) {
 // SR-18): seven routes read their JSON body with a bare Decode of their
 // own — no trailing-data check at all, a worse shape than the one the
 // review found — while the stage-1f record called decodeJSONBody "the one
-// bounded JSON decoder". The reader of a request body is one function:
-// no other function in the package may construct a json.Decoder over
-// r.Body (forge and registry responses are not request bodies and are
-// not counted). The floor guards the denominator.
+// bounded JSON decoder"; an eighth (round 2 F1) read it with io.ReadAll +
+// json.Unmarshal, which a "json.NewDecoder over r.Body" predicate cannot
+// see. So the predicate is the owning layer's: decodeJSONBody is the one
+// function in the package that touches r.Body at all — a decoder, a
+// ReadAll, a LimitReader or a helper handed the body all name it. Every
+// handler names its request r (the residual: one named otherwise). The
+// floors guard the denominator; the definition is not a caller.
 func TestEveryRequestBodyIsReadThroughDecodeJSONBody(t *testing.T) {
-	decoders, callers, functions := 0, 0, 0
+	readers, callers, functions := 0, 0, 0
 	for path, file := range srctest.PackageFiles(t, "internal/api", 20) {
 		if strings.HasSuffix(path, "_test.go") {
 			continue
 		}
 		file = srctest.StripGoComments(file)
 		for name, body := range srctest.FuncParts(t, file) {
-			functions++
-			callers += strings.Count(body, "decodeJSONBody(")
-			if !strings.Contains(body, "json.NewDecoder(") {
-				continue
+			if name != srctest.PackageLevel {
+				functions++
+			}
+			if name != "decodeJSONBody" {
+				callers += strings.Count(body, "decodeJSONBody(")
 			}
 			if !strings.Contains(body, "r.Body") {
-				continue // a response body, not a request's
+				continue
 			}
-			decoders++
+			readers++
 			if name != "decodeJSONBody" {
-				t.Errorf("%s: %s reads the request body with its own json.Decoder; every request body goes through decodeJSONBody (its limit parameter takes the route's bound)", path, name)
+				t.Errorf("%s: %s reads r.Body itself; every request body goes through decodeJSONBody (its limit parameter takes the route's bound)", path, name)
 			}
 		}
 	}
 	srctest.MinCount(t, "functions scanned in internal/api", functions, 300)
-	srctest.MinCount(t, "decodeJSONBody call sites", callers, 16)
-	if decoders != 1 {
-		t.Errorf("%d functions construct a json.Decoder over r.Body; want exactly one (decodeJSONBody)", decoders)
+	srctest.MinCount(t, "decodeJSONBody call sites", callers, 17)
+	if readers != 1 {
+		t.Errorf("%d functions touch r.Body; want exactly one (decodeJSONBody)", readers)
 	}
 }

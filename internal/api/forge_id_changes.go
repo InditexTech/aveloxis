@@ -76,17 +76,10 @@ func (s *Server) handleAdminForgeIDAdopt(w http.ResponseWriter, r *http.Request)
 		NewForgeID string `json:"new_forge_id"`
 		Note       string `json:"note"`
 	}
-	raw, rerr := io.ReadAll(io.LimitReader(r.Body, adoptBodyMaxBytes+1))
-	if rerr != nil {
-		s.logger.Warn("admin forge-ID adopt: request body unreadable", "repo_id", repoID, "error", rerr)
-		writeAuthError(w, http.StatusBadRequest, "could not read the request body")
-		return
-	}
-	if len(raw) > adoptBodyMaxBytes {
-		writeAuthError(w, http.StatusBadRequest, "request body too large")
-		return
-	}
-	if err := json.Unmarshal(raw, &body); err != nil {
+	// 0.29.104 (review round 2): the package's one body reader, bounded
+	// by adoptBodyMaxBytes (an io.ReadAll + json.Unmarshal of its own
+	// before; a second spelling with no reason at the site).
+	if err := decodeJSONBody(w, r, adoptBodyMaxBytes, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, `invalid JSON body: want {"old_forge_id", "new_forge_id", "note"}`)
 		return
 	}
