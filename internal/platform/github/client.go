@@ -5,6 +5,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"log/slog"
@@ -16,6 +17,10 @@ import (
 	"github.com/aveloxis/aveloxis/internal/model"
 	"github.com/aveloxis/aveloxis/internal/platform"
 )
+
+// The GitHub client must implement every platform.Client method; this
+// fails the build when the interface grows a method GitHub lacks.
+var _ platform.Client = (*Client)(nil)
 
 // Client implements platform.Client for GitHub.
 type Client struct {
@@ -1347,6 +1352,17 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 		}
 	}
 	return clones, nil
+}
+
+// errTrafficNotImplemented fails FetchTraffic closed until its reads
+// land: an unread repository must not look like one without traffic.
+var errTrafficNotImplemented = errors.New("github traffic read not implemented")
+
+// FetchTraffic is a placeholder that keeps the client implementing
+// platform.Client while the traffic reads are added with their tests.
+// It returns an error, never (nil, nil), which means "no traffic".
+func (c *Client) FetchTraffic(ctx context.Context, owner, repo string) (*model.RepoTraffic, error) {
+	return nil, errTrafficNotImplemented
 }
 
 // FetchIssueByNumber fetches a single issue by number for targeted gap filling.

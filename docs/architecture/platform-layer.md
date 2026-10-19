@@ -13,6 +13,7 @@ platform.Client
   |-- RepoCollector
   |     |-- FetchRepoInfo
   |     |-- FetchCloneStats
+  |     |-- FetchTraffic
   |-- IssueCollector
   |     |-- ListIssues
   |     |-- ListIssueLabels

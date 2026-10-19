@@ -20,6 +20,10 @@ import (
 	"github.com/aveloxis/aveloxis/internal/platform"
 )
 
+// The GitLab client must implement every platform.Client method; this
+// fails the build when the interface grows a method GitLab lacks.
+var _ platform.Client = (*Client)(nil)
+
 // Client implements platform.Client for GitLab (API v4).
 // Supports both gitlab.com and self-hosted instances.
 type Client struct {
@@ -1546,6 +1550,13 @@ var errCountUnavailable = errors.New("X-Total header absent (GitLab omits it abo
 func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, error) {
 	// GitLab doesn't expose clone statistics via the API for non-admins.
 	// Return empty; the facade/git layer can provide this from git operations.
+	return nil, nil
+}
+
+// FetchTraffic returns (nil, nil) without a request: GitLab exposes no
+// page-view, referrer or clone statistics to non-admins, so there is no
+// traffic to collect (see platform.RepoCollector.FetchTraffic).
+func (c *Client) FetchTraffic(ctx context.Context, owner, repo string) (*model.RepoTraffic, error) {
 	return nil, nil
 }
 

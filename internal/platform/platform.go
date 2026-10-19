@@ -96,6 +96,27 @@ type RepoCollector interface {
 
 	// FetchCloneStats returns clone/traffic data (may require elevated perms).
 	FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, error)
+
+	// FetchTraffic returns the rest of the repository's traffic in one
+	// call: the daily views, the 14-day uniques and weekly buckets of
+	// views and clones, and the top paths and referrers. Replaces one
+	// method per traffic endpoint with a single bundled read; the daily
+	// clones stay with FetchCloneStats. The returned value carries only
+	// what the forge reports: SnapshotDate, Windows and Weeks are left
+	// for the collector to fill.
+	//
+	// On GitHub: GET /repos/{owner}/{repo}/traffic/views?per=day,
+	// traffic/views?per=week, traffic/clones?per=week,
+	// traffic/popular/paths and traffic/popular/referrers. They need the
+	// same access as FetchCloneStats (push access with a classic token,
+	// "Administration" read with a fine-grained one). The first read
+	// that fails aborts the call with an error naming the endpoint and
+	// wrapping the cause, so a 403 still classifies as ClassSkip.
+	//
+	// GitLab returns (nil, nil) without a request: GitLab exposes no
+	// traffic statistics to non-admins. Callers treat a nil result as
+	// "no traffic for this forge", not as an error.
+	FetchTraffic(ctx context.Context, owner, repo string) (*model.RepoTraffic, error)
 }
 
 // IssueAndPRBatch bundles the result of a unified issue + PR enumeration
