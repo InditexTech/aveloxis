@@ -1,0 +1,27 @@
+README.md
+  s_347fec83078389::t_692407dd0812bf 1067,1095
+docs/architecture/overview.md
+  s_347fec83078389::t_ff64af2d7aec40 87
+docs/architecture/platform-layer.md
+  s_347fec83078389::t_0d99114d2a6a10 208
+docs/guide/collection-pipeline.md
+  s_347fec83078389::t_d44cc6b06ab285 37,46-53,135
+docs/schema.md
+  s_347fec83078389::t_206c0d8f7b139e 982-984,999-1097
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c0e80f34b51af0b4a231f30f5765357f5a63865c",
+  "prompts": {},
+  "sessions": {
+    "s_347fec83078389": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7df70ca-1922-4acd-8501-d573526c8aea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
