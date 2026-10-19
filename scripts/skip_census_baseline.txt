@@ -26,6 +26,7 @@ internal/mailinglist TestPonyMailLiveCanary
 internal/platform/depsdev TestLiveDepsDevReverseLookupForSeaborn
 internal/platform/ecosystems TestLiveEcosystemsLookupForSeaborn
 internal/platform/github TestLiveFetchContributorActivity
+internal/platform/github TestLiveGitHubTrafficContract
 internal/platform/github TestLiveGraphQLListingAndPRBatchParityFields
 internal/platform/github TestLiveRootTreeAcceptsHEAD
 internal/platform/github TestSearchCommitByAuthorEmailLive

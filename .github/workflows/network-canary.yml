@@ -57,6 +57,13 @@ jobs:
           go test ./internal/platform/ecosystems/ -run TestLiveEcosystemsLookupForSeaborn -count=1 -v
           go test ./internal/platform/gitlab/ -run TestLiveGitLabRepoInfoForGitLabRunner -count=1 -v
           go test ./internal/platform/github/ -run TestLiveGraphQLListingAndPRBatchParityFields -count=1 -v
+          # v0.29.97 — GitHub traffic (views, clones, popular paths and
+          # referrers): the unit tests serve GitHub's OpenAPI examples,
+          # so only this sees the live shape change. GitHub serves
+          # traffic only with push access: the token needs it on
+          # aveloxis/aveloxis (or on AVELOXIS_TEST_TRAFFIC_REPO), and
+          # the canary skips, visibly, on a 403.
+          go test ./internal/platform/github/ -run TestLiveGitHubTrafficContract -count=1 -v
 
   # v0.27.30 — REAL-BINARY tool canaries (audit G1: scancode is the
   # likeliest next silent-dark incident — unpinned monthly auto-upgrade
