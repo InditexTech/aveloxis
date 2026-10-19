@@ -20,6 +20,7 @@ import (
 // 50 FKs total: 11 PR children + 4 issues children + 3 messages
 // children + 2 PR-reviews children + 30 repos children (including
 // issue_assignees.repo_id per operator decision on 2026-05-17).
+// v0.29.97 added the five GitHub traffic tables' repo_id (55 total).
 //
 // Each row is (child_table, child_column, target_table, target_column,
 // index_name, constraint_name). The local fixture (not borrowed from
@@ -140,6 +141,18 @@ var fkExtraFixture = []fkExtraSpec{
 		"idx_review_comments_repo_id", "review_comments_repo_id_fkey"},
 	{"topic_model_meta", "repo_id", "repos", "repo_id",
 		"idx_topic_model_meta_repo_id", "topic_model_meta_repo_id_fkey"},
+
+	// repos(repo_id) ← v0.29.97 GitHub traffic tables, shaped like repo_clones
+	{"repo_views", "repo_id", "repos", "repo_id",
+		"idx_repo_views_repo_id", "repo_views_repo_id_fkey"},
+	{"repo_traffic_paths", "repo_id", "repos", "repo_id",
+		"idx_repo_traffic_paths_repo_id", "repo_traffic_paths_repo_id_fkey"},
+	{"repo_traffic_referrers", "repo_id", "repos", "repo_id",
+		"idx_repo_traffic_referrers_repo_id", "repo_traffic_referrers_repo_id_fkey"},
+	{"repo_traffic_windows", "repo_id", "repos", "repo_id",
+		"idx_repo_traffic_windows_repo_id", "repo_traffic_windows_repo_id_fkey"},
+	{"repo_traffic_weeks", "repo_id", "repos", "repo_id",
+		"idx_repo_traffic_weeks_repo_id", "repo_traffic_weeks_repo_id_fkey"},
 }
 
 // TestSchemaDeclaresExtraFKIndexes pins fresh-install: schema.sql

@@ -23,6 +23,9 @@ import (
 // relied on for the cntrb_id FKs; verified empirically against
 // the live production schema before v0.22.7.
 //
+// v0.29.97 appended the repo_id FKs of the five GitHub traffic
+// tables, shaped like repo_clones (55 entries).
+//
 // Adding a new FK to this set requires extending fkExtraIndexes
 // AND schema.sql AND this list. Tests in fk_extra_test.go pin
 // all three.
@@ -94,6 +97,13 @@ var fkExtraConstraints = []fkExtraConstraint{
 	{"repo_topic", "repo_id", "repos", "repo_id", "repo_topic_repo_id_fkey"},
 	{"review_comments", "repo_id", "repos", "repo_id", "review_comments_repo_id_fkey"},
 	{"topic_model_meta", "repo_id", "repos", "repo_id", "topic_model_meta_repo_id_fkey"},
+
+	// repos(repo_id) ← v0.29.97 GitHub traffic tables, shaped like repo_clones
+	{"repo_views", "repo_id", "repos", "repo_id", "repo_views_repo_id_fkey"},
+	{"repo_traffic_paths", "repo_id", "repos", "repo_id", "repo_traffic_paths_repo_id_fkey"},
+	{"repo_traffic_referrers", "repo_id", "repos", "repo_id", "repo_traffic_referrers_repo_id_fkey"},
+	{"repo_traffic_windows", "repo_id", "repos", "repo_id", "repo_traffic_windows_repo_id_fkey"},
+	{"repo_traffic_weeks", "repo_id", "repos", "repo_id", "repo_traffic_weeks_repo_id_fkey"},
 }
 
 // constraintStateMatches checks whether a FK already has the

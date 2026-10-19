@@ -27,6 +27,9 @@ import (
 // and lstm_anomaly_models look like dead-code legacy tables that
 // deserve audit before indexing.
 //
+// v0.29.97 appended the repo_id of the five GitHub traffic tables,
+// shaped like repo_clones, so the list now has 55 entries.
+//
 // Companion to v0.22.7's fkExtraConstraints, which adds
 // ON UPDATE CASCADE ON DELETE RESTRICT DEFERRABLE INITIALLY
 // DEFERRED to the same 50 FKs. Indexes are built CONCURRENTLY
@@ -102,6 +105,13 @@ var fkExtraIndexes = []fkExtraIndex{
 	{"repo_topic", "repo_id", "idx_repo_topic_repo_id"},
 	{"review_comments", "repo_id", "idx_review_comments_repo_id"},
 	{"topic_model_meta", "repo_id", "idx_topic_model_meta_repo_id"},
+
+	// repos(repo_id) ← v0.29.97 GitHub traffic tables, shaped like repo_clones
+	{"repo_views", "repo_id", "idx_repo_views_repo_id"},
+	{"repo_traffic_paths", "repo_id", "idx_repo_traffic_paths_repo_id"},
+	{"repo_traffic_referrers", "repo_id", "idx_repo_traffic_referrers_repo_id"},
+	{"repo_traffic_windows", "repo_id", "idx_repo_traffic_windows_repo_id"},
+	{"repo_traffic_weeks", "repo_id", "idx_repo_traffic_weeks_repo_id"},
 }
 
 // ensureExtraFKIndexes is the v0.22.7 migration step that adds
