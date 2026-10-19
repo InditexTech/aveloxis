@@ -1,0 +1,137 @@
+// SPDX-FileCopyrightText: 2026 Sean Goggins, University of Missouri, Derek Howard
+// SPDX-License-Identifier: MIT
+
+package api
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
+)
+
+// TestDecodeJSONBodyIsOneValueThenEOF (0.29.104, Copilot on PR #238,
+// review 5566438301): the one bounded JSON reader accepts exactly one
+// value followed by nothing but whitespace. `Decoder.More()` was the
+// trailing-data check; it answers false for a stray `}` or `]` AND on any
+// reader error, so `{"admin":true}}` and a value followed by whitespace
+// past the limit both reached the writers. The rule is "a second Decode
+// must answer io.EOF": anything else — a second value, a stray delimiter,
+// the reader's own error — refuses the body.
+func TestDecodeJSONBodyIsOneValueThenEOF(t *testing.T) {
+	const limit = 64
+	for _, tc := range []struct {
+		name, body string
+		refused    bool
+	}{
+		{"one object", `{"admin":true}`, false},
+		{"one object then whitespace", "{\"admin\":true}\n \t\r\n", false},
+		{"stray closing brace", `{"admin":true}}`, true},
+		{"stray closing bracket", `{"admin":true}]`, true},
+		{"second value", `{"admin":true}{"admin":false}`, true},
+		{"second value after whitespace", `{"admin":true} {"admin":false}`, true},
+		{"trailing word", `{"admin":true} x`, true},
+		{"trailing whitespace past the limit", `{"admin":true}` + strings.Repeat(" ", limit), true},
+		{"truncated second value", `{"admin":true}{"admin":`, true}, // io.ErrUnexpectedEOF is not io.EOF (round 1 F2)
+		{"body of exactly limit bytes", `{"admin":true}` + strings.Repeat(" ", limit-len(`{"admin":true}`)), false},
+		{"body of limit+1 bytes", `{"admin":true}` + strings.Repeat(" ", limit+1-len(`{"admin":true}`)), true},
+		{"unterminated object", `{"admin":`, true},
+		{"object past the limit", `{"admin":true,"note":"` + strings.Repeat("x", limit) + `"}`, true},
+		{"empty body", ``, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(tc.body))
+			w := httptest.NewRecorder()
+			var v struct {
+				Admin *bool `json:"admin"`
+			}
+			err := decodeJSONBody(w, r, limit, &v)
+			if (err != nil) != tc.refused {
+				t.Fatalf("body %q: err=%v; want refused=%v", tc.body, err, tc.refused)
+			}
+			if !tc.refused && (v.Admin == nil || !*v.Admin) {
+				t.Errorf("body %q: decoded %+v; want admin=true", tc.body, v)
+			}
+		})
+	}
+}
+
+// TestAdminRoutesRefuseTrailingJSONBeforeTheService: the review's body on
+// the role route, through the handler: a 400 before the service and the
+// store (the Server has no store; a handler that reached it would panic,
+// reported as "reached").
+func TestAdminRoutesRefuseTrailingJSONBeforeTheService(t *testing.T) {
+	s := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	s.admin = testAdminService(s)
+	admin := context.WithValue(context.Background(), authCtxKey{}, authInfo{UserID: 1, IsAdmin: true})
+	for _, tc := range []struct {
+		name, path, body string
+		call             func(w http.ResponseWriter, r *http.Request)
+	}{
+		{"set admin", "/api/v1/admin/users/7/admin", `{"admin":true}}`, s.handleAdminSetUserAdmin},
+		{"capacity contact", "/api/v1/admin/capacity/contact", `{"contact_email":"a@b.example"}]`, s.handleAdminCapacityContact},
+		{"collection create", "/api/v1/admin/collections", `{"name":"x"} {"name":"y"}`, s.handleAdminCollectionCreate},
+		{"signup allowlist add", "/api/v1/admin/capacity/signup-allowlist", `{"cidr":"10.0.0.0/8"}}}garbage`, s.handleAdminSignupAllowlistAdd},
+		{"group add", "/api/v1/groups/1/repos", `{"url":"https://github.com/a/b"}}`, s.handleGroupAddRepo},
+	} {
+		r := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body)).WithContext(admin)
+		r.SetPathValue("userID", "7")  // read by set-admin
+		r.SetPathValue("groupID", "1") // read by group add (round 2: without it the 400 was "invalid group id", not the decoder's)
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		reached := false
+		func() {
+			defer func() {
+				if recover() != nil {
+					reached = true
+				}
+			}()
+			tc.call(w, r)
+		}()
+		if reached || w.Code != http.StatusBadRequest {
+			t.Errorf("%s: body %q = %d (service/store reached=%v) %q; want 400 before the service", tc.name, tc.body, w.Code, reached, strings.TrimSpace(w.Body.String()))
+		}
+	}
+}
+
+// TestEveryRequestBodyIsReadThroughDecodeJSONBody (round 1 F1, lens L18 /
+// SR-18): seven routes read their JSON body with a bare Decode of their
+// own — no trailing-data check at all, a worse shape than the one the
+// review found — while the stage-1f record called decodeJSONBody "the one
+// bounded JSON decoder". The reader of a request body is one function:
+// no other function in the package may construct a json.Decoder over
+// r.Body (forge and registry responses are not request bodies and are
+// not counted). The floor guards the denominator.
+func TestEveryRequestBodyIsReadThroughDecodeJSONBody(t *testing.T) {
+	decoders, callers, functions := 0, 0, 0
+	for path, file := range srctest.PackageFiles(t, "internal/api", 20) {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		file = srctest.StripGoComments(file)
+		for name, body := range srctest.FuncParts(t, file) {
+			functions++
+			callers += strings.Count(body, "decodeJSONBody(")
+			if !strings.Contains(body, "json.NewDecoder(") {
+				continue
+			}
+			if !strings.Contains(body, "r.Body") {
+				continue // a response body, not a request's
+			}
+			decoders++
+			if name != "decodeJSONBody" {
+				t.Errorf("%s: %s reads the request body with its own json.Decoder; every request body goes through decodeJSONBody (its limit parameter takes the route's bound)", path, name)
+			}
+		}
+	}
+	srctest.MinCount(t, "functions scanned in internal/api", functions, 300)
+	srctest.MinCount(t, "decodeJSONBody call sites", callers, 16)
+	if decoders != 1 {
+		t.Errorf("%d functions construct a json.Decoder over r.Body; want exactly one (decodeJSONBody)", decoders)
+	}
+}

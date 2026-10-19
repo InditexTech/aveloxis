@@ -67,7 +67,7 @@ func (s *Server) handleMeEmail(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email string `json:"email"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, accountEmailBodyLimit)).Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, accountEmailBodyLimit, &req); err != nil {
 		writeAuthError(w, http.StatusBadRequest, `invalid JSON body: expected {"email": "…"}`)
 		return
 	}
@@ -103,7 +103,7 @@ func (s *Server) handleMeEmailConfirm(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token string `json:"token"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, accountEmailBodyLimit)).Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, accountEmailBodyLimit, &req); err != nil {
 		writeAuthError(w, http.StatusBadRequest, `invalid JSON body: expected {"token": "…"}`)
 		return
 	}

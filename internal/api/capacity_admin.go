@@ -253,7 +253,7 @@ func (s *Server) handleAdminSignupAllowlistAdd(w http.ResponseWriter, r *http.Re
 		CIDR string `json:"cidr"`
 		Note string `json:"note"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {cidr, note}")
 		return
 	}
@@ -279,7 +279,7 @@ func (s *Server) handleAdminSignupAllowlistRemove(w http.ResponseWriter, r *http
 	var body struct {
 		CIDR string `json:"cidr"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {cidr}")
 		return
 	}

@@ -601,6 +601,12 @@ var deployChecklists = map[string][]deployStep{
 	// (CodeQL go/incorrect-integer-conversion on PR #238). The one
 	// visible change: an id above int4 is a 400 instead of a 500. No
 	// schema change — same ladder as 0.29.102.
+	// v0.29.104 (2026-10-19): the admin/collection JSON body reader refuses
+	// a stray delimiter or a reader error after the value (a second Decode
+	// must answer io.EOF; Decoder.More answered false for both — Copilot on
+	// PR #238). The one visible change: `{"admin":true}}` is a 400 instead
+	// of accepted. No schema change — same ladder as 0.29.102.
+	"0.29.104": v029102DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,

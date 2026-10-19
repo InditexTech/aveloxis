@@ -237,7 +237,7 @@ func (s *Server) handleGroupCreate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, groupCreateBodyLimit)).Decode(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+	if err := decodeJSONBody(w, r, groupCreateBodyLimit, &req); err != nil || strings.TrimSpace(req.Name) == "" {
 		writeAuthError(w, http.StatusBadRequest, "body must be {\"name\": \"...\"}")
 		return
 	}
@@ -377,7 +377,7 @@ func (s *Server) handleGroupAddRepo(w http.ResponseWriter, r *http.Request) {
 		Kind string   `json:"kind"`
 	}
 	const bodyShape = "body must be {\"url\": \"...\"} or {\"urls\": [\"...\", ...]}, plus \"kind\": \"repo\"|\"org\""
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, groupAddBodyLimit)).Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, groupAddBodyLimit, &req); err != nil {
 		writeAuthError(w, http.StatusBadRequest, bodyShape)
 		return
 	}

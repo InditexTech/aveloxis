@@ -197,7 +197,7 @@ func (s *Server) handleAdminAPITokenSettingsUpdate(w http.ResponseWriter, r *htt
 		DefaultRateLimitPerDay  *int64 `json:"default_rate_limit_per_day"`
 		DefaultLifetimeDays     *int64 `json:"default_lifetime_days"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {default_rate_limit_per_hour, default_rate_limit_per_day?, default_lifetime_days}")
 		return
 	}
