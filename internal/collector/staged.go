@@ -1791,3 +1791,41 @@ func (p *Processor) processStagedCloneStats(ctx context.Context, repoID int64, p
 	clone.RepoID = repoID
 	return p.store.UpsertRepoClone(ctx, &clone)
 }
+
+// trafficWeekLastDay is how many days after its Monday a weekly
+// traffic bucket's Sunday falls: the seventh day of the week.
+const trafficWeekLastDay = 6
+
+// deriveTrafficRows derives the window and complete-week rows of a
+// traffic read from the daily views in tr and the daily clones. A window
+// runs from the first to the last daily bucket, never from the
+// collection date: GitHub's 14 zero-filled days end before it for a
+// repository with traffic, on it for one without. A weekly bucket is
+// kept when it starts on a Monday and its seven days lie inside the
+// window, which skips partial weeks however GitHub labels the first
+// bucket. Zeros are kept; a kind without daily buckets has no window.
+func deriveTrafficRows(tr *model.RepoTraffic, clones []model.RepoClone) ([]model.RepoTrafficWindow, []model.RepoTrafficWeek) {
+	var (
+		windows []model.RepoTrafficWindow
+		weeks   []model.RepoTrafficWeek
+	)
+	derive := func(kind model.TrafficKind, first, last time.Time, uniques int, buckets []model.RepoTrafficWeek) {
+		window := model.RepoTrafficWindow{Kind: kind, Start: first.UTC(), End: last.UTC(), Uniques: uniques}
+		windows = append(windows, window)
+		for _, b := range buckets {
+			start := b.WeekStart.UTC()
+			if start.Weekday() != time.Monday || start.Before(window.Start) ||
+				start.AddDate(0, 0, trafficWeekLastDay).After(window.End) {
+				continue
+			}
+			weeks = append(weeks, model.RepoTrafficWeek{Kind: kind, WeekStart: start, Uniques: b.Uniques})
+		}
+	}
+	if n := len(tr.Views); n > 0 {
+		derive(model.TrafficKindViews, tr.Views[0].Timestamp, tr.Views[n-1].Timestamp, tr.ViewUniques, tr.WeeklyViews)
+	}
+	if n := len(clones); n > 0 {
+		derive(model.TrafficKindClones, clones[0].Timestamp, clones[n-1].Timestamp, tr.CloneUniques, tr.WeeklyClones)
+	}
+	return windows, weeks
+}
