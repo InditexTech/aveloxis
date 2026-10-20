@@ -1,0 +1,21 @@
+docs/guide/api.md
+  s_f822c7fc447da3::t_69acbac0a9be10 391
+docs/schema.md
+  s_f822c7fc447da3::t_0c2be9e9106280 982,999,1016,1035,1053,1071
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25b6fa033b5748594eeb4fc0b4d066f84bb4223d",
+  "prompts": {},
+  "sessions": {
+    "s_f822c7fc447da3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f672e684-a58c-40e1-b963-dda70d94054d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
