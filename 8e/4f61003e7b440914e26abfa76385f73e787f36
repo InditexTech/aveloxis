@@ -1,0 +1,51 @@
+docs/_build/html/_downloads/1818c5c8a1ccac7ab5e6b70b7caa595b/openapi.yaml
+  s_f822c7fc447da3::t_d206efa1ec97df 1725,1727-1736,7465
+docs/_build/html/_sources/architecture/overview.md.txt
+  s_f822c7fc447da3::t_51303e85536278 215
+docs/_build/html/_sources/architecture/platform-layer.md.txt
+  s_f822c7fc447da3::t_e53d8da990a9e7 207
+docs/_build/html/_sources/getting-started/upgrading.md.txt
+  s_f822c7fc447da3::t_a364c1006fd87b 167
+docs/_build/html/_sources/guide/api.md.txt
+  s_f822c7fc447da3::t_522f7293b15915 344,378,387,391
+docs/_build/html/_sources/guide/ci-cd.md.txt
+  s_f822c7fc447da3::t_9130b30b983a27 267-268
+docs/_build/html/_sources/guide/collection-pipeline.md.txt
+  s_f822c7fc447da3::t_4f0c8932786cda 50
+docs/_build/html/_sources/schema.md.txt
+  s_f822c7fc447da3::t_743d93d0d5d37c 982,988-990,999,1016,1035,1053,1071
+docs/_build/html/api/reference.html
+  s_f822c7fc447da3::t_d2c64663303caa 2516-2526,2545,2549
+docs/_build/html/architecture/overview.html
+  s_f822c7fc447da3::t_e22a552a2b0c3d 2071
+docs/_build/html/architecture/platform-layer.html
+  s_f822c7fc447da3::t_3a681b9d5b1108 2020-2021
+docs/_build/html/getting-started/upgrading.html
+  s_f822c7fc447da3::t_12e531904fb4c1 1923
+docs/_build/html/guide/api.html
+  s_f822c7fc447da3::t_32c204aeeb488a 2123,2163,2184,2188
+docs/_build/html/guide/ci-cd.html
+  s_f822c7fc447da3::t_597b19a353cf27 2023
+docs/_build/html/guide/collection-pipeline.html
+  s_f822c7fc447da3::t_6b96dc3fa92842 1813
+docs/_build/html/schema.html
+  s_f822c7fc447da3::t_9c4c40c7b5c91d 4968,4990,4995-4996,5001,5015,5062,5119,5171,5223
+docs/_build/html/searchindex.js
+  s_f822c7fc447da3::t_d42d79665924bd 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8e4f61003e7b440914e26abfa76385f73e787f36",
+  "prompts": {},
+  "sessions": {
+    "s_f822c7fc447da3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f672e684-a58c-40e1-b963-dda70d94054d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
