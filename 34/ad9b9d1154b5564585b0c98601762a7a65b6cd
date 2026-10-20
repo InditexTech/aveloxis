@@ -1,0 +1,21 @@
+internal/collector/staged.go
+  s_347fec83078389::t_a6a893a981ab14 1794-1843
+internal/collector/staged_traffic_test.go
+  s_347fec83078389::t_fd91e8520b1c0e 1-321
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "34ad9b9d1154b5564585b0c98601762a7a65b6cd",
+  "prompts": {},
+  "sessions": {
+    "s_347fec83078389": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7df70ca-1922-4acd-8501-d573526c8aea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
