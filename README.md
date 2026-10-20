@@ -1063,7 +1063,7 @@ Both platforms collect the same data types. Most fields have full parity; known 
 | Releases | `/repos/{o}/{r}/releases` | `/projects/{id}/releases` | `releases` |
 | Repo Info (metadata) | GraphQL API (counts, community profile, license, status) | `/projects/{id}?statistics=true` + `/issues_statistics` + MR counts via `X-Total` | `repo_info` (latest) + `repo_info_history` |
 | Contributors | `/repos/{o}/{r}/contributors` | `/projects/{id}/members/all` + `/repository/contributors` | `contributors` + `contributor_identities` |
-| Clone Stats | `/traffic/clones` | Not available via API | `repo_clones` |
+| Clone Stats | `/traffic/clones` | `/projects/{id}/statistics` (daily HTTP clone and pull counts for the last 30 days, at least the Reporter role, no unique counts; not collected yet) | `repo_clones` |
 | Traffic: views, top paths and referrers, 14-day and weekly unique visitors and cloners (v0.29.97) | `/traffic/views` (daily and weekly), `/traffic/clones?per=week`, `/traffic/popular/paths`, `/traffic/popular/referrers` | Not available via API | `repo_views` + `repo_traffic_paths` + `repo_traffic_referrers` + `repo_traffic_windows` + `repo_traffic_weeks` |
 | Commits (git) | `git clone --bare` + `git log --numstat` (default branch) | Same | `commits` + `commit_parents` + `commit_messages` |
 | Facade Aggregates | Computed from commits table | Same | `dm_repo_annual/monthly/weekly` |
