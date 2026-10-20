@@ -1,0 +1,35 @@
+internal/api/traffic_db_test.go
+  s_f822c7fc447da3::t_eb703b2b3e56f2 46-51,53-55,98,102,107-112,136,205,207-208,215-227,418-439
+internal/collector/staged_traffic_integration_test.go
+  s_f822c7fc447da3::t_97ebef3a7027bb 22-38,83-84,90-136,159,192-241
+internal/collector/staged_traffic_test.go
+  s_f822c7fc447da3::t_4343db780bdcae 41,45,111,323-364
+internal/db/column_write_policy_test.go
+  s_f822c7fc447da3::t_8644359afba367 80
+internal/db/postgres.go
+  s_f822c7fc447da3::t_3ecb0ce3cd2cd6 2655-2656
+internal/db/traffic_integration_test.go
+  s_f822c7fc447da3::t_1854be41be970e 129-130,140-141,174-243,405,408-414
+internal/model/repoinfo.go
+  s_f822c7fc447da3::t_331c462f121b2e 115-117,123
+internal/platform/github/client.go
+  s_f822c7fc447da3::t_803ec0610fe468 1350
+internal/platform/github/traffic_test.go
+  s_f822c7fc447da3::t_ccf5e74673d996 10,287-288,407-409,426-434
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b95636b229ab767bde5fa71e331f8d830e6184b7",
+  "prompts": {},
+  "sessions": {
+    "s_f822c7fc447da3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f672e684-a58c-40e1-b963-dda70d94054d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
