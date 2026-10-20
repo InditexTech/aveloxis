@@ -4965,7 +4965,7 @@ preserved (SR-6). See the identity chapter in
 <hr class="docutils" />
 <section id="repo-clones">
 <h4>repo_clones<a class="headerlink" href="#repo-clones" title="Link to this heading"></a></h4>
-<p>Clone traffic data. Only available for repos where you have push access (GitHub-only feature). A fine-grained token needs the “Administration” permission set to read instead; a key without access gets <code class="docutils literal notranslate"><span class="pre">403</span></code> and nothing is stored.</p>
+<p>Daily clone counts. GitHub serves them to a key with push access. GitLab serves HTTP clones and pulls together, never SSH, for the last 30 days to a key with at least the Reporter role and <code class="docutils literal notranslate"><span class="pre">read_api</span></code>; days it omits are stored as 0. A key without access gets <code class="docutils literal notranslate"><span class="pre">403</span></code> and nothing is stored.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Column</p></th>
@@ -4987,18 +4987,18 @@ preserved (SR-6). See the identity chapter in
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">clone_timestamp</span></code></p></td>
 <td><p>TIMESTAMPTZ NOT NULL</p></td>
-<td><p>GitHub REST: <code class="docutils literal notranslate"><span class="pre">/repos/{o}/{r}/traffic/clones</span></code></p></td>
+<td><p>GitHub REST: <code class="docutils literal notranslate"><span class="pre">/repos/{o}/{r}/traffic/clones</span></code>, GitLab API v4: <code class="docutils literal notranslate"><span class="pre">/projects/{id}/statistics</span></code></p></td>
 <td><p>Date of the clone data point.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">total_clones</span></code></p></td>
 <td><p>INT</p></td>
-<td><p>GitHub REST: <code class="docutils literal notranslate"><span class="pre">/repos/{o}/{r}/traffic/clones</span></code></p></td>
-<td><p>Total clones.</p></td>
+<td><p>GitHub REST: <code class="docutils literal notranslate"><span class="pre">/repos/{o}/{r}/traffic/clones</span></code>, GitLab API v4: <code class="docutils literal notranslate"><span class="pre">/projects/{id}/statistics</span></code></p></td>
+<td><p>Total clones (GitLab: HTTP clones and pulls).</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">unique_clones</span></code></p></td>
 <td><p>INT</p></td>
 <td><p>GitHub REST: <code class="docutils literal notranslate"><span class="pre">/repos/{o}/{r}/traffic/clones</span></code></p></td>
-<td><p>Unique cloners.</p></td>
+<td><p>Unique cloners. NULL for GitLab, which does not count them.</p></td>
 </tr>
 <tr class="row-odd"><td><p></p></td>
 <td><p></p></td>
@@ -5012,7 +5012,7 @@ preserved (SR-6). See the identity chapter in
 <hr class="docutils" />
 <section id="repo-views">
 <h4>repo_views<a class="headerlink" href="#repo-views" title="Link to this heading"></a></h4>
-<p>Daily page views on GitHub (v0.29.97), shaped like <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>: zeros are stored, so a day without a row was not read. A later read of a day replaces its counts. Same key access as <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>.</p>
+<p>Daily page views on GitHub (v0.29.97), shaped like <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>: zeros are stored, so a day without a row was not read. A later read of a day replaces its counts. Same GitHub key access as <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Column</p></th>
@@ -5059,7 +5059,7 @@ preserved (SR-6). See the identity chapter in
 <hr class="docutils" />
 <section id="repo-traffic-paths">
 <h4>repo_traffic_paths<a class="headerlink" href="#repo-traffic-paths" title="Link to this heading"></a></h4>
-<p>The repository’s top 10 viewed paths over GitHub’s 14-day period (v0.29.97), kept as a daily snapshot keyed by the UTC collection date and replaced as a whole when that date is collected again. Same key access as <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>.</p>
+<p>The repository’s top 10 viewed paths over GitHub’s 14-day period (v0.29.97), kept as a daily snapshot keyed by the UTC collection date and replaced as a whole when that date is collected again. Same GitHub key access as <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Column</p></th>
@@ -5116,7 +5116,7 @@ preserved (SR-6). See the identity chapter in
 <hr class="docutils" />
 <section id="repo-traffic-referrers">
 <h4>repo_traffic_referrers<a class="headerlink" href="#repo-traffic-referrers" title="Link to this heading"></a></h4>
-<p>The repository’s top 10 referring sites over GitHub’s 14-day period (v0.29.97), kept as a daily snapshot and replaced as a whole like <code class="docutils literal notranslate"><span class="pre">repo_traffic_paths</span></code>. Same key access as <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>.</p>
+<p>The repository’s top 10 referring sites over GitHub’s 14-day period (v0.29.97), kept as a daily snapshot and replaced as a whole like <code class="docutils literal notranslate"><span class="pre">repo_traffic_paths</span></code>. Same GitHub key access as <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Column</p></th>
@@ -5168,7 +5168,7 @@ preserved (SR-6). See the identity chapter in
 <hr class="docutils" />
 <section id="repo-traffic-windows">
 <h4>repo_traffic_windows<a class="headerlink" href="#repo-traffic-windows" title="Link to this heading"></a></h4>
-<p>Distinct visitors (views) or cloners (clones) over one 14-day window, as GitHub computes them (v0.29.97). Every successful read writes one row per kind (only the views window when the daily clones read failed), even when <code class="docutils literal notranslate"><span class="pre">uniques</span></code> is 0, so the rows record which windows were read. Distinct counts cannot be summed from the daily rows. Same key access as <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>.</p>
+<p>Distinct visitors (views) or cloners (clones) over one 14-day window, as GitHub computes them (v0.29.97). Every successful read writes one row per kind (only the views window when the daily clones read failed), even when <code class="docutils literal notranslate"><span class="pre">uniques</span></code> is 0, so the rows record which windows were read. Distinct counts cannot be summed from the daily rows. Same GitHub key access as <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Column</p></th>
@@ -5220,7 +5220,7 @@ preserved (SR-6). See the identity chapter in
 <hr class="docutils" />
 <section id="repo-traffic-weeks">
 <h4>repo_traffic_weeks<a class="headerlink" href="#repo-traffic-weeks" title="Link to this heading"></a></h4>
-<p>Distinct visitors (views) or cloners (clones) of one complete Monday-to-Sunday week, as GitHub computes them (v0.29.97). Partial first and last weeks are not stored. A week’s total is the sum of its seven daily rows. Same key access as <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>.</p>
+<p>Distinct visitors (views) or cloners (clones) of one complete Monday-to-Sunday week, as GitHub computes them (v0.29.97). Partial first and last weeks are not stored. A week’s total is the sum of its seven daily rows. Same GitHub key access as <code class="docutils literal notranslate"><span class="pre">repo_clones</span></code>.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Column</p></th>

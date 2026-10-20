@@ -212,7 +212,7 @@ The following data is available from GitHub but not from GitLab due to platform 
 
 - **Community profile files** (CHANGELOG, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY) — not yet fetched for GitLab, but closable via `/repository/tree` and `/repository/files` endpoints.
 - **Watcher count** — GitLab has no public watchers API (`star_count` is captured instead).
-- **Clone statistics** — not collected for GitLab yet, although GitLab serves daily HTTP clone and pull counts for the last 30 days through `GET /projects/:id/statistics` to a key with at least the Reporter role (with no unique counts).
+- **Unique cloners, page views, top paths and referrers** — GitLab has no API for them. Its daily HTTP clone and pull counts are collected through `GET /projects/:id/statistics`.
 - **GraphQL node IDs** — GitLab uses numeric project/user IDs rather than GitHub-style GraphQL node IDs. Stored in `SrcRepoID` (numeric) instead of `SrcNodeID`.
 - **Contributor URL fields** — GitHub returns 10+ URL fields per user (followers, gists, starred, etc.) that GitLab's API does not provide.
 - **Contributor type** — GitHub distinguishes User/Bot/Organization; GitLab does not expose this distinction.
