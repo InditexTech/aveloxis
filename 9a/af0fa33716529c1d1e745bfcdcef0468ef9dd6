@@ -1,0 +1,39 @@
+README.md
+  s_f822c7fc447da3::t_91af365de7294d 857,1066,1094-1095
+docs/api/openapi.yaml
+  s_f822c7fc447da3::t_8792aba13cc496 1725,1727-1736,7465
+docs/architecture/overview.md
+  s_f822c7fc447da3::t_db75b5c45899af 215
+docs/architecture/platform-layer.md
+  s_f822c7fc447da3::t_cd49a706610b2a 207
+docs/guide/api.md
+  s_f822c7fc447da3::t_ae9f62850baa9c 344,378,387,391
+docs/guide/collection-pipeline.md
+  s_f822c7fc447da3::t_791e10b43dca1f 50
+docs/schema.md
+  s_f822c7fc447da3::t_bd75041a2d9d13 982,988-990,999,1016,1035,1053,1071
+internal/api/traffic.go
+  s_f822c7fc447da3::t_47ca5e8f210cdb 11
+internal/db/traffic_store.go
+  s_f822c7fc447da3::t_918668d0fa2632 123
+internal/platform/gitlab/clone_stats_test.go
+  s_f822c7fc447da3::t_a63a1cefdaa33c 23-25
+internal/platform/platform.go
+  s_f822c7fc447da3::t_350cc1364587e5 110-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9aaf0fa33716529c1d1e745bfcdcef0468ef9dd6",
+  "prompts": {},
+  "sessions": {
+    "s_f822c7fc447da3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f672e684-a58c-40e1-b963-dda70d94054d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
