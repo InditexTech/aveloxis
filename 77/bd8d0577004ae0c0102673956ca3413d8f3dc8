@@ -1,0 +1,33 @@
+internal/collector/staged.go
+  s_347fec83078389::t_a6741e888c9c2f 1416,1792-1803
+internal/collector/staged_traffic_integration_test.go
+  s_347fec83078389::t_6cd7b2e5aed4ce 1-167
+internal/db/column_write_policy_test.go
+  s_347fec83078389::t_a7cffbccf39864 73-110
+internal/db/page_cache_writers_test.go
+  s_347fec83078389::t_dda5037b34cff8 45-48,76-77
+internal/db/postgres.go
+  s_347fec83078389::t_ead64ef26cdc8f 2650-2654,2658,2666-2669
+internal/db/traffic_store.go
+  s_347fec83078389::t_30b37e7f4afe8e 1-30,39-119
+internal/db/traffic_integration_test.go
+  s_347fec83078389::t_266aed22d9761c 1-415
+internal/db/traffic_test.go
+  s_347fec83078389::t_86aafe6dc6e196 1-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "77bd8d0577004ae0c0102673956ca3413d8f3dc8",
+  "prompts": {},
+  "sessions": {
+    "s_347fec83078389": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7df70ca-1922-4acd-8501-d573526c8aea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
