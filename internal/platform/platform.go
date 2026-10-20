@@ -94,7 +94,10 @@ type RepoCollector interface {
 	// FetchRepoInfo returns a point-in-time metadata snapshot.
 	FetchRepoInfo(ctx context.Context, owner, repo string) (*model.RepoInfo, error)
 
-	// FetchCloneStats returns clone/traffic data (may require elevated perms).
+	// FetchCloneStats returns the daily clone counts (may require
+	// elevated perms). GitHub returns its 14 daily buckets with unique
+	// cloners; GitLab returns the 30 UTC days ending today from its
+	// statistics endpoint, absent days as 0 and UniqueClones nil.
 	FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, error)
 
 	// FetchTraffic returns the rest of the repository's traffic in one

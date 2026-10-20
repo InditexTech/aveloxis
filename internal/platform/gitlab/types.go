@@ -22,6 +22,19 @@ type glUser struct {
 	CreatedAt   string `json:"created_at"`
 }
 
+// glProjectStatistics is the answer of GET /projects/:id/statistics:
+// the fetch counts per day for the last 30 days, newest first. Days
+// without a fetch are absent. Fetches is a pointer so an answer without
+// the member is told apart from one with an empty day list.
+type glProjectStatistics struct {
+	Fetches *struct {
+		Days []struct {
+			Count int    `json:"count"`
+			Date  string `json:"date"` // YYYY-MM-DD, UTC
+		} `json:"days"`
+	} `json:"fetches"`
+}
+
 type glLabel struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
