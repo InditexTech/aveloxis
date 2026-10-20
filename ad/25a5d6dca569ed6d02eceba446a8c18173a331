@@ -1,0 +1,157 @@
+docs/_build/html/.buildinfo
+  s_347fec83078389::t_62e727c113ab23 3
+docs/_build/html/_downloads/1818c5c8a1ccac7ab5e6b70b7caa595b/openapi.yaml
+  s_347fec83078389::t_0f73432db8ebc4 32,1722-1821,7461-7535
+docs/_build/html/_sources/architecture/overview.md.txt
+  s_347fec83078389::t_42eb0e48d91e8c 46,74,87,215,242
+docs/_build/html/_sources/architecture/platform-layer.md.txt
+  s_347fec83078389::t_d491f3ee125c1c 16,207-208
+docs/_build/html/_sources/contributing/README.md.txt
+  s_347fec83078389::t_cbc63d9ef8e928 12
+docs/_build/html/_sources/contributing/adding-a-platform.md.txt
+  s_347fec83078389::t_5fc389228928f0 73,664-667
+docs/_build/html/_sources/contributing/development-setup.md.txt
+  s_347fec83078389::t_ebdbb9dfbe9c4b 100
+docs/_build/html/_sources/getting-started/augur-migration.md.txt
+  s_347fec83078389::t_608f07c5ac963d 49,102
+docs/_build/html/_sources/getting-started/quickstart.md.txt
+  s_347fec83078389::t_a811ee3a931595 70
+docs/_build/html/_sources/getting-started/upgrading.md.txt
+  s_347fec83078389::t_20c68fadb45820 167-168
+docs/_build/html/_sources/guide/api.md.txt
+  s_347fec83078389::t_d700be0c910d3e 338-403,537
+docs/_build/html/_sources/guide/ci-cd.md.txt
+  s_347fec83078389::t_6da24e4470ff30 265-266
+docs/_build/html/_sources/guide/collection-pipeline.md.txt
+  s_347fec83078389::t_3e078a851dfff6 37,46-53,135
+docs/_build/html/_sources/guide/commands.md.txt
+  s_347fec83078389::t_7757380d7bf69e 426,428
+docs/_build/html/_sources/schema.md.txt
+  s_347fec83078389::t_42330ee61279a7 982-984,999-1097
+docs/_build/html/_static/documentation_options.js
+  s_347fec83078389::t_7c0be2e3b76046 2
+docs/_build/html/api/conventions.html
+  s_347fec83078389::t_93676653d52276 9,17,347,761,1595-1599
+docs/_build/html/api/index.html
+  s_347fec83078389::t_fad983f57e583f 9,17,347,761,1595-1599
+docs/_build/html/api/reference.html
+  s_347fec83078389::t_0145adad1e5a62 9,17,347,761,1595-1599,1898,2499-2605
+docs/_build/html/architecture/analysis.html
+  s_347fec83078389::t_92d043705943c3 9,17,347,761,1595-1599
+docs/_build/html/architecture/column-mapping.html
+  s_347fec83078389::t_ba5bf5d6e35aae 9,17,347,761,1595-1599
+docs/_build/html/architecture/contributor-resolution.html
+  s_347fec83078389::t_45c83e34d0c109 9,17,347,761,1595-1599
+docs/_build/html/architecture/db-package.html
+  s_347fec83078389::t_814f0419273385 9,17,347,761,1595-1599
+docs/_build/html/architecture/distribution.html
+  s_347fec83078389::t_2a8401b00f810b 9,17,347,761,1595-1599
+docs/_build/html/architecture/facade-commits.html
+  s_347fec83078389::t_2912f88c0eb81d 9,17,347,761,1595-1599
+docs/_build/html/architecture/human-provenance.html
+  s_347fec83078389::t_e58538df224c15 9,17,347,761,1595-1599
+docs/_build/html/architecture/mailing-list.html
+  s_347fec83078389::t_e7d3768557c359 9,17,347,761,1595-1599
+docs/_build/html/architecture/materialized-views.html
+  s_347fec83078389::t_b7305ce265fded 9,17,347,761,1595-1599
+docs/_build/html/architecture/overview.html
+  s_347fec83078389::t_53ac52172f0edb 9,17,347,761,1595-1599,1813,1840-1841,1880-1881,2071,2099
+docs/_build/html/architecture/platform-layer.html
+  s_347fec83078389::t_08432e9529e601 9,17,347,761,1595-1599,1783,2020-2021,2023-2028,2033,2038,2043
+docs/_build/html/architecture/scancode.html
+  s_347fec83078389::t_63c38d836f7e59 9,17,347,761,1595-1599
+docs/_build/html/architecture/staged-pipeline.html
+  s_347fec83078389::t_08b83f3d88c456 9,17,347,761,1595-1599
+docs/_build/html/architecture/vulnerability-and-sbom.html
+  s_347fec83078389::t_d9a50232b05209 9,17,347,761,1595-1599
+docs/_build/html/contributing/README.html
+  s_347fec83078389::t_23b8c890f54ca9 9,17,347,761,1595-1599,1780
+docs/_build/html/contributing/adding-a-collection-phase.html
+  s_347fec83078389::t_734ccd2f1d81ac 9,17,347,761,1595-1599
+docs/_build/html/contributing/adding-a-platform.html
+  s_347fec83078389::t_0c97dde85a2d64 9,17,347,761,1595-1599,1893,2466-2469
+docs/_build/html/contributing/adding-a-rest-endpoint.html
+  s_347fec83078389::t_63eed724fc0fc0 9,17,347,761,1595-1599
+docs/_build/html/contributing/adding-a-visualization.html
+  s_347fec83078389::t_46ddd2560723d2 9,17,347,761,1595-1599
+docs/_build/html/contributing/code-conventions.html
+  s_347fec83078389::t_e2f368ece94605 9,17,347,761,1595-1599
+docs/_build/html/contributing/development-setup.html
+  s_347fec83078389::t_f6e437cb9ffe3d 9,17,347,761,1595-1599,1860
+docs/_build/html/contributing/review-lenses.html
+  s_347fec83078389::t_a3badd0273a7da 9,17,347,761,1595-1599
+docs/_build/html/contributing/review-pass-brief.html
+  s_347fec83078389::t_99911d341bbe88 9,17,347,761,1595-1599
+docs/_build/html/contributing/schema-migrations.html
+  s_347fec83078389::t_aea32e41a36116 9,17,347,761,1595-1599
+docs/_build/html/contributing/testing.html
+  s_347fec83078389::t_97d2ad10237668 9,17,347,761,1595-1599
+docs/_build/html/genindex.html
+  s_347fec83078389::t_c0fca862ba96d7 8,16,344,758,1592-1596
+docs/_build/html/getting-started/augur-migration.html
+  s_347fec83078389::t_4515cb8a41082b 9,17,347,761,1595-1599,1812,1872
+docs/_build/html/getting-started/configuration.html
+  s_347fec83078389::t_8fbf0f20144068 9,17,347,761,1595-1599
+docs/_build/html/getting-started/deployment.html
+  s_347fec83078389::t_7de3b694276a0a 9,17,347,761,1595-1599
+docs/_build/html/getting-started/installation.html
+  s_347fec83078389::t_37a4e5cda691de 9,17,347,761,1595-1599
+docs/_build/html/getting-started/quickstart.html
+  s_347fec83078389::t_bb9ee25d64616c 9,17,347,761,1595-1599,1830
+docs/_build/html/getting-started/upgrading.html
+  s_347fec83078389::t_dec34d41bc46c3 9,17,347,761,1595-1599,1923
+docs/_build/html/guide/api.html
+  s_347fec83078389::t_857f55a16aaaf0 9,17,347,761,1595-1599,2118-2198,2379
+docs/_build/html/guide/ci-cd.html
+  s_347fec83078389::t_e6717a27384e00 9,17,347,761,1595-1599,2022
+docs/_build/html/guide/collection-pipeline.html
+  s_347fec83078389::t_5bbbe8d602c003 9,17,347,761,1595-1599,1801,1809-1815,1896
+docs/_build/html/guide/commands.html
+  s_347fec83078389::t_390a7b2f77b445 9,17,347,761,1595-1599,2348,2350
+docs/_build/html/guide/data-test.html
+  s_347fec83078389::t_27376bd2584175 9,17,347,761,1595-1599
+docs/_build/html/guide/dedicated-scancode-host.html
+  s_347fec83078389::t_52aad9ad4b20cf 9,17,347,761,1595-1599
+docs/_build/html/guide/metrics.html
+  s_347fec83078389::t_1070483b5f683d 9,17,347,761,1595-1599
+docs/_build/html/guide/monitoring.html
+  s_347fec83078389::t_14529252de6d2f 9,17,347,761,1595-1599
+docs/_build/html/guide/running-as-a-service.html
+  s_347fec83078389::t_3e9e09c661e531 9,17,347,761,1595-1599
+docs/_build/html/guide/scaling.html
+  s_347fec83078389::t_b2a8d4a28fe66d 9,17,347,761,1595-1599
+docs/_build/html/guide/signup-escrow.html
+  s_347fec83078389::t_bb614de60f869e 9,17,347,761,1595-1599
+docs/_build/html/guide/troubleshooting.html
+  s_347fec83078389::t_164b69e51ae285 9,17,347,761,1595-1599
+docs/_build/html/guide/visualizations.html
+  s_347fec83078389::t_47501493318aea 9,17,347,761,1595-1599
+docs/_build/html/guide/web-gui.html
+  s_347fec83078389::t_32fb2ac3ac2a5c 9,17,347,761,1595-1599
+docs/_build/html/http-routingtable.html
+  s_347fec83078389::t_b3f09289efafed 8,16,351,765,1599-1603,2190-2194
+docs/_build/html/index.html
+  s_347fec83078389::t_a0c81c23756ce3 9,17,346,760,1594-1598
+docs/_build/html/schema.html
+  s_347fec83078389::t_97f8c8bef75676 9,17,346,760,1594-1598,4968-4969,5014-5273
+docs/_build/html/search.html
+  s_347fec83078389::t_6993a14c5554af 8,17,347,761,1595-1599
+docs/_build/html/searchindex.js
+  s_347fec83078389::t_4122a85b3adf93 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ad25a5d6dca569ed6d02eceba446a8c18173a331",
+  "prompts": {},
+  "sessions": {
+    "s_347fec83078389": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7df70ca-1922-4acd-8501-d573526c8aea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
