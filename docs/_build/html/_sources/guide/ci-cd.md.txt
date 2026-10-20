@@ -262,6 +262,8 @@ ClusterFuzzLite builds and runs the repo's 7 native Go fuzz targets (`func Fuzz*
 
 A weekly scheduled job runs the `AVELOXIS_TEST_NETWORK=1`-gated tests against the real deps.dev, OSV.dev, crates.io, GitHub search, and Pony Mail APIs — the contract-drift class that mocks structurally cannot catch (the deps.dev URL-encoding bug and the OSV querybatch-stubs bug both lived in that blind spot).
 
+The GitHub traffic canary (`TestLiveGitHubTrafficContract`, since v0.29.97) checks the shape of the traffic answers (views, clones, popular paths and referrers) that the collection reads. GitHub serves traffic only to a token with push access to the repository, so `AVELOXIS_TEST_GITHUB_TOKEN` needs it on `aveloxis/aveloxis`, or on the `owner/repo` that `AVELOXIS_TEST_TRAFFIC_REPO` names; with a token that gets 403 the test skips and says so.
+
 The same workflow has two more jobs:
 
 - **`tools`** installs the latest scancode and scc (what production's monthly updater installs) and runs their output through the real parse structs.
