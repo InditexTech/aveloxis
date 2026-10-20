@@ -1,0 +1,37 @@
+docs/api/openapi.yaml
+  s_347fec83078389::t_5c6aac1c930129 1722-1820,7460-7469,7471-7534
+docs/guide/api.md
+  s_347fec83078389::t_c07a10b4fcbba7 338-401
+internal/api/endpoint_smoke_test.go
+  s_347fec83078389::t_c63590df47dcb3 66
+internal/api/repo_page_cache.go
+  s_347fec83078389::t_2d35ce241cfc0e 110
+internal/api/repo_page_cache_routes_test.go
+  s_347fec83078389::t_706d8ead46ba56 112,245
+internal/api/server.go
+  s_347fec83078389::t_1e5d8f6c0c1a4b 259-260
+internal/api/traffic.go
+  s_347fec83078389::t_beaeea57701239 1-10,15-30
+internal/api/traffic_db_test.go
+  s_347fec83078389::t_eb621bf9aa4968 1-397
+internal/api/traffic_test.go
+  s_347fec83078389::t_2cf4ee97ead413 1-93
+internal/db/traffic_store.go
+  s_347fec83078389::t_7a12c6e38bcfdb 9,121-139,141-179,186-266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b24e8dd65c7a7975f03f1754bb69961804be20b0",
+  "prompts": {},
+  "sessions": {
+    "s_347fec83078389": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7df70ca-1922-4acd-8501-d573526c8aea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}

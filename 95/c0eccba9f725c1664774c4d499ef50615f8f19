@@ -1,0 +1,32 @@
+internal/platform/github/client.go
+  s_347fec83078389::t_d7c4a548e2ecf5 1364-1433
+internal/platform/github/traffic_test.go
+  s_347fec83078389::t_c4e3e56edf3d39 1-40,44-120,122-157,161-185,189-244,247-312,315-424
+  s_347fec83078389::t_932b823c1682b4 41-43,121,158-160,186-188,245-246,313-314
+internal/platform/github/types.go
+  s_347fec83078389::t_51b0597f52492c 242-252,254-281
+.github/workflows/network-canary.yml
+  s_347fec83078389::t_2c32179edf8622 60-66
+docs/guide/ci-cd.md
+  s_347fec83078389::t_7f3432c7d1278d 265-266
+internal/platform/github/traffic_live_test.go
+  s_347fec83078389::t_14d0aaa6162a40 1-479
+scripts/skip_census_baseline.txt
+  s_347fec83078389::t_db66c8453ec9ef 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "95c0eccba9f725c1664774c4d499ef50615f8f19",
+  "prompts": {},
+  "sessions": {
+    "s_347fec83078389": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7df70ca-1922-4acd-8501-d573526c8aea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}

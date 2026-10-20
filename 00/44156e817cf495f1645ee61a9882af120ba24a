@@ -1,0 +1,33 @@
+docs/architecture/platform-layer.md
+  s_347fec83078389::t_df059adf50239f 16
+docs/contributing/adding-a-platform.md
+  s_347fec83078389::t_fb629c90be7052 73,664-667
+internal/model/traffic.go
+  s_347fec83078389::t_f8c7d1fb40841a 1-20,26-109
+internal/model/traffic_test.go
+  s_347fec83078389::t_aa1c058d474c65 1-29
+internal/platform/github/client.go
+  s_347fec83078389::t_bc106d0cb5d6f0 8,21-24,1357-1367
+internal/platform/gitlab/client.go
+  s_347fec83078389::t_932cba35b78a7b 23-26,1556-1562
+internal/platform/gitlab/traffic_test.go
+  s_347fec83078389::t_a95950b27c16ea 1-36
+internal/platform/platform.go
+  s_347fec83078389::t_2b1f7926525132 99-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0044156e817cf495f1645ee61a9882af120ba24a",
+  "prompts": {},
+  "sessions": {
+    "s_347fec83078389": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7df70ca-1922-4acd-8501-d573526c8aea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
