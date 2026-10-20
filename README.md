@@ -854,7 +854,7 @@ GitHub and GitLab implement the same `platform.Client` interface with 7 sub-inte
 
 | Sub-interface | Methods | Notes |
 |---|---|---|
-| `RepoCollector` | `FetchRepoInfo`, `FetchCloneStats` | GitLab clone stats not collected yet (GitLab serves daily HTTP clone and pull counts through `GET /projects/:id/statistics`) |
+| `RepoCollector` | `FetchRepoInfo`, `FetchCloneStats`, `FetchTraffic` | GitLab clone stats not collected yet (GitLab serves daily HTTP clone and pull counts through `GET /projects/:id/statistics`) |
 | `IssueCollector` | `ListIssues`, `ListIssueLabels`, `ListIssueAssignees` | |
 | `PullRequestCollector` | `ListPullRequests`, `ListPRLabels`, `ListPRAssignees`, `ListPRReviewers`, `ListPRReviews`, `ListPRCommits`, `ListPRFiles`, `FetchPRMeta` | GitLab MRs mapped to PR model |
 | `EventCollector` | `ListIssueEvents`, `ListPREvents` | GitLab uses resource events API |

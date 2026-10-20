@@ -1553,9 +1553,12 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 	return nil, nil
 }
 
-// FetchTraffic returns (nil, nil) without a request: GitLab exposes no
-// page-view, referrer or clone statistics to non-admins, so there is no
-// traffic to collect (see platform.RepoCollector.FetchTraffic).
+// FetchTraffic returns (nil, nil) without a request: GitLab has no API
+// for page views, popular paths, referrers or unique visitors and
+// cloners, so there is no traffic to collect. GitLab's daily HTTP clone
+// and pull counts come from a separate endpoint
+// (GET /projects/:id/statistics) that FetchTraffic does not read (see
+// platform.RepoCollector.FetchTraffic).
 func (c *Client) FetchTraffic(ctx context.Context, owner, repo string) (*model.RepoTraffic, error) {
 	return nil, nil
 }
