@@ -16,8 +16,12 @@ import (
 // migrate adds, the new route, the access a key needs, the Info line a
 // key without it logs, that any other traffic error now fails the job as
 // a releases error does, the extra requests, and that nothing older than
-// GitHub's 14 days is backfilled. Each table, the route and the log line
-// must be the ones the code declares, so a rename cannot orphan the note.
+// GitHub's 14 days is backfilled. It also pins what GitLab gets: the
+// daily clone and pull counts of the last 30 days for a Reporter, stored
+// without a unique count, one more request, the same skip, the same
+// failure on a 5xx and no backfill. Each table, the route, the log line,
+// the GitLab period and its data source must be the ones the code
+// declares, so a rename cannot orphan the note.
 func TestV02997ChecklistNamesItsOperatorVisibleChanges(t *testing.T) {
 	steps, ok := deployChecklistFor("0.29.97")
 	if !ok || len(steps) == 0 {
@@ -99,12 +103,44 @@ func TestV02997ChecklistNamesItsOperatorVisibleChanges(t *testing.T) {
 			t.Errorf("the start note must say %q", want)
 		}
 	}
-	// GitLab serves daily clone counts to a Reporter; this release only
-	// does not collect them, so the note must not call them admin-only.
-	// ("Administration" is GitHub's permission name and stays allowed.)
-	for _, bad := range []string{"admin-only", "non-admin", "administrators only"} {
+	// GitLab serves daily clone counts to a Reporter and this release
+	// collects them, so the note must neither call them admin-only nor say
+	// GitLab has no traffic rows. ("Administration" is GitHub's permission
+	// name and stays allowed.)
+	for _, bad := range []string{"admin-only", "non-admin", "administrators only", "no traffic rows"} {
 		if strings.Contains(strings.ToLower(own), bad) {
 			t.Errorf("the 0.29.97 note must not say %q: GitLab's daily clone counts need only the Reporter role", bad)
+		}
+	}
+
+	// GitLab: the daily clone and pull counts the release now collects.
+	// The period and the data source are the ones the client declares.
+	gitlab := srctest.StripGoComments(srctest.Read(t, "internal/platform/gitlab/client.go"))
+	if !srctest.ContainsNormalized(gitlab, "const cloneStatsDays = 30") {
+		t.Error("the GitLab client no longer reads 30 days, which the start note names")
+	}
+	if !srctest.ContainsNormalized(gitlab, `const cloneStatsSource = "GitLab API"`) {
+		t.Error(`the GitLab client no longer stores data_source "GitLab API", which the start note names`)
+	}
+	for _, want := range []string{
+		"Reporter",                   // the role GitLab serves the counts to
+		"read_api",                   // the scope a personal token needs
+		"HTTP clone and pull counts", // what is counted
+		"never SSH",
+		"30 UTC days",
+		"stored as 0",        // a day GitLab omits
+		"repo_clones",        // where they land
+		"unique_clones NULL", // GitLab counts no distinct cloners
+		"'GitLab API'",       // the data source
+		"uniques null",       // what the traffic route serves
+		"one more request per GitLab project and collection",
+		"a 403 or 404 logs the same Info line and records no error",
+		"a 5xx",
+		"which is new for GitLab",
+		"Nothing older than those 30 days is backfilled",
+	} {
+		if !strings.Contains(own, want) {
+			t.Errorf("the start note must say %q about GitLab", want)
 		}
 	}
 }
