@@ -1,0 +1,27 @@
+cmd/aveloxis/deploy_checklist.go
+  s_f822c7fc447da3::t_689739658e0439 640
+docs/architecture/overview.md
+  s_f822c7fc447da3::t_ac8d7c9a3245d3 215
+docs/getting-started/upgrading.md
+  s_f822c7fc447da3::t_dd6537af54ad33 167
+docs/guide/api.md
+  s_f822c7fc447da3::t_84897a99afb80d 391
+docs/schema.md
+  s_f822c7fc447da3::t_5e22f0daf612f2 982
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2e17307b3670f3ae71b6564b3f65ca3b23c81b25",
+  "prompts": {},
+  "sessions": {
+    "s_f822c7fc447da3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f672e684-a58c-40e1-b963-dda70d94054d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
