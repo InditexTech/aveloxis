@@ -1,0 +1,23 @@
+internal/collector/staged.go
+  s_f822c7fc447da3::t_700ff3b919847d 1814-1819
+internal/collector/staged_traffic_gitlab_test.go
+  s_f822c7fc447da3::t_46730094d9d38a 1-157
+internal/collector/staged_traffic_integration_test.go
+  s_f822c7fc447da3::t_b0f4be8549ebf2 242-402
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "988c043fd34459fecc4caa30a93e6d73118a149c",
+  "prompts": {},
+  "sessions": {
+    "s_f822c7fc447da3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f672e684-a58c-40e1-b963-dda70d94054d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
