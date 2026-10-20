@@ -239,3 +239,164 @@ func TestStagedCloneWithoutUniquesIsStoredAsNull(t *testing.T) {
 		t.Errorf("daily clones after staging:\n got  %q\n want %q", got, want)
 	}
 }
+
+// trafficTables are the tables only a traffic read fills; GitLab fills
+// none of them.
+var trafficTables = []string{
+	"repo_views", "repo_traffic_paths", "repo_traffic_referrers",
+	"repo_traffic_windows", "repo_traffic_weeks",
+}
+
+// collectAndProcess runs the traffic step of a collection on now with
+// client, flushes the staged rows and processes them as the metadata
+// step does, and returns what the step recorded and logged.
+func (f stagedTrafficFixture) collectAndProcess(t *testing.T, client *trafficFakeClient, slug string, now time.Time) (*CollectResult, string) {
+	t.Helper()
+	logger, logs := bufLogger()
+	sc := &StagedCollector{client: client, logger: logger}
+	sw := db.NewStagingWriter(f.store, f.repoID, int16(client.plat), f.logger)
+	result := &CollectResult{}
+	sc.collectTraffic(f.ctx, sw, slug, "Repo", now, result)
+	if err := sw.Flush(f.ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	proc := NewProcessor(f.store, f.logger)
+	if err := proc.ProcessRepo(f.ctx, f.repoID, int16(client.plat)); err != nil {
+		t.Fatalf("ProcessRepo: %v", err)
+	}
+	if proc.errors != 0 {
+		t.Errorf("ProcessRepo counted %d row processing failures, want 0", proc.errors)
+	}
+	return result, logs.String()
+}
+
+// storedClones returns the stored daily clones as "day total/uniques
+// source", NULL uniques as NULL, oldest first.
+func (f stagedTrafficFixture) storedClones(t *testing.T) []string {
+	t.Helper()
+	return f.rows(t, `
+		SELECT to_char(clone_timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD') || ' ' || total_clones
+			|| '/' || COALESCE(unique_clones::text, 'NULL') || ' ' || data_source
+		FROM aveloxis_data.repo_clones WHERE repo_id = $1 ORDER BY clone_timestamp`)
+}
+
+// requireNoTrafficRows fails when any table a traffic read fills, or the
+// staging table, holds a row of the repository.
+func (f stagedTrafficFixture) requireNoTrafficRows(t *testing.T) {
+	t.Helper()
+	for _, table := range trafficTables {
+		if got := f.rows(t, `SELECT '1' FROM aveloxis_data.`+table+` WHERE repo_id = $1`); len(got) != 0 {
+			t.Errorf("%s holds %d rows of a GitLab repository, want none", table, len(got))
+		}
+	}
+	if got := f.rows(t, `SELECT entity_type FROM aveloxis_ops.staging WHERE repo_id = $1 AND NOT processed`); len(got) != 0 {
+		t.Errorf("unprocessed staging rows: %q, want none", got)
+	}
+}
+
+// TestGitLabCloneCountsAreStoredEndToEnd drives a GitLab collection of
+// the daily clones through the whole write path with a client that
+// answers as the GitLab client does: the 30 UTC days ending on the
+// collection day land in repo_clones with NULL uniques and the GitLab
+// data source, the days the forge did not list as 0, and no row lands in
+// any table only a traffic read fills. A read on the next day moves the
+// period by one day and revises the day it shares; a later read the key
+// cannot make (403) leaves the stored days as they were.
+//
+// Gated on AVELOXIS_TEST_DB (scratch DB only).
+func TestGitLabCloneCountsAreStoredEndToEnd(t *testing.T) {
+	const slug = "_avtraffic_gitlab_e2e"
+	fx := newStagedTrafficFixture(t, slug, model.PlatformGitLab, "gitlab.com")
+	day := func(month time.Month, d int) time.Time { return time.Date(2026, month, d, 0, 0, 0, 0, time.UTC) }
+	want := func(from, to time.Time, counts map[string]int) []string {
+		var out []string
+		for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
+			out = append(out, fmt.Sprintf("%s %d/NULL %s", d.Format(time.DateOnly), counts[d.Format(time.DateOnly)], gitlabStatsSource))
+		}
+		return out
+	}
+	check := func(what string, got, want []string) {
+		t.Helper()
+		if !slices.Equal(got, want) {
+			t.Errorf("%s:\n got  %q\n want %q", what, got, want)
+		}
+	}
+
+	// Collection on 2026-11-30: fetches listed on two days only.
+	first := map[string]int{"2026-11-02": 7, "2026-11-30": 3}
+	client := &trafficFakeClient{plat: model.PlatformGitLab, clones: gitlabCloneRows(day(time.November, 30), first)}
+	result, logs := fx.collectAndProcess(t, client, slug, day(time.November, 30).Add(8*time.Hour))
+	if len(result.Errors) != 0 {
+		t.Fatalf("collecting recorded errors: %v", result.Errors)
+	}
+	if logs != "" {
+		t.Errorf("a successful read logged:\n%s", logs)
+	}
+	check("daily clones after the first read", fx.storedClones(t), want(day(time.November, 1), day(time.November, 30), first))
+	fx.requireNoTrafficRows(t)
+
+	// Collection on 2026-12-01: the period moves one day; the shared
+	// current day is revised from 3 to 11 and the new day is a 0.
+	second := map[string]int{"2026-11-02": 7, "2026-11-30": 11}
+	client = &trafficFakeClient{plat: model.PlatformGitLab, clones: gitlabCloneRows(day(time.December, 1), second)}
+	result, _ = fx.collectAndProcess(t, client, slug, day(time.December, 1).Add(8*time.Hour))
+	if len(result.Errors) != 0 {
+		t.Fatalf("collecting recorded errors: %v", result.Errors)
+	}
+	check("daily clones after the second read", fx.storedClones(t), want(day(time.November, 1), day(time.December, 1), second))
+	fx.requireNoTrafficRows(t)
+
+	// The key loses the Reporter role: one skip line, no error, no change.
+	client = &trafficFakeClient{plat: model.PlatformGitLab, cloneErr: errGitLabStatsForbidden}
+	result, logs = fx.collectAndProcess(t, client, slug, day(time.December, 2).Add(8*time.Hour))
+	if len(result.Errors) != 0 {
+		t.Errorf("a 403 recorded errors: %v", result.Errors)
+	}
+	if lines := skipLines(logs); len(lines) != 1 {
+		t.Errorf("skip lines after a 403 = %d, want 1:\n%s", len(lines), logs)
+	}
+	check("daily clones after a 403", fx.storedClones(t), want(day(time.November, 1), day(time.December, 1), second))
+	fx.requireNoTrafficRows(t)
+}
+
+// TestGitLabCloneReadThatSkipsOrFailsStoresNothing runs the skip and the
+// error cases of the statistics read through the write path: a 403, a
+// 404 and a 500 leave no clone row and no traffic row. The first two
+// record no error and log one Info line; the 500 records the clones
+// error and logs no skip.
+//
+// Gated on AVELOXIS_TEST_DB (scratch DB only).
+func TestGitLabCloneReadThatSkipsOrFailsStoresNothing(t *testing.T) {
+	last := time.Date(2026, time.November, 30, 0, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name     string
+		slug     string
+		err      error
+		wantSkip int
+		wantErrs int
+	}{
+		{"403", "_avtraffic_gitlab_403", errGitLabStatsForbidden, 1, 0},
+		{"404", "_avtraffic_gitlab_404", errGitLabStatsNotFound, 1, 0},
+		{"500", "_avtraffic_gitlab_500", errGitLabStatsServer, 0, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newStagedTrafficFixture(t, tc.slug, model.PlatformGitLab, "gitlab.com")
+			// The fake returns rows with the error, as a client bug would.
+			client := &trafficFakeClient{plat: model.PlatformGitLab, cloneErr: tc.err,
+				clones: gitlabCloneRows(last, map[string]int{"2026-11-30": 3})}
+
+			result, logs := fx.collectAndProcess(t, client, tc.slug, last)
+
+			if len(result.Errors) != tc.wantErrs {
+				t.Errorf("result.Errors = %v, want %d", result.Errors, tc.wantErrs)
+			}
+			if got := len(skipLines(logs)); got != tc.wantSkip {
+				t.Errorf("skip lines = %d, want %d:\n%s", got, tc.wantSkip, logs)
+			}
+			if got := fx.storedClones(t); len(got) != 0 {
+				t.Errorf("repo_clones holds %q after a %s, want none", got, tc.name)
+			}
+			fx.requireNoTrafficRows(t)
+		})
+	}
+}

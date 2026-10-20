@@ -1811,10 +1811,12 @@ type trafficStager interface {
 // stages it: the daily clones as EntityCloneStats rows and the rest of
 // the read, with its derived windows and weeks, as one EntityTraffic row;
 // now keys the snapshot date. Errors follow the releases endpoint: a
-// routine skip (403 without push access, 404) logs one Info line and
-// stops the step, so a key that cannot read traffic spends one request;
-// any other error goes to result.Errors and collection goes on. A failed
-// clones read still stages the views read, without a clones window.
+// routine skip (a 403 from a key without the forge's access, a 404) logs
+// one Info line and stops the step, so such a key spends one request;
+// any other error goes to result.Errors and collection goes on, and a
+// failed clones read still stages the rest of the read, without a clones
+// window. A forge with only daily clones (GitLab) returns no further
+// read, so the step stages its clone rows and no traffic row.
 func (sc *StagedCollector) collectTraffic(ctx context.Context, sw trafficStager, owner, repo string, now time.Time, result *CollectResult) {
 	clones, cloneErr := sc.client.FetchCloneStats(ctx, owner, repo)
 	if cloneErr != nil {
