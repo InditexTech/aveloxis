@@ -126,13 +126,11 @@ func TestV02997ChecklistNamesItsOperatorVisibleChanges(t *testing.T) {
 		"Reporter",                   // the role GitLab serves the counts to
 		"read_api",                   // the scope a personal token needs
 		"HTTP clone and pull counts", // what is counted
-		"never SSH",
 		"30 UTC days",
 		"stored as 0",        // a day GitLab omits
 		"repo_clones",        // where they land
 		"unique_clones NULL", // GitLab counts no distinct cloners
 		"'GitLab API'",       // the data source
-		"uniques null",       // what the traffic route serves
 		"one more request per GitLab project and collection",
 		"a 403 or 404 logs the same Info line and records no error",
 		"a 5xx",

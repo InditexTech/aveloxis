@@ -979,7 +979,7 @@ Point-in-time snapshots of repository metadata and statistics. A new row is inse
 
 #### repo_clones
 
-Daily clone counts. GitHub serves them to a key with push access (a fine-grained token needs the "Administration" permission set to read). GitLab serves HTTP clones and pulls together, never SSH, for the last 30 days to a key with at least the Reporter role and `read_api`; days it omits are stored as 0. A key without access gets `403` and nothing is stored.
+Daily clone counts. GitHub serves them to a key with push access. GitLab serves HTTP clones and pulls together, never SSH, for the last 30 days to a key with at least the Reporter role and `read_api`; days it omits are stored as 0. A key without access gets `403` and nothing is stored.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
