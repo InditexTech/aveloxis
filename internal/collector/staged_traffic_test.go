@@ -38,10 +38,11 @@ func trafficViewDays(first time.Time, n int) []model.RepoView {
 func trafficCloneDays(first time.Time, n int) []model.RepoClone {
 	clones := make([]model.RepoClone, n)
 	for i := range clones {
+		uniques := 1 + i%3
 		clones[i] = model.RepoClone{
 			Timestamp:    first.AddDate(0, 0, i),
 			TotalClones:  3 + i,
-			UniqueClones: 1 + i%3,
+			UniqueClones: &uniques,
 		}
 	}
 	return clones
@@ -107,7 +108,7 @@ func zeroTrafficFixture(t *testing.T) (*model.RepoTraffic, []model.RepoClone) {
 	}
 	var clones []model.RepoClone
 	for _, b := range clonesDay.Clones {
-		clones = append(clones, model.RepoClone{Timestamp: b.Timestamp, TotalClones: b.Count, UniqueClones: b.Uniques})
+		clones = append(clones, model.RepoClone{Timestamp: b.Timestamp, TotalClones: b.Count, UniqueClones: &b.Uniques})
 	}
 	// Guard the denominator: a fixture that decoded to nothing would
 	// make every expectation below about an empty read.
@@ -317,5 +318,47 @@ func assertTrafficRows(t *testing.T, what string, got, want []string) {
 		if got[i] != want[i] {
 			t.Errorf("%s[%d] = %q, want %q", what, i, got[i], want[i])
 		}
+	}
+}
+
+// TestStagedCloneKeepsAbsentUniquesAbsent: the staging table keeps a
+// clone day as JSON between the collection step and the processor, so a
+// day without a distinct count must come back without one, not as 0,
+// and a staged day that has one (also one staged before the count could
+// be absent) must keep it, 0 included.
+func TestStagedCloneKeepsAbsentUniquesAbsent(t *testing.T) {
+	zero, three := 0, 3
+	for _, tc := range []struct {
+		name string
+		in   model.RepoClone
+	}{
+		{"absent", model.RepoClone{Timestamp: trafficDay(5), TotalClones: 4}},
+		{"zero", model.RepoClone{Timestamp: trafficDay(5), TotalClones: 4, UniqueClones: &zero}},
+		{"number", model.RepoClone{Timestamp: trafficDay(5), TotalClones: 4, UniqueClones: &three}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload, err := json.Marshal(tc.in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out model.RepoClone
+			if err := json.Unmarshal(payload, &out); err != nil {
+				t.Fatal(err)
+			}
+			switch {
+			case tc.in.UniqueClones == nil && out.UniqueClones != nil:
+				t.Errorf("UniqueClones came back as %d from %s, want absent", *out.UniqueClones, payload)
+			case tc.in.UniqueClones != nil && (out.UniqueClones == nil || *out.UniqueClones != *tc.in.UniqueClones):
+				t.Errorf("UniqueClones came back as %v from %s, want %d", out.UniqueClones, payload, *tc.in.UniqueClones)
+			}
+		})
+	}
+
+	var old model.RepoClone
+	if err := json.Unmarshal([]byte(`{"Timestamp":"2026-10-05T00:00:00Z","TotalClones":4,"UniqueClones":2}`), &old); err != nil {
+		t.Fatal(err)
+	}
+	if old.UniqueClones == nil || *old.UniqueClones != 2 {
+		t.Errorf("a row staged with a plain number came back as %v, want 2", old.UniqueClones)
 	}
 }

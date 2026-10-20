@@ -19,24 +19,23 @@ import (
 	"github.com/aveloxis/aveloxis/internal/model"
 )
 
-// TestZeroTrafficReadIsStoredEndToEnd drives the recorded read of a
-// repository without traffic through the whole write path: the
-// collection step stages it, the staging writer flushes it, and
-// ProcessRepo writes it with UpsertRepoClone and UpsertRepoTraffic.
-// A successful read with no traffic must leave rows of 0, never no
-// rows: the stored days are the days observed, so a consumer can tell
-// a repository nobody visited (rows of 0) from one Aveloxis cannot
-// read (no rows) and from a missed read (missing days).
-//
-// The fixture holds real GitHub responses read on Monday 2026-10-19
-// (UTC): 14 zero-filled daily buckets per kind from 2026-10-06 to
-// 2026-10-19, and weekly buckets labelled 2026-10-06 (the window start,
-// a Tuesday), 2026-10-12 and 2026-10-19. Of those weeks only the one
-// from Monday 2026-10-12 to Sunday 2026-10-18 lies entirely inside the
-// window. The empty path and referrer lists store no snapshot row.
-//
-// Gated on AVELOXIS_TEST_DB (scratch DB only).
-func TestZeroTrafficReadIsStoredEndToEnd(t *testing.T) {
+// stagedTrafficFixture is a migrated scratch database with one
+// repository seeded for a staged traffic test, and an independent
+// connection that checks the stored rows without trusting the store
+// under test.
+type stagedTrafficFixture struct {
+	ctx    context.Context
+	logger *slog.Logger
+	store  *db.PostgresStore
+	raw    *pgxpool.Pool
+	repoID int64
+}
+
+// newStagedTrafficFixture seeds one repository of platform at host,
+// named from slug, and removes it and everything staged or stored for
+// it before and after the test. Gated on AVELOXIS_TEST_DB.
+func newStagedTrafficFixture(t *testing.T, slug string, platform model.Platform, host string) stagedTrafficFixture {
+	t.Helper()
 	dsn := os.Getenv("AVELOXIS_TEST_DB")
 	if dsn == "" {
 		t.Skip("AVELOXIS_TEST_DB not set")
@@ -51,15 +50,12 @@ func TestZeroTrafficReadIsStoredEndToEnd(t *testing.T) {
 	if err := db.RunMigrations(ctx, store, logger); err != nil {
 		t.Fatalf("RunMigrations: %v", err)
 	}
-	// An independent connection checks the stored rows without trusting
-	// the store under test.
 	raw, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(raw.Close) // not defer: deferred calls run before the data cleanups (SR-9)
 
-	const slug = "_avtraffic_zero_e2e"
 	cleanup := func() {
 		bg := context.Background() // never t.Context() in a cleanup (TEST-4)
 		of := `(SELECT repo_id FROM aveloxis_data.repos WHERE repo_git ILIKE '%` + slug + `%')`
@@ -84,13 +80,60 @@ func TestZeroTrafficReadIsStoredEndToEnd(t *testing.T) {
 	t.Cleanup(cleanup)
 
 	repoID, err := store.UpsertRepo(ctx, &model.Repo{
-		Platform: model.PlatformGitHub,
-		GitURL:   "https://github.com/" + slug + "/Repo",
+		Platform: platform,
+		GitURL:   "https://" + host + "/" + slug + "/Repo",
 		Owner:    slug, Name: "Repo",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	return stagedTrafficFixture{ctx: ctx, logger: logger, store: store, raw: raw, repoID: repoID}
+}
+
+// rows returns the rows a query yields, one string per row; the query
+// takes the repository id as $1 and selects one text column.
+func (f stagedTrafficFixture) rows(t *testing.T, query string) []string {
+	t.Helper()
+	rows, err := f.raw.Query(f.ctx, query, f.repoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// TestZeroTrafficReadIsStoredEndToEnd drives the recorded read of a
+// repository without traffic through the whole write path: the
+// collection step stages it, the staging writer flushes it, and
+// ProcessRepo writes it with UpsertRepoClone and UpsertRepoTraffic.
+// A successful read with no traffic must leave rows of 0, never no
+// rows: the stored days are the days observed, so a consumer can tell
+// a repository nobody visited (rows of 0) from one Aveloxis cannot
+// read (no rows) and from a missed read (missing days).
+//
+// The fixture holds real GitHub responses read on Monday 2026-10-19
+// (UTC): 14 zero-filled daily buckets per kind from 2026-10-06 to
+// 2026-10-19, and weekly buckets labelled 2026-10-06 (the window start,
+// a Tuesday), 2026-10-12 and 2026-10-19. Of those weeks only the one
+// from Monday 2026-10-12 to Sunday 2026-10-18 lies entirely inside the
+// window. The empty path and referrer lists store no snapshot row.
+//
+// Gated on AVELOXIS_TEST_DB (scratch DB only).
+func TestZeroTrafficReadIsStoredEndToEnd(t *testing.T) {
+	const slug = "_avtraffic_zero_e2e"
+	fx := newStagedTrafficFixture(t, slug, model.PlatformGitHub, "github.com")
+	ctx, logger, store, repoID := fx.ctx, fx.logger, fx.store, fx.repoID
 
 	traffic, clones := zeroTrafficFixture(t)
 	client := &trafficFakeClient{plat: model.PlatformGitHub, clones: clones, traffic: traffic}
@@ -113,26 +156,7 @@ func TestZeroTrafficReadIsStoredEndToEnd(t *testing.T) {
 		t.Errorf("ProcessRepo counted %d row processing failures, want 0", proc.errors)
 	}
 
-	rowsOf := func(query string) []string {
-		t.Helper()
-		rows, err := raw.Query(ctx, query, repoID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer rows.Close()
-		var out []string
-		for rows.Next() {
-			var s string
-			if err := rows.Scan(&s); err != nil {
-				t.Fatal(err)
-			}
-			out = append(out, s)
-		}
-		if err := rows.Err(); err != nil {
-			t.Fatal(err)
-		}
-		return out
-	}
+	rowsOf := func(query string) []string { return fx.rows(t, query) }
 	check := func(what string, got, want []string) {
 		t.Helper()
 		if !slices.Equal(got, want) {
@@ -164,4 +188,54 @@ func TestZeroTrafficReadIsStoredEndToEnd(t *testing.T) {
 		SELECT referrer FROM aveloxis_data.repo_traffic_referrers WHERE repo_id = $1 ORDER BY 1`), nil)
 	check("unprocessed staging rows", rowsOf(`
 		SELECT entity_type FROM aveloxis_ops.staging WHERE repo_id = $1 AND NOT processed ORDER BY 1`), nil)
+}
+
+// TestStagedCloneWithoutUniquesIsStoredAsNull sends daily clones through
+// the staging table, which keeps them as JSON between the collection
+// step and ProcessRepo: a day with no distinct cloners must come out as
+// NULL, not 0, and a day whose count is 0 must stay a 0 with its
+// uniques. The data source is the one the forge's client sets.
+//
+// Gated on AVELOXIS_TEST_DB (scratch DB only).
+func TestStagedCloneWithoutUniquesIsStoredAsNull(t *testing.T) {
+	fx := newStagedTrafficFixture(t, "_avtraffic_nulluniques_e2e", model.PlatformGitLab, "gitlab.com")
+	const source = "/projects/:id/statistics"
+	zero, three := 0, 3
+
+	sw := db.NewStagingWriter(fx.store, fx.repoID, int16(model.PlatformGitLab), fx.logger)
+	for _, c := range []model.RepoClone{
+		{Timestamp: trafficDay(5), TotalClones: 0, Origin: model.DataOrigin{DataSource: source}},
+		{Timestamp: trafficDay(6), TotalClones: 9, Origin: model.DataOrigin{DataSource: source}},
+		{Timestamp: trafficDay(7), TotalClones: 0, UniqueClones: &zero, Origin: model.DataOrigin{DataSource: source}},
+		{Timestamp: trafficDay(8), TotalClones: 4, UniqueClones: &three, Origin: model.DataOrigin{DataSource: source}},
+	} {
+		if err := sw.Stage(fx.ctx, EntityCloneStats, c); err != nil {
+			t.Fatalf("stage: %v", err)
+		}
+	}
+	if err := sw.Flush(fx.ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	proc := NewProcessor(fx.store, fx.logger)
+	if err := proc.ProcessRepo(fx.ctx, fx.repoID, int16(model.PlatformGitLab)); err != nil {
+		t.Fatalf("ProcessRepo: %v", err)
+	}
+	if proc.errors != 0 {
+		t.Errorf("ProcessRepo counted %d row processing failures, want 0", proc.errors)
+	}
+
+	got := fx.rows(t, `
+		SELECT to_char(clone_timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD') || ' ' || total_clones
+			|| '/' || COALESCE(unique_clones::text, 'NULL') || ' ' || data_source
+		FROM aveloxis_data.repo_clones WHERE repo_id = $1 ORDER BY clone_timestamp`)
+	want := []string{
+		"2026-10-05 0/NULL " + source,
+		"2026-10-06 9/NULL " + source,
+		"2026-10-07 0/0 " + source,
+		"2026-10-08 4/3 " + source,
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("daily clones after staging:\n got  %q\n want %q", got, want)
+	}
 }

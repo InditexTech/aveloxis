@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -283,8 +284,8 @@ func TestFetchTrafficKeepsTheZeroBucketsOfARepositoryWithoutTraffic(t *testing.T
 		t.Fatalf("FetchCloneStats: %d daily buckets, want the 14 zero buckets GitHub returned", len(clones))
 	}
 	for i, c := range clones {
-		if !c.Timestamp.Equal(start.AddDate(0, 0, i)) || c.TotalClones != 0 || c.UniqueClones != 0 {
-			t.Errorf("clones[%d] = %s %d/%d, want %s 0/0", i, c.Timestamp, c.TotalClones, c.UniqueClones, start.AddDate(0, 0, i))
+		if !c.Timestamp.Equal(start.AddDate(0, 0, i)) || c.TotalClones != 0 || c.UniqueClones == nil || *c.UniqueClones != 0 {
+			t.Errorf("clones[%d] = %s %d/%s, want %s 0/0", i, c.Timestamp, c.TotalClones, uniquesText(c.UniqueClones), start.AddDate(0, 0, i))
 		}
 	}
 
@@ -403,9 +404,9 @@ func TestFetchCloneStatsMapsEveryDailyBucket(t *testing.T) {
 	}
 	for i, b := range want.Clones {
 		c := got[i]
-		if !c.Timestamp.Equal(b.Timestamp) || c.TotalClones != b.Count || c.UniqueClones != b.Uniques {
-			t.Errorf("clones[%d] = %s %d/%d, want %s %d/%d",
-				i, c.Timestamp, c.TotalClones, c.UniqueClones, b.Timestamp, b.Count, b.Uniques)
+		if !c.Timestamp.Equal(b.Timestamp) || c.TotalClones != b.Count || c.UniqueClones == nil || *c.UniqueClones != b.Uniques {
+			t.Errorf("clones[%d] = %s %d/%s, want %s %d/%d",
+				i, c.Timestamp, c.TotalClones, uniquesText(c.UniqueClones), b.Timestamp, b.Count, b.Uniques)
 		}
 	}
 }
@@ -421,4 +422,13 @@ func assertTrafficWeeks(t *testing.T, name string, got, want []model.RepoTraffic
 			t.Errorf("%s[%d] = %s %s %d, want %s %s %d", name, i, g.Kind, g.WeekStart, g.Uniques, w.Kind, w.WeekStart, w.Uniques)
 		}
 	}
+}
+
+// uniquesText renders a clone day's distinct count for a failure
+// message: a number, or "absent" for a day that has none.
+func uniquesText(p *int) string {
+	if p == nil {
+		return "absent"
+	}
+	return strconv.Itoa(*p)
 }

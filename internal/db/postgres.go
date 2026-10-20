@@ -2652,6 +2652,8 @@ func (s *PostgresStore) InsertRepoInfo(ctx context.Context, info *model.RepoInfo
 // read), and the write stamps repos.data_changed_at in the same
 // statement: the repository page's traffic answer reads these rows and
 // the staged processor runs outside collection jobs too (v0.29.97).
+// A nil UniqueClones is written as NULL, replacing a stored number: a
+// forge that cannot count distinct cloners must not store 0.
 func (s *PostgresStore) UpsertRepoClone(ctx context.Context, clone *model.RepoClone) error {
 	return s.withRetry(ctx, func(ctx context.Context) error {
 		_, err := s.pool.Exec(ctx, `

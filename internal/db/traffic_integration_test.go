@@ -126,8 +126,8 @@ func TestTrafficLatestDailyReadWins(t *testing.T) {
 		},
 	}
 	mondayClones := []model.RepoClone{
-		{RepoID: repoID, Timestamp: octDay(17), TotalClones: 2, UniqueClones: 1},
-		{RepoID: repoID, Timestamp: octDay(18), TotalClones: 5, UniqueClones: 3},
+		{RepoID: repoID, Timestamp: octDay(17), TotalClones: 2, UniqueClones: intPtr(1)},
+		{RepoID: repoID, Timestamp: octDay(18), TotalClones: 5, UniqueClones: intPtr(3)},
 	}
 	tuesday := &model.RepoTraffic{
 		SnapshotDate: octDay(20),
@@ -137,8 +137,8 @@ func TestTrafficLatestDailyReadWins(t *testing.T) {
 		},
 	}
 	tuesdayClones := []model.RepoClone{
-		{RepoID: repoID, Timestamp: octDay(18), TotalClones: 40, UniqueClones: 7},
-		{RepoID: repoID, Timestamp: octDay(19), TotalClones: 0, UniqueClones: 0},
+		{RepoID: repoID, Timestamp: octDay(18), TotalClones: 40, UniqueClones: intPtr(7)},
+		{RepoID: repoID, Timestamp: octDay(19), TotalClones: 0, UniqueClones: intPtr(0)},
 	}
 
 	write := func(tr *model.RepoTraffic, clones []model.RepoClone) {
@@ -169,6 +169,76 @@ func TestTrafficLatestDailyReadWins(t *testing.T) {
 				|| ' ' || `+refreshedProvenance+`
 			FROM aveloxis_data.repo_clones WHERE repo_id = $1 ORDER BY clone_timestamp`, repoID),
 		[]string{"2026-10-17 2/1 aged aged", "2026-10-18 40/7 " + fresh, "2026-10-19 0/0 " + fresh})
+}
+
+// TestTrafficCloneWithoutUniquesIsStoredAsNull: a forge that counts
+// clones but not who made them (GitLab's project statistics) gives a
+// day with no distinct count, which must be stored as NULL and never as
+// 0, because 0 would claim that nobody cloned. A day with a count of 0
+// stays 0. The latest read still wins in both directions: a read
+// without uniques replaces a stored number with NULL, and a read with
+// them fills a NULL, each keeping its own total, data source and
+// provenance.
+func TestTrafficCloneWithoutUniquesIsStoredAsNull(t *testing.T) {
+	ctx, store := caseConnect(t)
+	repoID := trafficTestRepo(ctx, t, store, "_avtraffic_nulluniques")
+
+	const (
+		statsSource  = "/projects/:id/statistics"
+		githubSource = "/repos/{o}/{r}/traffic/clones"
+	)
+	clone := func(day, total int, uniques *int, source string) *model.RepoClone {
+		return &model.RepoClone{
+			RepoID: repoID, Timestamp: octDay(day), TotalClones: total, UniqueClones: uniques,
+			Origin: model.DataOrigin{DataSource: source},
+		}
+	}
+	write := func(clones ...*model.RepoClone) {
+		t.Helper()
+		for _, c := range clones {
+			if err := store.UpsertRepoClone(ctx, c); err != nil {
+				t.Fatalf("UpsertRepoClone: %v", err)
+			}
+		}
+	}
+	stored := func(what string, want []string) {
+		t.Helper()
+		assertTrafficStored(t, what, trafficRows(ctx, t, store, `
+			SELECT to_char(clone_timestamp AT TIME ZONE 'UTC', 'YYYY-MM-DD') || ' ' || total_clones
+				|| '/' || COALESCE(unique_clones::text, 'NULL') || ' ' || data_source
+				|| ' ' || `+refreshedProvenance+`
+			FROM aveloxis_data.repo_clones WHERE repo_id = $1 ORDER BY clone_timestamp`, repoID), want)
+	}
+
+	// 10-16 had no uniques and no fetch; 10-17 had fetches; 10-18 is a
+	// GitHub day with 0 distinct cloners (a number, not a missing one);
+	// 10-19 is read with a number first and without one after.
+	write(
+		clone(16, 0, nil, statsSource),
+		clone(17, 7, nil, statsSource),
+		clone(18, 2, intPtr(0), githubSource),
+		clone(19, 4, intPtr(2), statsSource),
+	)
+	stored("first read", []string{
+		"2026-10-16 0/NULL " + statsSource + " fresh " + ToolVersion,
+		"2026-10-17 7/NULL " + statsSource + " fresh " + ToolVersion,
+		"2026-10-18 2/0 " + githubSource + " fresh " + ToolVersion,
+		"2026-10-19 4/2 " + statsSource + " fresh " + ToolVersion,
+	})
+
+	ageTrafficRows(ctx, t, store, repoID)
+	write(
+		clone(17, 12, nil, statsSource),      // the counted day grew
+		clone(19, 4, nil, statsSource),       // a number replaced by NULL
+		clone(16, 3, intPtr(1), statsSource), // NULL replaced by a number
+	)
+	fresh := " " + statsSource + " fresh " + ToolVersion
+	stored("second read", []string{
+		"2026-10-16 3/1" + fresh,
+		"2026-10-17 12/NULL" + fresh,
+		"2026-10-18 2/0 " + githubSource + " aged aged",
+		"2026-10-19 4/NULL" + fresh,
+	})
 }
 
 // TestTrafficLatestWindowReadWins: a window read twice (two
@@ -332,10 +402,16 @@ func TestTrafficWritersStampDataChangedAt(t *testing.T) {
 			})
 		}},
 		{"UpsertRepoClone, new day", func() error {
-			return store.UpsertRepoClone(ctx, &model.RepoClone{RepoID: repoID, Timestamp: octDay(18), TotalClones: 2, UniqueClones: 1})
+			return store.UpsertRepoClone(ctx, &model.RepoClone{RepoID: repoID, Timestamp: octDay(18), TotalClones: 2, UniqueClones: intPtr(1)})
 		}},
 		{"UpsertRepoClone, same day again", func() error {
-			return store.UpsertRepoClone(ctx, &model.RepoClone{RepoID: repoID, Timestamp: octDay(18), TotalClones: 2, UniqueClones: 1})
+			return store.UpsertRepoClone(ctx, &model.RepoClone{RepoID: repoID, Timestamp: octDay(18), TotalClones: 2, UniqueClones: intPtr(1)})
+		}},
+		{"UpsertRepoClone, day without uniques", func() error {
+			return store.UpsertRepoClone(ctx, &model.RepoClone{RepoID: repoID, Timestamp: octDay(17), TotalClones: 2})
+		}},
+		{"UpsertRepoClone, same day without uniques again", func() error {
+			return store.UpsertRepoClone(ctx, &model.RepoClone{RepoID: repoID, Timestamp: octDay(17), TotalClones: 3})
 		}},
 	}
 	for _, w := range writes {

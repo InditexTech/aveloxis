@@ -1347,7 +1347,7 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 		clones[i] = model.RepoClone{
 			Timestamp:    c.Timestamp,
 			TotalClones:  c.Count,
-			UniqueClones: c.Uniques,
+			UniqueClones: &c.Uniques,
 		}
 	}
 	return clones, nil

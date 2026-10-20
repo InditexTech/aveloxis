@@ -77,7 +77,7 @@ var columnWritePolicies = []sqlscan.Registered{
 	{Table: "aveloxis_data.repo_clones", Column: "total_clones", Policy: sqlscan.AlwaysRefresh,
 		Reason: "latest read of the day wins: GitHub revises the newest day after the first read (v0.29.97)"},
 	{Table: "aveloxis_data.repo_clones", Column: "unique_clones", Policy: sqlscan.AlwaysRefresh,
-		Reason: "as total_clones (v0.29.97)"},
+		Reason: "as total_clones; a read without a distinct count (NULL, never 0) replaces a stored number too, since the later read is the one that counts (v0.29.97)"},
 	{Table: "aveloxis_data.repo_clones", Column: "data_collection_date", Policy: sqlscan.AlwaysRefresh,
 		Reason: "the day's figures are those of the read made at this date (v0.29.97)"},
 	{Table: "aveloxis_data.repo_views", Column: "total_views", Policy: sqlscan.AlwaysRefresh,

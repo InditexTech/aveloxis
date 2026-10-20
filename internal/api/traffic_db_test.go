@@ -43,14 +43,16 @@ func trafficDay(day int) time.Time {
 }
 
 // trafficAPIFixture seeds the repositories, the two accounts and their API
-// tokens. withTraffic, referrersOnly and withoutTraffic are in the owner's
-// group; the stranger's group holds none of them. withTraffic's latest
-// read listed paths and no referrer, referrersOnly's latest read the
-// other way round, and withoutTraffic has no traffic at all.
+// tokens. withTraffic, referrersOnly, withoutTraffic and withoutUniques
+// are in the owner's group; the stranger's group holds none of them.
+// withTraffic's latest read listed paths and no referrer, referrersOnly's
+// latest read the other way round, withoutTraffic has no traffic at all,
+// and withoutUniques is a GitLab project whose days have a count and no
+// distinct cloners.
 type trafficAPIFixture struct {
-	server                                     *Server
-	withTraffic, referrersOnly, withoutTraffic int64
-	ownerToken, strangerToken                  string
+	server                                                     *Server
+	withTraffic, referrersOnly, withoutTraffic, withoutUniques int64
+	ownerToken, strangerToken                                  string
 }
 
 func seedTrafficAPIFixture(t *testing.T) trafficAPIFixture {
@@ -93,17 +95,21 @@ func seedTrafficAPIFixture(t *testing.T) trafficAPIFixture {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	repo := func(name string) int64 {
+	repo := func(platform model.Platform, host, name string) int64 {
 		t.Helper()
 		var id int64
 		if err := pool.QueryRow(ctx, `INSERT INTO aveloxis_data.repos (repo_git, repo_name, repo_owner, platform_id)
-			VALUES ($1, $2, $3, 1) RETURNING repo_id`, "https://github.com/"+slug+"/"+name, name, slug).Scan(&id); err != nil {
+			VALUES ($1, $2, $3, $4) RETURNING repo_id`, "https://"+host+"/"+slug+"/"+name, name, slug, int(platform)).Scan(&id); err != nil {
 			t.Fatal(err)
 		}
 		return id
 	}
-	fx := trafficAPIFixture{withTraffic: repo("widget"), referrersOnly: repo("linked"), withoutTraffic: repo("quiet")}
-	other := repo("other")
+	github := func(name string) int64 { return repo(model.PlatformGitHub, "github.com", name) }
+	fx := trafficAPIFixture{
+		withTraffic: github("widget"), referrersOnly: github("linked"), withoutTraffic: github("quiet"),
+		withoutUniques: repo(model.PlatformGitLab, "gitlab.com", "counted"),
+	}
+	other := github("other")
 
 	account := func(login string, repos ...int64) string {
 		t.Helper()
@@ -127,7 +133,7 @@ func seedTrafficAPIFixture(t *testing.T) trafficAPIFixture {
 		}
 		return token
 	}
-	fx.ownerToken = account(slug+"_owner", fx.withTraffic, fx.referrersOnly, fx.withoutTraffic)
+	fx.ownerToken = account(slug+"_owner", fx.withTraffic, fx.referrersOnly, fx.withoutTraffic, fx.withoutUniques)
 	fx.strangerToken = account(slug+"_stranger", other)
 
 	// Two reads of the repository with traffic, a day apart. The views
@@ -196,12 +202,26 @@ func seedTrafficAPIFixture(t *testing.T) trafficAPIFixture {
 			t.Fatalf("write traffic read of %s: %v", read.SnapshotDate.Format(time.DateOnly), err)
 		}
 	}
+	zero, one := 0, 1
 	for _, c := range []model.RepoClone{
-		{RepoID: fx.withTraffic, Timestamp: trafficDay(6), TotalClones: 0, UniqueClones: 0},
-		{RepoID: fx.withTraffic, Timestamp: trafficDay(5), TotalClones: 2, UniqueClones: 1},
+		{RepoID: fx.withTraffic, Timestamp: trafficDay(6), TotalClones: 0, UniqueClones: &zero},
+		{RepoID: fx.withTraffic, Timestamp: trafficDay(5), TotalClones: 2, UniqueClones: &one},
 	} {
 		if err := store.UpsertRepoClone(ctx, &c); err != nil {
 			t.Fatalf("write daily clones: %v", err)
+		}
+	}
+
+	// The GitLab project's days carry the fetch count and no uniques; 0
+	// is a day nobody fetched, which differs from a day with no uniques.
+	for _, c := range []model.RepoClone{
+		{RepoID: fx.withoutUniques, Timestamp: trafficDay(7), TotalClones: 6,
+			Origin: model.DataOrigin{DataSource: "/projects/:id/statistics"}},
+		{RepoID: fx.withoutUniques, Timestamp: trafficDay(6), TotalClones: 0,
+			Origin: model.DataOrigin{DataSource: "/projects/:id/statistics"}},
+	} {
+		if err := store.UpsertRepoClone(ctx, &c); err != nil {
+			t.Fatalf("write daily clones without uniques: %v", err)
 		}
 	}
 
@@ -394,4 +414,26 @@ func TestRepoTrafficServesTheStoredHistory(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestRepoTrafficServesNullUniquesForDaysWithoutThem: a GitLab project's
+// days have a fetch count and no distinct cloners, so the answer carries
+// "uniques": null on them, the key present, while a day of 0 fetches has
+// count 0. The reader must not turn the missing count into 0, which
+// would claim that nobody cloned.
+func TestRepoTrafficServesNullUniquesForDaysWithoutThem(t *testing.T) {
+	fx := seedTrafficAPIFixture(t)
+	fields := decodeTrafficAnswer(t, fx.get(fx.withoutUniques, fx.ownerToken))
+
+	got := trafficRowStrings(t, "clones", fields["clones"], func(r trafficDayRow) string { return r.String() })
+	if want := []string{"2026-10-06 0 null", "2026-10-07 6 null"}; !slices.Equal(got, want) {
+		t.Errorf("clones:\n got  %q\n want %q", got, want)
+	}
+	// The typed decode cannot tell a null from a missing key.
+	if raw := string(fields["clones"]); strings.Count(raw, `"uniques":null`) != 2 {
+		t.Errorf("clones = %s, want \"uniques\":null on both days", raw)
+	}
+	if got := string(fields["views"]); got != "[]" {
+		t.Errorf("views = %s, want [] (GitLab has no views)", got)
+	}
 }
