@@ -1,0 +1,19 @@
+internal/model/traffic.go
+  s_f822c7fc447da3::t_6ec0bb6f625e78 21-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fb3e6f0cc646b56227a55583274dfbb259a4b048",
+  "prompts": {},
+  "sessions": {
+    "s_f822c7fc447da3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f672e684-a58c-40e1-b963-dda70d94054d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
