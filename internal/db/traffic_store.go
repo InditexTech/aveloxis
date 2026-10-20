@@ -120,7 +120,7 @@ func (s *PostgresStore) UpsertRepoTraffic(ctx context.Context, repoID int64, tr 
 }
 
 // RepoTrafficHistory is everything stored about one repository's
-// GitHub traffic, as GET /api/v1/repos/{repoID}/traffic serves it: every
+// traffic, as GET /api/v1/repos/{repoID}/traffic serves it: every
 // stored day, window and complete week, and the path and referrer
 // snapshot of the latest snapshot date. The lists are never nil, so a
 // repository without traffic answers empty arrays; SnapshotDate is nil

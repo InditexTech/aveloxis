@@ -107,7 +107,9 @@ type RepoCollector interface {
 	// are left for the collector. On GitHub it reads five /traffic
 	// endpoints with the access FetchCloneStats needs; the first failure
 	// aborts with an error naming the endpoint, so a 403 still classifies
-	// as ClassSkip. GitLab returns (nil, nil): no traffic, not an error.
+	// as ClassSkip. GitLab returns (nil, nil) without a request: it has no
+	// views, paths, referrers or unique counts, and its clone counts come
+	// from FetchCloneStats.
 	FetchTraffic(ctx context.Context, owner, repo string) (*model.RepoTraffic, error)
 }
 

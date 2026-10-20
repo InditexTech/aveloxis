@@ -979,15 +979,15 @@ Point-in-time snapshots of repository metadata and statistics. A new row is inse
 
 #### repo_clones
 
-Clone traffic data. Only available for repos where you have push access (GitHub-only feature). A fine-grained token needs the "Administration" permission set to read instead; a key without access gets `403` and nothing is stored.
+Daily clone counts. GitHub serves them to a key with push access (a fine-grained token needs the "Administration" permission set to read). GitLab serves HTTP clones and pulls together, never SSH, for the last 30 days to a key with at least the Reporter role and `read_api`; days it omits are stored as 0. A key without access gets `403` and nothing is stored.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
 | `repo_clone_id` | BIGSERIAL (PK) | Auto-generated | Primary key. |
 | `repo_id` | BIGINT NOT NULL (FK -> repos) | Computed | Repository. |
-| `clone_timestamp` | TIMESTAMPTZ NOT NULL | GitHub REST: `/repos/{o}/{r}/traffic/clones` | Date of the clone data point. |
-| `total_clones` | INT | GitHub REST: `/repos/{o}/{r}/traffic/clones` | Total clones. |
-| `unique_clones` | INT | GitHub REST: `/repos/{o}/{r}/traffic/clones` | Unique cloners. |
+| `clone_timestamp` | TIMESTAMPTZ NOT NULL | GitHub REST: `/repos/{o}/{r}/traffic/clones`, GitLab API v4: `/projects/{id}/statistics` | Date of the clone data point. |
+| `total_clones` | INT | GitHub REST: `/repos/{o}/{r}/traffic/clones`, GitLab API v4: `/projects/{id}/statistics` | Total clones (GitLab: HTTP clones and pulls). |
+| `unique_clones` | INT | GitHub REST: `/repos/{o}/{r}/traffic/clones` | Unique cloners. NULL for GitLab, which does not count them. |
 | | | | *Standard metadata columns* |
 
 **Unique constraint:** `(repo_id, clone_timestamp)`
@@ -996,7 +996,7 @@ Clone traffic data. Only available for repos where you have push access (GitHub-
 
 #### repo_views
 
-Daily page views on GitHub (v0.29.97), shaped like `repo_clones`: zeros are stored, so a day without a row was not read. A later read of a day replaces its counts. Same key access as `repo_clones`.
+Daily page views on GitHub (v0.29.97), shaped like `repo_clones`: zeros are stored, so a day without a row was not read. A later read of a day replaces its counts. Same GitHub key access as `repo_clones`.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
@@ -1013,7 +1013,7 @@ Daily page views on GitHub (v0.29.97), shaped like `repo_clones`: zeros are stor
 
 #### repo_traffic_paths
 
-The repository's top 10 viewed paths over GitHub's 14-day period (v0.29.97), kept as a daily snapshot keyed by the UTC collection date and replaced as a whole when that date is collected again. Same key access as `repo_clones`.
+The repository's top 10 viewed paths over GitHub's 14-day period (v0.29.97), kept as a daily snapshot keyed by the UTC collection date and replaced as a whole when that date is collected again. Same GitHub key access as `repo_clones`.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
@@ -1032,7 +1032,7 @@ The repository's top 10 viewed paths over GitHub's 14-day period (v0.29.97), kep
 
 #### repo_traffic_referrers
 
-The repository's top 10 referring sites over GitHub's 14-day period (v0.29.97), kept as a daily snapshot and replaced as a whole like `repo_traffic_paths`. Same key access as `repo_clones`.
+The repository's top 10 referring sites over GitHub's 14-day period (v0.29.97), kept as a daily snapshot and replaced as a whole like `repo_traffic_paths`. Same GitHub key access as `repo_clones`.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
@@ -1050,7 +1050,7 @@ The repository's top 10 referring sites over GitHub's 14-day period (v0.29.97), 
 
 #### repo_traffic_windows
 
-Distinct visitors (views) or cloners (clones) over one 14-day window, as GitHub computes them (v0.29.97). Every successful read writes one row per kind (only the views window when the daily clones read failed), even when `uniques` is 0, so the rows record which windows were read. Distinct counts cannot be summed from the daily rows. Same key access as `repo_clones`.
+Distinct visitors (views) or cloners (clones) over one 14-day window, as GitHub computes them (v0.29.97). Every successful read writes one row per kind (only the views window when the daily clones read failed), even when `uniques` is 0, so the rows record which windows were read. Distinct counts cannot be summed from the daily rows. Same GitHub key access as `repo_clones`.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
@@ -1068,7 +1068,7 @@ Distinct visitors (views) or cloners (clones) over one 14-day window, as GitHub 
 
 #### repo_traffic_weeks
 
-Distinct visitors (views) or cloners (clones) of one complete Monday-to-Sunday week, as GitHub computes them (v0.29.97). Partial first and last weeks are not stored. A week's total is the sum of its seven daily rows. Same key access as `repo_clones`.
+Distinct visitors (views) or cloners (clones) of one complete Monday-to-Sunday week, as GitHub computes them (v0.29.97). Partial first and last weeks are not stored. A week's total is the sum of its seven daily rows. Same GitHub key access as `repo_clones`.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|

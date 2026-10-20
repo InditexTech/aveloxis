@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-// handleRepoTraffic serves the repository's stored GitHub traffic in one
+// handleRepoTraffic serves the repository's stored traffic in one
 // answer, without paging (v0.29.97, aveloxis/aveloxis#234). A repository
 // without traffic answers empty arrays. The route is cachedRepoGET, and
 // every traffic writer stamps data_changed_at, so a write moves the answer.

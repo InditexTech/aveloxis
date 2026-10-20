@@ -20,10 +20,9 @@ import (
 // The response bodies below are built to GitLab's ProjectDailyStatistics
 // entity, not copied from its documentation: {"fetches": {"total": N,
 // "days": [{"count": N, "date": "YYYY-MM-DD"}]}}, newest day first, only
-// days that had a fetch. The entity files are
-// lib/api/entities/project_daily_statistics.rb and
-// lib/api/entities/project_daily_fetches.rb in gitlab-org/gitlab at commit
-// d88541597fd81cd491ef17d6eeb27c125337c488.
+// days that had a fetch. The entity files are project_daily_statistics.rb
+// and project_daily_fetches.rb in
+// https://github.com/gitlabhq/gitlabhq/blob/d88541597fd81cd491ef17d6eeb27c125337c488/lib/api/entities/
 
 type statsDay struct {
 	date  string

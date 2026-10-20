@@ -1722,16 +1722,18 @@ paths:
   /api/v1/repos/{repoID}/traffic:
     get:
       operationId: repositoryTraffic
-      summary: Returns a repository's stored GitHub traffic history.
+      summary: Returns a repository's stored traffic history.
       description: |
-        Everything stored from GitHub's traffic API, in one answer without
-        paging: every daily row of clones and views, every 14-day window and
-        complete week, and the latest top paths and referrers. A day with a
-        row was read, even when its counts are 0. A GitLab repository, or
-        one whose key GitHub refuses, answers empty lists and a `null`
-        `snapshot_date`; so does an id with no repository, to an unscoped
-        caller (a scoped caller gets the `403`). Grows by about 730 daily
-        rows a year; the read is indexed by repository.
+        Everything stored from the forge's traffic and statistics APIs, in
+        one answer without paging: every daily row of clones and views,
+        every 14-day window and complete week, and the latest top paths and
+        referrers. A day with a row was read, even when its counts are 0. A
+        GitLab repository answers its daily clones with `uniques` null,
+        empty lists for the rest and a `null` `snapshot_date`. So does a
+        repository whose key the forge refuses, and an id with no
+        repository, to an unscoped caller (a scoped caller gets the `403`).
+        Grows by about 730 daily rows a year; the read is indexed by
+        repository.
 
         Handler: `handleRepoTraffic`.
       tags: [Repositories]
@@ -7460,7 +7462,7 @@ components:
           description: Clones or views that day.
         uniques:
           type: [integer, "null"]
-          description: Distinct cloners or visitors that day.
+          description: Distinct cloners or visitors that day; `null` when the forge does not count them (GitLab clones).
     TrafficWindow:
       type: object
       description: One 14-day window GitHub reported, from its first to its last daily bucket (`db.TrafficWindow`).
