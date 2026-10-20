@@ -8,6 +8,82 @@ aveloxis api            # listens on api.addr, 127.0.0.1:8383 by default; --addr
 
 The API runs as a separate process alongside `aveloxis serve` (collection) and `aveloxis web` (GUI). All three share the same PostgreSQL database. It refuses to start until `aveloxis migrate` has brought the schema to its own version.
 
+## Changes for API clients in 0.29.102
+
+Stage 2 of the admin-console program (release notes 0.29.102) makes the web
+GUI safe; two of its changes touch clients of the **web process** (`aveloxis
+web`, the OAuth origin aveloxis-gui signs in through):
+
+- **`POST /auth/token` and `POST /logout` (`/auth/logout`) are POST-only.**
+  A GET answers `405` and changes nothing. Minting a token and ending a
+  session are state changes, and a state change never rides a GET (it was
+  prefetchable and linkable). aveloxis-gui sends both as POST from its
+  matching release, and its `check-setup.sh` requires 0.29.102.
+- **Signing out of the web GUI ends the tokens that sign-in minted.** A
+  token from `POST /auth/token` records the browser session it came from;
+  `POST /logout` deletes the session and those tokens together (a `401`
+  on the next request). A token minted from a session that merely expired
+  keeps its own 30-day life, and `POST /api/v1/auth/logout` still ends one
+  token on its own.
+- **A cross-site `POST` to the web process is refused** (`403`). The
+  request's `Origin` (or `Referer`) must be the web host or `web.spa_url`'s
+  origin; a browser's `Sec-Fetch-Site: cross-site` is refused. aveloxis-gui
+  on its own origin therefore needs `web.spa_url` set to that origin. A
+  signed-in HTML form also carries a form token; the two GUI calls do not.
+- **Every answer of the web process carries security headers**: a
+  Content-Security-Policy with one script source (`/static/`, which now
+  serves the page scripts and Chart.js — no CDN), `frame-ancestors 'none'`,
+  `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and a
+  referrer policy. A page that embeds the web GUI in a frame stops working.
+
+## Changes for API clients in 0.29.99
+
+Stage 1b of the admin-console program (release notes 0.29.99) changed what
+these routes answer. Each line gives the new behavior and the reason.
+
+- **An unknown repository id is a `404` on every repository route**
+  (`/repos/{id}/...`, the authz route included), before the caller's scope
+  is decided. It was a `403` for API tokens and sessions, and whatever the
+  handler did for everyone else (`200` with zeros on `/stats`, `500` on
+  `/timeseries`). One answer per situation: `404` means no such
+  repository, `403` means a known repository outside an API token's groups.
+  An id of 0 or less is a `400` (`invalid repo_id`), like a non-integer.
+- **A date that does not parse is a `400`** on the Augur metrics
+  (`begin_date`, `end_date`), `/timeseries`, `contributions/*`,
+  `/contributors/top` and `/contributors/elsewhere`. The value fell back to
+  the default before, which hid a client's typo as a default window. The
+  body names the parameter and the value (`invalid since "x": want
+  YYYY-MM-DD`). Such a request is never served from the repository-page
+  cache and never answered `304`.
+- **Augur's `end_date` includes its day**, and the default window is the
+  year before today through today (UTC days). The commit metrics
+  (`committers`, `code-changes`, `code-changes-lines`, the commit half of
+  `contributors-new`) count by the UTC day of the author timestamp, the
+  same day `/timeseries` and `/compare` use, instead of the author's local
+  date; a commit whose author date could not be parsed is not counted
+  (it never was by `/timeseries`). The `date` of a bucket is the UTC
+  midnight that starts it, serialized in UTC.
+- **Empty lists are `[]`**, never `null`, at every depth of every answer.
+- **The Augur catalog is scoped for API tokens**: `/repos`,
+  `/repo-groups` (only groups holding one of the token's repositories),
+  `/repo-groups/{id}/repos`, `/owner/{owner}/repo/{repo}`,
+  `/rg-name/{name}` and `/rg-name/{name}/repo-name/{repo}` answer within
+  the token's groups. A name that exists only outside the scope is the
+  structured `403` naming the repository; a name that exists nowhere is
+  `404`. With a name on two forges the GitHub repository is picked, then
+  the lower id. The repository name of the group lookup now matches
+  without regard to letter case, like the owner lookup. Sessions,
+  administrators and callers without an identity keep the whole catalog.
+- **`/watchers` returns the snapshot history** (one row per metadata
+  snapshot), like `/stars` and `/forks`; rows keep the `watchers` key.
+- **`/repos/stats?ids=` refuses an entry that is not a repository id**
+  with a `400` (it skipped the entry before), and its rows carry
+  `archived`, `forked_from`, `last_activity_at` and `forge_id_changes` as
+  the single-repository endpoint does: both are one reader now.
+- **The searches match `%` and `_` literally** (`/repos/search`, the
+  entity search's owner match, the monitor's queue search); they acted as
+  SQL wildcards.
+
 ## Endpoints
 
 ### Health Check
@@ -51,7 +127,7 @@ the per-IP rate limiter.
 GET /api/v1/repos/{repoID}/stats
 ```
 
-Returns gathered (collected totals) vs metadata (API-reported totals) for a single repo.
+Returns gathered (collected totals) vs metadata (API-reported totals) for a single repo. An id no repository has is a `404` (since 0.29.99; see "Changes for API clients").
 
 ```json
 {
@@ -203,7 +279,8 @@ Administrator sessions only, like the token routes.
   saves one quota; the api processes apply it within a minute. `409` when
   `aveloxis.json` sets the quota (DEFAULT, SHADOW or OFF), `404` for an
   unknown name, `400` for a value that is not positive or an unknown mode.
-- `POST …/capacity/contact` `{"contact_email": "…"}` sets the address
+- `POST …/capacity/contact` `{"contact_email": "…"}` (the field is
+  required since 0.29.100: `{}` used to clear the address) sets the address
   every refusal invites a heavy user to write to (empty: none offered).
 - `GET …/capacity/accounts?login=…` (or `?user_id=…`) reads one account:
   its `user_id`, `login`, `provider` (the forge of its last sign-in) and
@@ -230,7 +307,7 @@ Every change is logged with who made it.
 GET /api/v1/repos/stats?ids=1,2,3,42
 ```
 
-Returns stats for multiple repos in one call. Response is a map keyed by repo ID.
+Returns stats for multiple repos in one call. Response is a map keyed by repo ID. Since 0.29.99 the single-repository endpoint and this one are the same reader: every row carries every field the single endpoint does (`archived`, `forked_from`, `last_activity_at`, `forge_id_changes` included), and an `ids` entry that is not a positive integer is a `400` instead of being skipped, and an id no repository has is left out of the answer (it was a row of zeros).
 
 Since v0.28.7 the batch rows carry the same `gone_at` and
 `metadata_as_of` fields as the single-repo endpoint (and, since
@@ -261,6 +338,9 @@ Every commit window on this API — this series, `/contributors/top`, `/contribu
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `since` | date (YYYY-MM-DD) | 2 years ago | Start date for time series |
+| `until` | date (YYYY-MM-DD) | the latest plausible commit time | Last day of the window, inclusive |
+
+A value that does not parse as `YYYY-MM-DD` is a `400` (since 0.29.99).
 
 ```jsonc
 {
@@ -307,7 +387,7 @@ Returns a summary of dependency licenses with counts and OSI compliance status.
 GET /api/v1/repos/search?q=augur
 ```
 
-Case-insensitive search across repo name, owner, and URL. Returns up to 20 matches. Used by the comparison page's autocomplete search.
+Case-insensitive search across repo name, owner, and URL. Returns up to 20 matches; `[]` when nothing matches. `%` and `_` in the query match themselves (since 0.29.99). Used by the comparison page's autocomplete search.
 
 ```json
 [
@@ -352,7 +432,7 @@ Returns every distinct contributor who made any kind of contribution to the repo
 
 The `until` date is treated as **inclusive** of the entire calendar day — the server shifts it by +1 day before comparing against the half-open `< upper` SQL filter, so passing `until=2024-12-31` captures everything through `2024-12-31T23:59:59.999Z`.
 
-Malformed dates fall back to the defaults rather than returning 400, matching the existing `/timeseries` endpoint behavior so charts and dashboards keep rendering. The one validation error that does surface as 400 is `since >= until`, which is almost certainly an operator typo.
+A date that does not parse as `YYYY-MM-DD` is a `400` naming the parameter (since 0.29.99; it fell back to the default before, which hid a client's typo as a default window), and so is `since >= until`.
 
 Response shape:
 
@@ -762,11 +842,19 @@ worker (v0.21.0+).
 For 8Knot and other Augur API consumers, the server also exposes the
 Augur swagger-spec metric routes. They use Augur's parameter conventions
 (`begin_date`, `end_date`, `period`) rather than the native `since`/`until`.
+Both dates are inclusive UTC days (the default window is the year before
+today through today), a date that does not parse is a `400`, an unknown
+repository id is a `404`, and an empty series is `[]` (all since 0.29.99).
+The series keep Aveloxis's uniform `value` field where Augur names the
+field per metric; `/watchers` keeps Augur's `watchers`.
 
 Catalog routes: `/api/v1/repo-groups`, `/api/v1/repos`,
 `/api/v1/repos/{repoID}`, `/api/v1/repo-groups/{groupID}/repos`,
 `/api/v1/owner/{owner}/repo/{repo}`, `/api/v1/rg-name/{rgName}`,
-`/api/v1/rg-name/{rgName}/repo-name/{repoName}`.
+`/api/v1/rg-name/{rgName}/repo-name/{repoName}`. An API token sees only
+its owner's groups through them (since 0.29.99): a group is listed when it
+holds one of the token's repositories, a name that exists only outside the
+scope is the structured `403`, a name that exists nowhere is `404`.
 
 Per-repo metrics (all under `/api/v1/repos/{repoID}/`):
 
@@ -1011,7 +1099,14 @@ OAuth session for a token automatically and stores it in the browser.
 exchange:
 
 1. Sign in to the web GUI (GitHub or GitLab OAuth) in your browser.
-2. In the same browser, visit `https://<your-site>/auth/token`.
+2. In the same browser, mint a token with a POST to `/auth/token` (POST-only
+   since 0.29.102; a GET answers `405`). The browser's console on the site
+   does it in one line — the session cookie rides along:
+
+   ```js
+   fetch('/auth/token', {method: 'POST'}).then(r => r.json()).then(console.log)
+   ```
+
    You get JSON back:
 
    ```json
@@ -1036,7 +1131,7 @@ Token semantics:
   flags or scope) gets a structured **503** with a try-again body
   (v0.29.68) — never the 401, which the GUI treats as "the token is
   gone"; retry the request.
-- Each visit to `/auth/token` mints a **new** token; existing tokens
+- Each `POST /auth/token` mints a **new** token; existing tokens
   keep working until they expire, so long-running scripts aren't cut
   off when you log in elsewhere.
 - **Signing out ends the token** (v0.29.82): `POST /api/v1/auth/logout`
@@ -1069,10 +1164,11 @@ Token semantics:
   drop the cache in the process that served them. An approval decided in
   the **web** process reaches the **api** process only when its cache
   entry expires — up to 60 seconds; the two processes share no memory.
-  Signing out (`POST /api/v1/auth/logout`) ends the session at once in the
-  api process that served it; another api process may still accept it for
-  up to those 60 seconds (one api process, the usual deployment, has no
-  such window). An API token is rechecked on every call in every process.
+  Signing out (`POST /api/v1/auth/logout`, or the web GUI's sign-out,
+  which deletes the tokens it minted) ends the token at once in every api
+  process: a session token and an API token are both rechecked against
+  their row on every call. Only the role and the repository scope keep
+  the 60-second window.
 - A server-side failure is a **500** whose body never carries the cause
   (`internal error; try again`, or a fixed phrase such as `package list
   failed`, v0.29.68); the cause is in the api log. Client-side refusals
@@ -1509,8 +1605,10 @@ Per-user:
   reflects the calling user's star state. `sort` accepts `name`
   (default), `issues`, `prs`, `commits`, `collected`, `activity`;
   `dir` accepts `asc` (default) or `desc`; unknown values fall back
-  and the response echoes the effective sort. Non-admins may only
-  read their own groups (403 otherwise).
+  and the response echoes the effective sort. The group must be the
+  caller's (an administrator's session reads any group; an API token
+  only its owner's): otherwise a `404`, the same answer as for a group
+  that does not exist (stage 1 of the admin-console refactor, 0.29.100).
 - `POST /api/v1/groups/{groupID}/repos` with
   `{"url": "https://github.com/owner/repo", "kind": "repo"}` (or
   `"kind": "org"` with an org URL) — add a repo or track an org. A
@@ -1532,12 +1630,18 @@ Per-user:
   When `web.auto_approve_add_limit` lets a batch through and some of its
   repositories cannot be added, the others are still added and the call
   fails with an error saying how many could not be; sending the same
-  URLs again retries them (v0.29.50). A group the caller does not own,
-  or a rejected group, is a `400` with the reason, and so is a URL
-  longer than 1342 bytes (v0.29.54) or one the database refuses (such as
-  one with a NUL byte; v0.29.52); repositories
-  that could not be added and any server-side failure are a `500` with a
-  plain message and no database text (v0.29.51).
+  URLs again retries them (v0.29.50). Every line is parsed as a
+  repository URL first (0.29.100): a missing scheme is supplied, GitHub,
+  GitLab and any git host are accepted, and a line that is not a
+  repository URL is reported in `invalid` (each `url: why`, credentials
+  redacted) and skipped while the rest go through; a paste with no
+  usable line is a `400`. A group the caller does not own is a `404`
+  (the same answer as a group that does not exist); a rejected group is
+  a `409`; a URL longer than 1342 bytes (v0.29.54) or one the database
+  refuses (such as one with a NUL byte; v0.29.52) is a `400`;
+  repositories that could not be added and any server-side failure are
+  a `500` with a plain message and no database text (v0.29.51). Every
+  refusal body is JSON `{"error": "…"}`.
   Org outcomes (v0.27.84): `registered: 1` means the org is tracked
   NOW — admin adds always register, and a non-admin's add of an org
   that is ALREADY registered in a group that is not rejected auto-approves (it adds zero
@@ -1561,7 +1665,9 @@ Per-user:
   POST above with `kind: "org"`). Envelope:
   `{orgs: [{org_request_id, url, name, platform, last_scanned?}]}`.
   `last_scanned` is omitted until the scheduler's org scan first
-  visits the org. Ownership-checked for non-admins (403 otherwise).
+  visits the org. The group must be the caller's (an administrator's
+  session reads any group; an API token only its owner's): otherwise a
+  `404`, the same answer as for a group that does not exist.
 
 Admin-only:
 
@@ -1575,25 +1681,29 @@ Admin-only:
   timestamp to backfill from), so for those two fields start equal
   and diverge from the next login onward.
 - `POST /api/v1/admin/users/{userID}/admin` with
-  `{"admin": true|false}` — promote/demote. Self-demotion is refused
-  (last-admin guard). A demotion that would leave no admin at all is a
+  `{"admin": true|false}` — promote/demote; the field is required
+  (0.29.100: `{}` used to demote the account). Self-demotion is refused
+  (`400`). A demotion that would leave no admin at all is a
   `409` with `refusing to demote the last admin — promote another user
-  first` (it was a `500` before PR #218 review).
-- `GET /api/v1/admin/groups/pending` — pending groups awaiting
-  approval, with requester login/email and repo/org counts.
-- `POST /api/v1/admin/groups/{groupID}/{decision}` where decision is
-  `approve` or `reject` —
-  decide a pending group. Approval bulk-enqueues the group's repos
-  for collection (same machinery as the server-rendered admin UI).
-  Legacy: new groups always create approved since v0.27.20; this
-  route remains for pre-conversion pending groups.
+  first` (it was a `500` before PR #218 review); the count and the write
+  are one locked transaction, so two demotions deciding at once cannot
+  both pass. No such user is a `404`.
+- `POST /api/v1/admin/groups/{groupID}/reject` — reject a group: the
+  group-level abuse lever (v0.27.20); it takes no further additions and
+  its organizations stop being listed; its repositories stay. `404` for a
+  group that does not exist. The legacy pending-group approval —
+  `GET /api/v1/admin/groups/pending` and the `approve` decision — is gone
+  since 0.29.100: groups have been born approved since v0.27.20 and the
+  migrate converted every pending group then; the additions queue below
+  is the approval unit.
 - `GET /api/v1/groups/{groupID}/pending-adds` — the group's own
   awaiting-approval content (v0.27.20): repo URLs from pending
   add-requests plus pending org registrations, each with
-  `request_id`, `kind`, `url`, `created_at`. Ownership-checked for
-  non-admins (a group the caller does not own is a `403`; a server-side
-  failure is a `500` without database text, v0.29.52). Envelope:
-  `{pending: [...]}`.
+  `request_id`, `kind`, `url`, `created_at`. The group must be the
+  caller's (an administrator's session reads any group): otherwise a
+  `404`, the same answer as for a group that does not exist; a
+  server-side failure is a `500` without database text (v0.29.52).
+  Envelope: `{pending: [...]}`.
 - `GET /api/v1/admin/add-requests` — the v0.27.20 per-add approval
   queue: pending additions of not-yet-collected repos/orgs by
   non-admins. Each entry carries the requester (`user_login`,
@@ -1613,7 +1723,7 @@ Admin-only:
   request was already decided (idempotent double-click). A request id that
   does not exist answers `404`. An org request that can never be registered
   answers `409` with the reason and "reject the request": an org that is
-  not on this deployment's GitHub host, a URL carrying credentials, or a
+  not on this deployment's GitHub host or GitLab instance, a URL carrying credentials, or a
   request created before v0.29.54 whose URL is longer than the registration
   index holds (2,684 bytes).
 - `GET /api/v1/admin/monitor/stats` — `{queue: {status: count}}`:
@@ -1667,7 +1777,9 @@ Reads (any authenticated user):
   user (mirrors the repo-star routes). Both idempotent; PUT on a
   nonexistent collection returns 404. Response
   `{ok, starred}`.
-- `GET /api/v1/collections/{collectionID}?page&page_size&sort&dir` —
+- `GET /api/v1/collections/{collectionID}?page&page_size&sort&dir` — (`404`
+  for a collection that does not exist, 0.29.100; `dir` is echoed as the
+  direction applied, `asc` or `desc`) —
   member groups (each with live repo count) + one page of the deduped
   repo set: `{collection_id, groups, repos, total, page, page_size,
   sort, dir}`. Page size defaults 50, caps 100. v0.27.74: rows carry
@@ -1684,7 +1796,9 @@ Reads (any authenticated user):
 - `POST /api/v1/collections/{collectionID}/copy` with `{group_id}`
   (must be the caller's) or `{group_name}` (find-or-create for the
   caller) — links every repo of the collection into that group and
-  returns `{added, group_id}` (repos already in the group no-op).
+  returns `{added, group_id}` (repos already in the group no-op); a
+  collection that does not exist is a `404` (0.29.100; it answered 200
+  and linked nothing).
   **Never enqueues collection and never creates add-requests**:
   collection repos are already tracked, and approval only ever gates
   NEW collection (v0.27.20). The caller's auth scope and home cache
@@ -1693,16 +1807,22 @@ Reads (any authenticated user):
 Admin mutations (requireAdmin):
 
 - `POST /api/v1/admin/collections` `{name, description, position}` →
-  `{collection_id}`. Name is globally UNIQUE.
+  `{collection_id}`. Name is globally UNIQUE: a taken name is a `409`
+  (0.29.100; it was a 500).
 - `POST /api/v1/admin/collections/{collectionID}` `{name,
-  description, position}` — update in place.
+  description, position}` — update in place; `404` for a collection
+  that does not exist, `409` for a taken name (0.29.100; both were 500s).
 - `POST /api/v1/admin/collections/{collectionID}/delete` — removes
-  the collection; member links cascade, member groups are untouched.
+  the collection; member links cascade, member groups are untouched;
+  `404` for a collection that does not exist (0.29.100; it answered 200).
 - `POST /api/v1/admin/collections/{collectionID}/groups`
   `{group_id}` — link an ADMIN-OWNED group (400 for a group owned by
-  a non-admin; linking an already-linked group is an idempotent ok).
+  a non-admin; `404` for a collection or a group that does not exist,
+  0.29.100; linking an already-linked group is an idempotent ok).
 - `POST /api/v1/admin/collections/{collectionID}/groups/{groupID}/remove`
-  — unlink; the group and its repos are untouched.
+  — unlink; the group and its repos are untouched; `404` for a
+  collection that does not exist. Every administrative body on these
+  routes is bounded (64 KiB) and read by one decoder (0.29.100).
 
 
 ## Window-boundary semantics (v0.27.39)
@@ -1711,19 +1831,21 @@ Two deliberate boundary behaviors that differ between endpoint
 families — documented so cross-referencing them is not mistaken for a
 data bug:
 
-- **`until` inclusivity differs**: `/repos/{id}/timeseries` treats
-  `until` as INCLUSIVE (the named day's data appears — the handler
-  shifts by +1 day internally); `/compare` treats the parsed date's
-  midnight as EXCLUSIVE. Changing either would break existing
-  consumers, so the divergence is documented rather than converged.
+- **`until` inclusivity differs**: `/repos/{id}/timeseries` and the
+  Augur metrics' `end_date` (since 0.29.99) treat the end day as
+  INCLUSIVE (the named day's data appears — the handler shifts by +1 day
+  internally); `/compare` treats the parsed date's midnight as EXCLUSIVE.
+  Changing `/compare` would break existing consumers, so that divergence
+  is documented rather than converged.
 - **`/compare` ends at the last COMPLETE bucket** (v0.27.39): the
   in-progress week/month is never served as a data point — pre-fix it
   made every active repo's final point droop and painted phantom
   anomaly dots on trend charts. Request an explicit `until` inside a
   bucket and the series still ends at that bucket's start.
-- **Commit bucketing differs by family** (deliberate, v0.27.29): the
-  Augur-compat metric routes bucket commits by the AUTHOR-LOCAL date
-  (`cmt_author_date`, Augur's historical semantic); `/compare` and
-  `/timeseries` bucket by UTC (`cmt_author_timestamp AT TIME ZONE
-  'UTC'`). The same commit can land in adjacent days/weeks across the
-  two families at bucket edges; both answers are internally correct.
+- **Commit bucketing is one rule since 0.29.99**: the Augur-compat
+  metric routes, `/compare` and `/timeseries` all bucket commits by the
+  UTC day of `cmt_author_timestamp`. (Until 0.29.98 the Augur routes used
+  the author's LOCAL date, `cmt_author_date`, Augur's historical semantic,
+  so the same commit could land in adjacent days across the two
+  families.) A commit whose author date could not be parsed has no
+  timestamp and is counted by no family.

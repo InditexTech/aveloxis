@@ -1,0 +1,28 @@
+{{define "remove_confirm"}}
+{{template "head" (dict "Title" "Remove repository")}}
+<div class="nav">
+<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
+<div class="nav-user">
+{{if .Session.AvatarURL}}<img src="{{.Session.AvatarURL}}" alt="">{{end}}
+<span>{{.Session.LoginName}}</span>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="nav-link">Logout</button></form>
+</div>
+</div>
+<div class="breadcrumb">
+<a href="/dashboard">Home</a>{{if .Session.IsAdmin}}<span class="sep">|</span><a href="/monitor">Monitor</a>{{end}}<span class="sep">/</span><a href="/groups/{{.GroupID}}">{{.GroupName}}</a><span class="sep">/</span><span class="current">Remove repository</span>
+</div>
+<div class="container">
+<div class="card confirm-box">
+<h2>Remove {{.RepoOwner}}/{{.RepoName}}?</h2>
+<p>The repository leaves the group <strong>{{.GroupName}}</strong>. It is still collected by Aveloxis, and it can be added again later.</p>
+<form method="POST" action="/groups/remove-repo" style="display:flex;gap:8px;margin-top:16px">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+<input type="hidden" name="group_id" value="{{.GroupID}}">
+<input type="hidden" name="repo_id" value="{{.RepoID}}">
+<button type="submit" class="btn btn-danger">Remove</button>
+<a href="/groups/{{.GroupID}}" class="btn">Cancel</a>
+</form>
+</div>
+</div>
+</body></html>
+{{end}}

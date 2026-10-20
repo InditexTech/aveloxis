@@ -150,6 +150,32 @@ func leadingScheme(raw string) int {
 	return 0
 }
 
+// SCPCloneAddress reports git's SCP-like clone address, `user@host:path`
+// (no scheme, a ":" after the host whose remainder is a path, not a port):
+// what a clone command takes and a browser does not. The boundary against a
+// credential-shaped paste is credentialShapedPaste's own, so the two never
+// both hold: a line this names as a clone address is never one
+// RefuseURLUserinfo refuses, and `git@host:1234/repo` (an all-digit owner,
+// the decided collateral below) is credentials here as there. The admin
+// service asks this before supplying a scheme, to name such a line for what
+// it is (0.29.106 whole-branch review A1: the service had a second spelling
+// that disagreed on exactly that boundary).
+func SCPCloneAddress(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || leadingScheme(raw) > 0 || strings.HasPrefix(raw, "//") {
+		return false
+	}
+	seg := raw
+	if j := strings.IndexAny(seg, "/?#"); j >= 0 {
+		seg = seg[:j]
+	}
+	at := strings.LastIndex(seg, "@")
+	if at < 0 || !strings.Contains(seg[at+1:], ":") {
+		return false // no user part, or no ":" after the host: not the clone shape
+	}
+	return !credentialShapedPaste(raw)
+}
+
 // credentialShapedPaste reports whether a schemeless string's leading
 // segment (up to the first "/", "?" or "#") carries an "@" in the web-paste
 // shape — `user:token@host…` or `token@host/…` — as opposed to the SCP

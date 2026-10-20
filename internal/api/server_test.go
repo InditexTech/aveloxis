@@ -4,12 +4,38 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/admin"
+	"github.com/aveloxis/aveloxis/internal/db"
 )
+
+// bareAdminStore is the admin service's store in a bare test server: every
+// method but IsUserAdmin panics (the embedded nil interface); IsUserAdmin
+// says yes, since a bare test's identity comes from the context it builds.
+type bareAdminStore struct{ admin.Store }
+
+func (bareAdminStore) IsUserAdmin(context.Context, int) (bool, error) { return true, nil }
+
+// testAdminService builds the admin service a hand-made test Server needs
+// (stage 1 of summary/59): over its store, with its mailer when one is
+// set, its auto-approve limit and GitHub base, and this process's hooks.
+func testAdminService(s *Server) *admin.Service {
+	opts := admin.Options{AutoApproveAddLimit: s.autoApproveAddLimit, GitHubAPIBase: s.ghAPIBase}
+	if s.mailer != nil {
+		opts.Mailer = s.mailer
+	}
+	logger := s.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return admin.New(s.store, opts, apiHooks{s}, logger)
+}
 
 // newTestServer creates a Server with a nil store for route/parameter testing.
 // Handlers that need the store will panic or return 500, which is fine —
@@ -18,7 +44,23 @@ func newTestServer() *Server {
 	logger := slog.Default()
 	// Use New() which registers all routes including metric routes.
 	// Nil store is fine — we only test routing and parameter validation.
-	return New(nil, logger)
+	s := New(nil, logger)
+	// Stage 1 of summary/59: the group, decision and role routes call the
+	// admin service; a bare server's service runs over a store that
+	// answers only the admin question (the identity in the context is the
+	// test's premise) and panics on any write, so a test that reaches the
+	// store fails loudly.
+	s.admin = admin.New(bareAdminStore{}, admin.Options{}, apiHooks{s}, logger)
+	// Stage 1b: a repository route proves the repository exists before it
+	// reads its parameters (repoFromPath); a bare server knows every id.
+	s.repoStates = func(_ context.Context, ids []int64) (map[int64]db.RepoCacheState, error) {
+		out := map[int64]db.RepoCacheState{}
+		for _, id := range ids {
+			out[id] = db.RepoCacheState{HasQueueRow: true}
+		}
+		return out, nil
+	}
+	return s
 }
 
 // ============================================================

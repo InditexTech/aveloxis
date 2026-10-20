@@ -288,15 +288,13 @@ func TestPackageVersionIsReadAfterTheLastAt(t *testing.T) {
 
 // TestGroupScopeRequiresAnExistingGroup — review round 1: an admin asking
 // for an unknown group id got an empty cohort (200) instead of the typed
-// not-found; a non-admin must also own the group.
+// not-found. Who may read the group is admin.Service.GroupAccess's rule
+// (stage 1 of summary/59); the cohort read still requires the group.
 func TestGroupScopeRequiresAnExistingGroup(t *testing.T) {
 	store := openTestStore(t)
 	ctx := context.Background()
-	if _, err := store.GetGroupRepoIDsForUser(ctx, 999999999, 1, true); !errors.Is(err, ErrGroupNotFound) {
-		t.Errorf("admin + unknown group: err=%v, want ErrGroupNotFound", err)
-	}
-	if _, err := store.GetGroupRepoIDsForUser(ctx, 999999999, 1, false); !errors.Is(err, ErrGroupNotFound) {
-		t.Errorf("user + unknown group: err=%v, want ErrGroupNotFound", err)
+	if _, err := store.GetGroupRepoIDs(ctx, 999999999); !errors.Is(err, ErrGroupNotFound) {
+		t.Errorf("unknown group: err=%v, want ErrGroupNotFound", err)
 	}
 }
 

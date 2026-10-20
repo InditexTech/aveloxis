@@ -23,7 +23,7 @@ func TestClientForRepo_GitHub(t *testing.T) {
 	gh := &fakeClient{plat: model.PlatformGitHub}
 	gl := &fakeClient{plat: model.PlatformGitLab}
 
-	client, owner, repo, err := ClientForRepo("https://github.com/torvalds/linux", gh, gl)
+	client, owner, repo, err := ClientForRepo("https://github.com/torvalds/linux", nil, gh, gl)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestClientForRepo_GitLab(t *testing.T) {
 	gh := &fakeClient{plat: model.PlatformGitHub}
 	gl := &fakeClient{plat: model.PlatformGitLab}
 
-	client, owner, repo, err := ClientForRepo("https://gitlab.com/gnachman/iterm2", gh, gl)
+	client, owner, repo, err := ClientForRepo("https://gitlab.com/gnachman/iterm2", nil, gh, gl)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestClientForRepo_GitLabNested(t *testing.T) {
 	gh := &fakeClient{plat: model.PlatformGitHub}
 	gl := &fakeClient{plat: model.PlatformGitLab}
 
-	client, owner, repo, err := ClientForRepo("https://gitlab.com/group/subgroup/project", gh, gl)
+	client, owner, repo, err := ClientForRepo("https://gitlab.com/group/subgroup/project", nil, gh, gl)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestClientForRepo_InvalidURL(t *testing.T) {
 	gh := &fakeClient{plat: model.PlatformGitHub}
 	gl := &fakeClient{plat: model.PlatformGitLab}
 
-	_, _, _, err := ClientForRepo("not-a-url", gh, gl)
+	_, _, _, err := ClientForRepo("not-a-url", nil, gh, gl)
 	if err == nil {
 		t.Fatal("expected error for invalid URL")
 	}
@@ -91,7 +91,7 @@ func TestClientForRepo_UnsupportedPlatform(t *testing.T) {
 	gl := &fakeClient{plat: model.PlatformGitLab}
 
 	// Bitbucket is not recognized by ParseRepoURL, so this should return an error.
-	_, _, _, err := ClientForRepo("https://bitbucket.org/atlassian/stash", gh, gl)
+	_, _, _, err := ClientForRepo("https://bitbucket.org/atlassian/stash", nil, gh, gl)
 	if err == nil {
 		t.Fatal("expected error for unsupported platform (Bitbucket)")
 	}
@@ -101,7 +101,7 @@ func TestClientForRepo_EmptyURL(t *testing.T) {
 	gh := &fakeClient{plat: model.PlatformGitHub}
 	gl := &fakeClient{plat: model.PlatformGitLab}
 
-	_, _, _, err := ClientForRepo("", gh, gl)
+	_, _, _, err := ClientForRepo("", nil, gh, gl)
 	if err == nil {
 		t.Fatal("expected error for empty URL")
 	}

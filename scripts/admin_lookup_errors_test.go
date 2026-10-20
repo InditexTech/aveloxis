@@ -14,14 +14,15 @@ import (
 // follow-up 6 (the PR #207 review): `isAdmin, _ := IsUserAdmin(...)` sent an
 // admin's add to the approval queue when the lookup failed, silently. A
 // lookup error is not "no" (SR-5): every non-test call binds the error and
-// handles it — the add paths return it, the login logs it and creates a
-// non-admin session, the API answers 503. What THIS test enforces is only
+// handles it — the add paths return it, the web gate answers 500 (the
+// login reads no privilege since 0.29.102), the API answers 503. What THIS test enforces is only
 // the call line: it bans the two shapes that read an error as "no" there —
 // the discard (`, _ :=`) and the fused test (`err == nil && admin`). A
 // bound-and-ignored error, or a call split over lines, passes it; each
 // site's handling is pinned by its own test
 // (TestAddReposToGroupReturnsAdminLookupError for the two add paths,
-// TestLoginLogsAFailedAdminLookup for the login,
+// TestGateWithFailedAdminLookupIs500NotARefusal and
+// TestAdminPrivilegeIsDecidedPerRequest for the web gate,
 // TestResolveTokenDistinguishesAStoreErrorFromABadToken for the API).
 func TestIsUserAdminErrorsAreNeverDiscarded(t *testing.T) {
 	examined := 0

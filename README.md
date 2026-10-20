@@ -371,7 +371,6 @@ A minimal example to get started; see `aveloxis.example.json` for an all-fields 
   "web": {
     "addr": ":8082",
     "base_url": "http://localhost:8082",
-    "session_secret": "change-me-to-a-random-string",
     "dev_mode": false,
     "github_client_id": "your-github-oauth-app-client-id",
     "github_client_secret": "your-github-oauth-app-client-secret"
@@ -502,7 +501,7 @@ Platform is auto-detected from the URL. GitLab nested subgroups are supported:
 https://gitlab.com/group/subgroup/project  ->  owner="group/subgroup", repo="project"
 ```
 
-Self-hosted GitLab instances are recognized if the hostname contains "gitlab" or is listed in `gitlab_hosts` in the config.
+Self-hosted GitLab instances are recognized if the hostname contains "gitlab" or the repository URL lies under the configured instance's web URL (`gitlab.base_url`).
 
 ### `aveloxis add-key` — Store API keys
 
@@ -700,13 +699,13 @@ The web GUI (`aveloxis web`) provides a browser-based interface for managing rep
 - **Breadcrumb navigation:** Home / Group Name hierarchy. 25-per-page pagination with 5-page sliding window and case-insensitive search.
 - **Org tracking:** When a user adds an org, a scheduler task scans it every 4 hours, discovers new repos, and queues them automatically.
 - **URL validation:** All URLs are validated before adding. GitHub and GitLab URLs require owner/repo path. Other URLs are accepted as git-only repos.
-- **Session management:** Sessions are in-memory with 24-hour expiry. Restarting `aveloxis web` clears all sessions.
+- **Session management:** sessions are rows of the database (hashed; 24-hour expiry). Restarting `aveloxis web` signs nobody out; signing out ends the API tokens that sign-in minted.
 
 The web GUI runs as a separate process from `aveloxis serve` — they share the same database but do not need to run on the same host. **Note:** `aveloxis web` does NOT run migrations. Use `aveloxis migrate` or `aveloxis serve` for that.
 
 ### Interactive Visualizations
 
-The web GUI includes built-in interactive visualizations powered by [Chart.js](https://www.chartjs.org/), loaded from CDN with no build step. Requires the REST API (`aveloxis api`) to be running alongside `aveloxis web`.
+The web GUI includes built-in interactive visualizations powered by [Chart.js](https://www.chartjs.org/), served by the web process itself (vendored since 0.29.102; no CDN, no build step). Requires the REST API (`aveloxis api`) to be running alongside `aveloxis web`.
 
 **Repository detail page** — clicking a repo name in a group opens `/groups/{gid}/repos/{rid}` with:
 - **4 weekly time-series charts:** Commits/week, PRs Opened/week, PRs Merged/week, Issues/week (last 2 years by default)
@@ -1083,7 +1082,7 @@ Both platforms collect the same data types. Most fields have full parity; known 
 
 ### GitHub vs GitLab — Known Data Gaps
 
-The following fields are available from GitHub but not from GitLab due to platform API limitations:
+The following fields differ between the two forges — most are available from GitHub but not from GitLab, due to platform API limitations; a row marked "parity by design" records a choice made the same way on both:
 
 | Field | GitHub | GitLab | Notes |
 |---|---|---|---|
@@ -1094,6 +1093,7 @@ The following fields are available from GitHub but not from GitLab due to platfo
 | GraphQL node IDs (`pr_src_node_id`) | Available on all entities | Not applicable | GitLab uses numeric IDs, not GraphQL node IDs — architectural difference |
 | Contributor URL fields (`gh_followers_url`, etc.) | 10+ URL fields per contributor | Not available | GitLab API doesn't expose follower/following/gist/etc. URLs |
 | Contributor type (User/Bot/Organization) | `type` field on user objects | Not available | GitLab doesn't distinguish user types the same way |
+| Organization / group scans (**Add Organization**) | `/orgs/{org}/repos`: the organization's own repositories | `/groups/:id/projects` with `include_subgroups=true` and `with_shared=false`: the group's and its subgroups' own projects | Parity by design (0.29.106): a GitLab project *shared into* a group from another namespace is that namespace's and is not added; add it by its own URL |
 | Label numeric IDs (`issue_labels.platform_label_id`, `pull_request_labels.platform_label_id`) | REST `id` — populated on the REST child paths only | Populated (REST) | On GitHub's GraphQL child paths these columns stay `0`: GraphQL's `Label` type exposes no `databaseId`. No SELECT/JOIN consumers exist; the trade-off is that label renames within a project cannot be distinguished from delete+create |
 
 ### Unified Message Architecture
@@ -1215,7 +1215,7 @@ AVELOXIS_TEST_DB="postgres://user:pass@localhost:5432/aveloxis_test" go test ./i
 The suite currently stands at **~2,960 test functions across ~670 test files** (plus 7 native Go fuzz targets), organized in tiers:
 
 - **Unit + source-contract tier** — runs on plain `go test ./...` with no database. Includes behavioral tests (parsers for 14 manifest ecosystems + 19 lockfile formats, SBOM generation, OSV response handling, GraphQL batch subdivision, git-log/whitespace walkers) and the repo's signature *source-contract tripwires*: tests that pin load-bearing code shapes so regressions fail the build before review — every INSERT has a real ON CONFLICT arbiter, every schema column has a writer or a documented reason, docs counts match the schema, every registered command is documented, every config key is in the docs and example config, every API route has a smoke recipe, and the standing-rules registry (`scripts/standing_rules.go`) keeps each hard-won rule attached to the tests that enforce it.
-- **Integration tier** — gated on `AVELOXIS_TEST_DB`; runs migrations end-to-end against a real PostgreSQL (fresh AND populated), then exercises store methods, the staged processor, queue lifecycle, and end-to-end flows (gap healing to convergence, vulnerability lifecycle, rename dedup, group approvals). CI provisions a Postgres service container for this tier on every push.
+- **Integration tier** — gated on `AVELOXIS_TEST_DB`; runs migrations end-to-end against a real PostgreSQL (fresh AND populated), then exercises store methods, the staged processor, queue lifecycle, and end-to-end flows (gap healing to convergence, vulnerability lifecycle, rename dedup, add-request approvals). CI provisions a Postgres service container for this tier on every push.
 - **Network canaries** — gated on `AVELOXIS_TEST_NETWORK`; a weekly CI job hits the real deps.dev, OSV.dev, crates.io, GitHub search, and Pony Mail APIs to catch contract drift that mocks structurally cannot see.
 - **Fuzzing** — ClusterFuzzLite builds 7 native `func Fuzz*` targets (mbox parsing, lockfile/manifest parsers, purl helpers, repo-URL parsers); their seed corpora also run under ordinary `go test`.
 - **Lint gates** — `staticcheck`, `golangci-lint` (the CI version), `gofmt`, and CodeQL all block merges.

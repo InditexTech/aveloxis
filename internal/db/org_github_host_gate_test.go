@@ -98,10 +98,11 @@ func TestAddOrgToGroupRefusesAnOrgOffTheGitHubHost(t *testing.T) {
 		{"github.com org on a public deployment", "https://github.com/home", "", false},
 		{"www.github.com is github.com", "https://www.github.com/www", "", false},
 		{"schemeless github.com", "github.com/bare", "", false},
-		{"a GitLab group is not gated by the GitHub host", "https://gitlab.com/group", enterpriseBase, false},
+		{"a GitLab group on the configured instance is not gated by the GitHub host", "https://gitlab.com/group", enterpriseBase, false},
 	} {
 		before := fx.registered(t, gid)
-		_, err := fx.store.AddOrgToGroup(fx.ctx, uid, gid, tc.orgURL, tc.base)
+		// gitlab.com is the configured instance (the default gitlab.base_url).
+		_, err := fx.store.AddOrgToGroup(fx.ctx, uid, gid, tc.orgURL, tc.base, "https://gitlab.com")
 		if tc.refused {
 			if !errors.Is(err, ErrOrgOffGitHubHost) {
 				t.Errorf("%s: AddOrgToGroup(%q, base %q) err = %v, want ErrOrgOffGitHubHost", tc.name, tc.orgURL, tc.base, err)
@@ -121,14 +122,14 @@ func TestAddOrgToGroupRefusesAnOrgOffTheGitHubHost(t *testing.T) {
 
 	// A URL that does not parse is refused by the checks that name that
 	// defect, never as "off the host" — the portal's 400 text depends on it.
-	if _, err := fx.store.AddOrgToGroup(fx.ctx, uid, gid, "https://github.com/\x00acme", enterpriseBase); err == nil || errors.Is(err, ErrOrgOffGitHubHost) {
+	if _, err := fx.store.AddOrgToGroup(fx.ctx, uid, gid, "https://github.com/\x00acme", enterpriseBase, ""); err == nil || errors.Is(err, ErrOrgOffGitHubHost) {
 		t.Errorf("unparseable org URL: err = %v, want a rejection that is NOT ErrOrgOffGitHubHost", err)
 	}
 
 	// A non-admin's foreign org must not even PEND: the request would be
 	// approved into the same wrong-host row.
 	nuid, ngid := fx.userAndGroup(t, "member", false)
-	if _, err := fx.store.AddOrgToGroup(fx.ctx, nuid, ngid, "https://github.com/acme", enterpriseBase); !errors.Is(err, ErrOrgOffGitHubHost) {
+	if _, err := fx.store.AddOrgToGroup(fx.ctx, nuid, ngid, "https://github.com/acme", enterpriseBase, ""); !errors.Is(err, ErrOrgOffGitHubHost) {
 		t.Errorf("non-admin foreign org: err = %v, want ErrOrgOffGitHubHost", err)
 	}
 	if n := fx.pendingRequests(t, nuid); n != 0 {
@@ -145,7 +146,7 @@ func TestDecideAddRequestRefusesAPendingOrgOffTheGitHubHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := fx.store.DecideAddRequest(fx.ctx, reqID, 1, true, enterpriseBase); !errors.Is(err, ErrOrgOffGitHubHost) {
+	if _, _, err := fx.store.DecideAddRequest(fx.ctx, reqID, 1, true, enterpriseBase, ""); !errors.Is(err, ErrOrgOffGitHubHost) {
 		t.Fatalf("approving a foreign-host org: err = %v, want ErrOrgOffGitHubHost", err)
 	}
 	if n := fx.registered(t, gid); n != 0 {
@@ -159,7 +160,7 @@ func TestDecideAddRequestRefusesAPendingOrgOffTheGitHubHost(t *testing.T) {
 		t.Errorf("request status after the refused approval = %q, want pending (the flip and the registration are one transaction)", status)
 	}
 	// Rejecting it is still the admin's way out.
-	if _, changed, err := fx.store.DecideAddRequest(fx.ctx, reqID, 1, false, enterpriseBase); err != nil || !changed {
+	if _, changed, err := fx.store.DecideAddRequest(fx.ctx, reqID, 1, false, enterpriseBase, ""); err != nil || !changed {
 		t.Errorf("rejecting the foreign-host request: changed=%v err=%v, want changed", changed, err)
 	}
 }
@@ -167,7 +168,7 @@ func TestDecideAddRequestRefusesAPendingOrgOffTheGitHubHost(t *testing.T) {
 func TestHasNeverScannedOrgsCountsOnlyScanEligibleRows(t *testing.T) {
 	fx := newOrgGateFixture(t)
 	uid, gid := fx.userAndGroup(t, "probe", true)
-	baseline, err := fx.store.HasNeverScannedOrgs(fx.ctx, enterpriseBase)
+	baseline, err := fx.store.HasNeverScannedOrgs(fx.ctx, enterpriseBase, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +184,7 @@ func TestHasNeverScannedOrgsCountsOnlyScanEligibleRows(t *testing.T) {
 	// nothing enumerates it, so a demand scan would only stamp it).
 	seed("https://github.com/foreign", "github")
 	seed("https://gitlab.com/group", "gitlab")
-	got, err := fx.store.HasNeverScannedOrgs(fx.ctx, enterpriseBase)
+	got, err := fx.store.HasNeverScannedOrgs(fx.ctx, enterpriseBase, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +192,7 @@ func TestHasNeverScannedOrgsCountsOnlyScanEligibleRows(t *testing.T) {
 		t.Error("the probe counted rows the refresh will never enumerate — the demand scan would re-fire every poll tick forever")
 	}
 	seed("https://ghe.example.invalid/home", "github")
-	if got, err := fx.store.HasNeverScannedOrgs(fx.ctx, enterpriseBase); err != nil || !got {
+	if got, err := fx.store.HasNeverScannedOrgs(fx.ctx, enterpriseBase, ""); err != nil || !got {
 		t.Errorf("probe with an eligible never-scanned row = %v, %v; want true", got, err)
 	}
 }

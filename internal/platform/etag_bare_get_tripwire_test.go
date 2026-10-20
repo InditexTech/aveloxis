@@ -106,7 +106,9 @@ func TestNoBareConditionalGetsOutsideThePaginator(t *testing.T) {
 	if scanned < 20 {
 		t.Fatalf("scanned only %d platform-importing files — the walk broke", scanned)
 	}
-	if sites < 10 {
-		t.Fatalf("found only %d direct HTTPClient Get sites — the discovery broke (v0.28.18 tree has 13 distinct: 7 `.http.Get` + 6 bound-identifier sites)", sites)
+	// The v0.28.18 tree had 13 distinct sites; stage 1 of summary/59 (C2)
+	// deleted the web org scan and the CLI's two org listers, leaving 8.
+	if sites < 8 {
+		t.Fatalf("found only %d direct HTTPClient Get sites — the discovery broke (8 distinct since stage 1 of summary/59)", sites)
 	}
 }

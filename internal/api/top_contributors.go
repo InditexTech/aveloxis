@@ -4,9 +4,7 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
-	"strconv"
 )
 
 // handleTopContributors (v0.27.61) — GET /repos/{repoID}/contributors/top
@@ -23,17 +21,13 @@ import (
 // enrichment interval. The wrapper runs authorizeRepo BEFORE any cache
 // lookup — a cached body must never leak past repo scope (pinned by test).
 func (s *Server) handleTopContributors(w http.ResponseWriter, r *http.Request) {
-	repoID, err := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid repo_id", http.StatusBadRequest)
-		return
-	}
-	if !s.authorizeRepo(w, r, repoID) {
-		return
-	}
-	args, ok := parseTopContributorsArgs(r)
+	repoID, ok := s.repoFromPath(w, r)
 	if !ok {
-		http.Error(w, "since must be before until", http.StatusBadRequest)
+		return
+	}
+	args, err := parseTopContributorsArgs(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	since, until, limit := args.since, args.until, args.limit
@@ -50,9 +44,8 @@ func (s *Server) handleTopContributors(w http.ResponseWriter, r *http.Request) {
 		"limit":        limit,
 		"contributors": rows,
 	}
-	body, err := json.Marshal(envelope)
-	if err != nil {
-		s.serverError(w, r, "handleTopContributors", err)
+	body, ok := s.marshalBody(w, r, "handleTopContributors", envelope)
+	if !ok {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

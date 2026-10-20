@@ -52,7 +52,7 @@ func TestWelcomeMailFollowsTheForgeIdentity(t *testing.T) {
 			welcomes.Add(1)
 			return nil
 		})
-	s := New(store, config.WebConfig{}, nil, "", logger).WithMailer(m)
+	s := New(store, config.WebConfig{}, "", logger).WithMailer(m)
 	login := func(info db.OAuthUserInfo) {
 		t.Helper()
 		info.Email = "person@example.com"
@@ -128,7 +128,7 @@ func TestWebStartStampsLegacyGitLabAccounts(t *testing.T) {
 	if _, err := store.Pool().Exec(ctx, `INSERT INTO aveloxis_ops.users (login_name, oauth_provider, gl_user_id) VALUES ($1, 'gitlab', 900901)`, login); err != nil {
 		t.Fatal(err)
 	}
-	s := New(store, config.WebConfig{GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: "https://GitLab.Example.org/"}, nil, "", logger)
+	s := New(store, config.WebConfig{GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: "https://GitLab.Example.org/"}, "", logger)
 	s.StampLegacyGitLabAccounts(ctx)
 	var host string
 	if err := store.Pool().QueryRow(ctx, `SELECT COALESCE(gl_oauth_host, '') FROM aveloxis_ops.users WHERE login_name = $1`, login).Scan(&host); err != nil {
@@ -174,7 +174,7 @@ func TestGitLabCallbackRecordsItsInstance(t *testing.T) {
 		}
 	}))
 	t.Cleanup(forge.Close)
-	s := New(store, config.WebConfig{DevMode: true, GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: forge.URL + "/"}, nil, "", logger)
+	s := New(store, config.WebConfig{DevMode: true, GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: forge.URL + "/"}, "", logger)
 	req := httptest.NewRequest(http.MethodGet, "/auth/gitlab/callback?code=c&state=st", nil)
 	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "st"})
 	rec := httptest.NewRecorder()
@@ -207,7 +207,7 @@ func TestWebStartStampStopIsNotAFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(store.Close)
-	s := New(store, config.WebConfig{GitLabClientID: "id", GitLabClientSecret: "secret"}, nil, "", logger)
+	s := New(store, config.WebConfig{GitLabClientID: "id", GitLabClientSecret: "secret"}, "", logger)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	s.StampLegacyGitLabAccounts(ctx)

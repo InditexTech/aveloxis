@@ -47,7 +47,7 @@ func TestCompareTemplateHasPlaceholderHint(t *testing.T) {
 // awkward horizontal scrolling.
 func TestContainerWidthIsWideEnough(t *testing.T) {
 	re := regexp.MustCompile(`\.container\{[^}]*max-width:\s*(\d+)px`)
-	m := re.FindStringSubmatch(allTemplates)
+	m := re.FindStringSubmatch(pageSources(t))
 	if m == nil {
 		t.Fatal("could not find .container max-width in CSS")
 	}
@@ -64,7 +64,7 @@ func TestRepoNameColumnNotOverlyTruncated(t *testing.T) {
 	// either removed or widened. We check that no cell has max-width < 450px
 	// combined with text-overflow:ellipsis on the repo link cell.
 	re := regexp.MustCompile(`max-width:(\d+)px;overflow:hidden;text-overflow:ellipsis`)
-	m := re.FindStringSubmatch(allTemplates)
+	m := re.FindStringSubmatch(pageSources(t))
 	if m != nil {
 		w, _ := strconv.Atoi(m[1])
 		if w < 450 {
@@ -82,15 +82,16 @@ func TestComparePrePopulateDoesNotNestStatsFetch(t *testing.T) {
 	// nested with fetch(...timeseries) inside. The stats fetch is unnecessary
 	// and breaks the chain if it fails. We search the full template for the
 	// pre-populate block (identified by "urlRepos") and check no /stats fetch follows.
-	idx := strings.Index(allTemplates, "urlRepos")
+	compareJS := pageScripts(t)["compare.js"]
+	idx := strings.Index(compareJS, "urlRepos")
 	if idx < 0 {
 		t.Fatal("compare template missing urlRepos pre-populate block")
 	}
 	end := idx + 1000
-	if end > len(allTemplates) {
-		end = len(allTemplates)
+	if end > len(compareJS) {
+		end = len(compareJS)
 	}
-	prePopulate := allTemplates[idx:end]
+	prePopulate := compareJS[idx:end]
 	if strings.Contains(prePopulate, "/stats'") || strings.Contains(prePopulate, `/stats"`) {
 		t.Error("compare pre-populate should not fetch /stats — fetch /timeseries directly for owner/name")
 	}

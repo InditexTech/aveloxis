@@ -147,10 +147,11 @@ What the values mean:
   large repositories stop hitting the database. Cached GETs answer
   `If-None-Match` with 304 either way. See "Response caching" in
   [Configuration](configuration.md).
-- **`web.session_secret`** is accepted and reserved; web sessions are
-  random tokens held in the process (24 hours from login) and the API's
-  Bearer tokens are stored in the database. Set it to a random value
-  anyway so an upgrade that starts using it needs no config change.
+- Web sessions and the API's Bearer tokens are rows of the database (hashed;
+  24 hours from login for a session, 30 days for a token): a restart of
+  `aveloxis web` signs nobody out, and signing out ends the tokens the
+  sign-in minted. `web.session_secret` was removed in 0.29.102; a file that
+  still carries it loads, and from 0.29.106 logs a warning naming it at start.
 
 Every other key keeps its default. The loader refuses an invalid file
 (a malformed value, a non-canonical `trusted_proxy`, a `front_end_secret`
@@ -252,7 +253,7 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:8082;
-        proxy_set_header Host $host;                      # OAuth callbacks and cookies need the public host
+        proxy_set_header Host $host;                      # OAuth callbacks, cookies and the cross-site guard need the public host; on a non-default public port use $http_host (the guard compares the browser's Origin, port included)
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_read_timeout 120s;
     }

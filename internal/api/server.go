@@ -17,12 +17,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/collector"
 	"github.com/aveloxis/aveloxis/internal/db"
@@ -70,10 +72,12 @@ type Server struct {
 	autoAdds      *autoAddLimiter // v0.29.82: the per-user cap on Shared-with-Me auto-adds
 	refusals      *refusalLog     // ASVS review G5: refusals logged once a minute per user and kind
 
-	// accounts serves the profile routes (/me's account fields, the
-	// account-email submission and confirmation); the store, or a fake.
+	// accounts serves /me's account fields; the store, or a fake.
 	accounts accountStore
-	spaURL   string // web.spa_url, for the confirmation link
+	// admin is the administrative service this process adapts (stage 1 of
+	// summary/59): groups, additions, approvals, roles, forge-ID adoption
+	// and the account e-mail flow. nil in a bare test Server.
+	admin *admin.Service
 
 	// v0.27.59 (repo count) → v0.27.77 (full fleet payload): 60s
 	// stale-on-error cache for GET /public/stats — repos, commits,
@@ -133,7 +137,17 @@ func NewWithOptions(store *db.PostgresStore, logger *slog.Logger, opts Options) 
 		s.repoStates = store.RepoCacheStates
 		s.accounts = store
 	}
-	s.spaURL = opts.SPAURL
+	if store != nil {
+		adminOpts := admin.Options{GitHubAPIBase: opts.GitHubAPIBase, GitLabAPIBase: opts.GitLabAPIBase, AutoApproveAddLimit: opts.AutoApproveAddLimit, SPAURL: opts.SPAURL}
+		if opts.Mailer != nil { // a nil *Mailer must not become a non-nil interface
+			adminOpts.Mailer = opts.Mailer
+		}
+		adminLogger := logger
+		if adminLogger == nil {
+			adminLogger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		}
+		s.admin = admin.New(store, adminOpts, apiHooks{s}, adminLogger)
+	}
 	s.rewarmInterval = opts.RewarmInterval
 	s.requestTimeout = opts.RequestTimeout
 	s.frontEndSecret = opts.FrontEndSecret
@@ -200,8 +214,7 @@ func NewWithOptions(store *db.PostgresStore, logger *slog.Logger, opts Options) 
 	s.mux.HandleFunc("GET /api/v1/groups/{groupID}/orgs", s.handleGroupOrgs)
 	s.mux.HandleFunc("GET /api/v1/admin/users", s.handleAdminUsers)
 	s.mux.HandleFunc("POST /api/v1/admin/users/{userID}/admin", s.handleAdminSetUserAdmin)
-	s.mux.HandleFunc("GET /api/v1/admin/groups/pending", s.handleAdminPendingGroups)
-	s.mux.HandleFunc("POST /api/v1/admin/groups/{groupID}/{decision}", s.handleAdminGroupDecision)
+	s.mux.HandleFunc("POST /api/v1/admin/groups/{groupID}/reject", s.handleAdminGroupReject)
 	// v0.27.20 per-add approval queue (summary/15).
 	s.mux.HandleFunc("GET /api/v1/groups/{groupID}/pending-adds", s.handleGroupPendingAdds)
 	s.mux.HandleFunc("GET /api/v1/admin/forge-id-changes", s.handleAdminForgeIDChanges)               // v0.29.63
@@ -329,7 +342,7 @@ func requestChain(rl *rateLimiter, a *authenticator, next http.Handler) http.Han
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	jsonResponse(w, map[string]string{"status": "ok", "version": db.ToolVersion})
+	s.writeJSON(w, r, map[string]string{"status": "ok", "version": db.ToolVersion})
 }
 
 // handleMailingListStats (v0.25.7, #11) surfaces the mailing-list collection
@@ -340,16 +353,12 @@ func (s *Server) handleMailingListStats(w http.ResponseWriter, r *http.Request) 
 		s.serverError(w, r, "handleMailingListStats", err)
 		return
 	}
-	jsonResponse(w, st)
+	s.writeJSON(w, r, st)
 }
 
 func (s *Server) handleRepoStats(w http.ResponseWriter, r *http.Request) {
-	repoID, err := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid repo_id", http.StatusBadRequest)
-		return
-	}
-	if !s.authorizeRepo(w, r, repoID) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
 		return
 	}
 	stats, err := s.store.GetRepoStats(r.Context(), repoID)
@@ -357,7 +366,7 @@ func (s *Server) handleRepoStats(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleRepoStats", err)
 		return
 	}
-	jsonResponse(w, stats)
+	s.writeJSON(w, r, stats)
 }
 
 func (s *Server) handleRepoStatsBatch(w http.ResponseWriter, r *http.Request) {
@@ -367,16 +376,15 @@ func (s *Server) handleRepoStatsBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ids []int64
-	for _, s := range strings.Split(idsParam, ",") {
-		id, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
-		if err != nil {
-			continue
+	for _, raw := range strings.Split(idsParam, ",") {
+		id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil || id <= 0 {
+			// N23 (stage 1b): an entry that is not a repository id is a
+			// 400, never skipped — a skipped typo read as a shorter list.
+			http.Error(w, "invalid repo_id in ids", http.StatusBadRequest)
+			return
 		}
 		ids = append(ids, id)
-	}
-	if len(ids) == 0 {
-		http.Error(w, "no valid repo IDs", http.StatusBadRequest)
-		return
 	}
 	// v0.28.10 (Copilot round 7): the batch is bounded — its queueless
 	// fallback runs live aggregates for gone repos, so an uncapped id
@@ -402,7 +410,7 @@ func (s *Server) handleRepoStatsBatch(w http.ResponseWriter, r *http.Request) {
 		}
 		ids = in
 		if len(ids) == 0 {
-			jsonResponse(w, map[int64]*db.RepoStats{})
+			s.writeJSON(w, r, map[int64]*db.RepoStats{})
 			return
 		}
 	}
@@ -411,18 +419,14 @@ func (s *Server) handleRepoStatsBatch(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleRepoStatsBatch", err)
 		return
 	}
-	jsonResponse(w, stats)
+	s.writeJSON(w, r, stats)
 }
 
 // handleSBOMDownload generates and returns an SBOM for a repo.
 // Query param: format=cyclonedx (default) or format=spdx
 func (s *Server) handleSBOMDownload(w http.ResponseWriter, r *http.Request) {
-	repoID, err := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid repo_id", http.StatusBadRequest)
-		return
-	}
-	if !s.authorizeRepo(w, r, repoID) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
 		return
 	}
 	args := parseSBOMArgs(r)
@@ -502,23 +506,19 @@ func (s *Server) handleSBOMDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTimeSeries(w http.ResponseWriter, r *http.Request) {
-	repoID, err := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid repo_id", http.StatusBadRequest)
-		return
-	}
-	if !s.authorizeRepo(w, r, repoID) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
 		return
 	}
 	// Default window: last 2 years to now, day-aligned (v0.29.71) so the
 	// answer can be cached for the day. Both ends overridable via
 	// ?since=YYYY-MM-DD and ?until=YYYY-MM-DD (inclusive); an invalid value
-	// falls back to the default rather than erroring, so charts keep
-	// rendering. parseWindow is the contributions routes' reader too, and
-	// its parseDayParam is the cache key's (PR #226 review 5403959037).
-	since, until, ok := parseWindow(r)
-	if !ok {
-		http.Error(w, "since must be before until", http.StatusBadRequest)
+	// is a 400 (D7, stage 1b; it fell back to the default before).
+	// parseWindow is the contributions routes' reader too, and its queryDay
+	// is the cache key's (PR #226 review 5403959037).
+	since, until, err := parseWindow(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	// Cached by the route's cachedRepoGET (pageDatedKept; v0.29.73), which
@@ -528,7 +528,7 @@ func (s *Server) handleTimeSeries(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleTimeSeries", err)
 		return
 	}
-	jsonResponse(w, ts)
+	s.writeJSON(w, r, ts)
 }
 
 func (s *Server) handleRepoSearch(w http.ResponseWriter, r *http.Request) {
@@ -551,16 +551,12 @@ func (s *Server) handleRepoSearch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	jsonResponse(w, repos)
+	s.writeJSON(w, r, repos)
 }
 
 func (s *Server) handleLicenses(w http.ResponseWriter, r *http.Request) {
-	repoID, err := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid repo_id", http.StatusBadRequest)
-		return
-	}
-	if !s.authorizeRepo(w, r, repoID) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
 		return
 	}
 	// v0.27.46 (summary/19 P3, decision #8): ?scope=runtime filters
@@ -588,7 +584,7 @@ func (s *Server) handleLicenses(w http.ResponseWriter, r *http.Request) {
 		// Served as "not scanned"; never cached (v0.29.73).
 		s.partialAnswer(r, err, "dependency-data probe failed — licenses served as not scanned", "repo_id", repoID, "error", err)
 	}
-	jsonResponse(w, map[string]any{
+	s.writeJSON(w, r, map[string]any{
 		"scanned":  scanned,
 		"scope":    map[bool]string{true: "runtime", false: "all"}[runtimeOnly],
 		"licenses": licenses,
@@ -598,12 +594,8 @@ func (s *Server) handleLicenses(w http.ResponseWriter, r *http.Request) {
 // handleScancodeLicenses returns source code license detections from ScanCode.
 // Response includes per-license file counts, copyrights, and scan metadata.
 func (s *Server) handleScancodeLicenses(w http.ResponseWriter, r *http.Request) {
-	repoID, err := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid repo_id", http.StatusBadRequest)
-		return
-	}
-	if !s.authorizeRepo(w, r, repoID) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
 		return
 	}
 
@@ -643,18 +635,14 @@ func (s *Server) handleScancodeLicenses(w http.ResponseWriter, r *http.Request) 
 		ScancodeVersion: scancodeVer,
 	}
 
-	jsonResponse(w, resp)
+	s.writeJSON(w, r, resp)
 }
 
 // handleScancodeFiles returns per-file scancode data for the sortable web GUI table.
 // Each entry has: path, normalized SPDX license, truncated copyright holder.
 func (s *Server) handleScancodeFiles(w http.ResponseWriter, r *http.Request) {
-	repoID, err := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid repo_id", http.StatusBadRequest)
-		return
-	}
-	if !s.authorizeRepo(w, r, repoID) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
 		return
 	}
 	files, err := s.store.GetScancodeFileEntries(r.Context(), repoID)
@@ -664,5 +652,5 @@ func (s *Server) handleScancodeFiles(w http.ResponseWriter, r *http.Request) {
 	if files == nil {
 		files = []db.ScancodeFileEntry{}
 	}
-	jsonResponse(w, files)
+	s.writeJSON(w, r, files)
 }

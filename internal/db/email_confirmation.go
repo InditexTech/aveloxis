@@ -23,8 +23,6 @@ package db
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -46,15 +44,16 @@ const EmailConfirmationLifetime = 24 * time.Hour
 // allowed (a user might re-submit if they didn't get the first email).
 // All tokens for a user are cleared when ConfirmEmailToken succeeds.
 func (s *PostgresStore) CreateEmailConfirmation(ctx context.Context, userID int, email string) (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
+	token, err := newSecretToken()
+	if err != nil {
 		return "", fmt.Errorf("generate confirmation token: %w", err)
 	}
-	token := hex.EncodeToString(b)
+	// Stored hashed like every other token (0.29.102, DBS-14): a database
+	// read never shows a live confirmation link.
 	if _, err := s.pool.Exec(ctx, `
 		INSERT INTO aveloxis_ops.email_confirmations (token, user_id, email, expires_at)
 		VALUES ($1, $2, $3, NOW() + $4::interval)`,
-		token, userID, email, fmt.Sprintf("%d seconds", int(EmailConfirmationLifetime.Seconds())),
+		hashToken(token), userID, email, fmt.Sprintf("%d seconds", int(EmailConfirmationLifetime.Seconds())),
 	); err != nil {
 		return "", fmt.Errorf("insert email_confirmation: %w", err)
 	}
@@ -95,6 +94,7 @@ func (e *TokenOwnerMismatchError) Unwrap() error { return ErrConfirmationTokenIn
 // click waits, then finds its token already deleted and is simply invalid.
 // A live token of another account returns TokenOwnerMismatchError.
 func (s *PostgresStore) ConfirmEmailToken(ctx context.Context, token string, userID int) (string, error) {
+	token = hashToken(token) // matched by hash (DBS-14)
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return "", err

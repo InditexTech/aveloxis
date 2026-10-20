@@ -86,7 +86,11 @@ func (p *capacityPolicy) get() (capacitySnapshot, bool) {
 }
 
 // refresh reads the policy once. Its bound is the refresh period: a read
-// slower than that is replaced by the next one anyway.
+// slower than that is replaced by the next one anyway. It runs on its own
+// context, not the process's: a refresh spawned by the last request before
+// `stop` can meet the closed store and log the WARN below (accepted in the
+// 0.29.105 review — a millisecond window and a harmless line; the policy
+// keeps its last values either way).
 func (p *capacityPolicy) refresh() {
 	ctx, cancel := context.WithTimeout(context.Background(), authCacheTTL)
 	defer cancel()
@@ -172,7 +176,7 @@ func (p *capacityPolicy) tokenQuotas(info authInfo) []capacity.RateQuota {
 func (p *capacityPolicy) contact() string {
 	snap, known := p.get()
 	if !known {
-		return db.DefaultCapacityContactEmail
+		return "" // no address until the policy is read (the message says so)
 	}
 	return snap.contact
 }

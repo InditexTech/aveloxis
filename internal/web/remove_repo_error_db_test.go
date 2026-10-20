@@ -34,11 +34,12 @@ func TestRemoveRepoFailureIsNotARedirect(t *testing.T) {
 	}
 	closed.Close() // every query fails
 	var logs strings.Builder
-	s := New(closed, config.WebConfig{}, nil, "", slog.New(slog.NewTextHandler(&logs, nil)))
-	s.sessions["u"] = &Session{UserID: 1, LoginName: "u", ExpiresAt: time.Now().Add(time.Hour)}
+	s := New(closed, config.WebConfig{}, "", slog.New(slog.NewTextHandler(&logs, nil)))
+	plantStubSession(t, s, "u", &Session{UserID: 1, LoginName: "u", ExpiresAt: time.Now().Add(time.Hour)}) // the handler's store failure is the subject
 	r := httptest.NewRequest(http.MethodPost, "/groups/remove-repo", strings.NewReader(url.Values{"group_id": {"7"}, "repo_id": {"9"}}.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "u"})
+	csrf(r) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 	if w.Code != http.StatusInternalServerError || !strings.Contains(logs.String(), "level=ERROR") {

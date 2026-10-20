@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // v0.20.14: `aveloxis test-mail <recipient>` lets operators
@@ -49,8 +51,16 @@ func TestTestMailCmdCallsValidateAndSend(t *testing.T) {
 	}
 	fnBody := tail[:1+endRel]
 
-	if !strings.Contains(fnBody, "mailer.ValidateConfig") {
-		t.Error("testMailCmd must call mailer.ValidateConfig BEFORE attempting a send — that's the whole point of having the command. Pre-validation catches the common operator mistakes (bare domain, wrong password format) without consuming SMTP attempts.")
+	// The mail block is validated when aveloxis.json loads (config.Load
+	// runs mailer.ValidateConfig; an invalid block stops every command), so
+	// the command validates nothing itself: a second arm here was dead code
+	// (round-2 review of 0.29.100). The load-time refusal is pinned end to
+	// end by TestLoadRefusesAnInvalidMailBlock (internal/config).
+	if strings.Contains(srctest.StripGoComments(fnBody), "mailer.ValidateConfig") {
+		t.Error("testMailCmd validates the mail block a second time; loadConfig already refused an invalid one — that arm is unreachable")
+	}
+	if !strings.Contains(fnBody, "loadConfig(") {
+		t.Error("testMailCmd must read aveloxis.json through loadConfig, which refuses an invalid mail block")
 	}
 	if !strings.Contains(fnBody, ".Send(") {
 		t.Error("testMailCmd must call Send to actually exercise SMTP authentication — validation alone doesn't prove the credentials work, just that they're syntactically plausible")

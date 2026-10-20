@@ -46,9 +46,17 @@ func TestMailerConfigFromCarriesEveryField(t *testing.T) {
 	// The value each key carries: distinct per key so a crossed wire shows,
 	// and loadable — web.spa_url is refused at load unless it is the origin
 	// as a browser writes it (no path), so its marker rides in the host.
+	// Since 0.29.100 Load refuses an invalid mail block (N7), so the
+	// markers are valid values of their kind: an address, an App Password
+	// (16 lowercase letters), an origin.
 	valueOf := func(key string) string {
-		if key == "spa_url" {
+		switch key {
+		case "spa_url", "site_url":
 			return "https://value-of-" + strings.ReplaceAll(key, "_", "-") + ".example"
+		case "gmail_user":
+			return "value-of-gmail-user@example.com"
+		case "gmail_app_password":
+			return "valueofapppasswd"
 		}
 		return "value-of-" + key
 	}
@@ -133,7 +141,7 @@ func TestProcessMailWiring(t *testing.T) {
 		}
 	}
 	var webLogs, apiLogs bytes.Buffer
-	check(t, "aveloxis web", newWebServer(nil, cfg, nil, slog.New(slog.NewTextHandler(&webLogs, nil))).Mailer())
+	check(t, "aveloxis web", newWebServer(nil, cfg, slog.New(slog.NewTextHandler(&webLogs, nil))).Mailer())
 	logsTo(t, "aveloxis web", &webLogs)
 	check(t, "aveloxis api", apiOptions(cfg, slog.New(slog.NewTextHandler(&apiLogs, nil))).Mailer)
 	logsTo(t, "aveloxis api", &apiLogs)

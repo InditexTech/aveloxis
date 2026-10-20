@@ -208,7 +208,7 @@ func (s *PostgresStore) GetScancodeSourceLicenses(ctx context.Context, repoID in
 		return nil, err
 	}
 
-	var result []ScancodeSourceLicense
+	result := []ScancodeSourceLicense{} // D6: empty is []
 	for lic, cnt := range counts {
 		result = append(result, ScancodeSourceLicense{
 			License:   lic,
@@ -247,7 +247,7 @@ func (s *PostgresStore) GetScancodeCopyrights(ctx context.Context, repoID int64)
 	}
 	defer rows.Close()
 
-	var result []ScancodeSourceCopyright
+	result := []ScancodeSourceCopyright{} // D6: empty is []
 	for rows.Next() {
 		var c ScancodeSourceCopyright
 		if err := rows.Scan(&c.Holder, &c.FileCount); err != nil {

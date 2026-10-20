@@ -94,12 +94,13 @@ func TestPageLookupErrorsAreNotNotFound(t *testing.T) {
 	}
 	t.Cleanup(served.Close)
 	var logs strings.Builder
-	s := New(served, config.WebConfig{}, nil, "", slog.New(slog.NewTextHandler(&logs, nil)))
-	s.sessions["probe-token"] = &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)}
+	s := New(served, config.WebConfig{}, "", slog.New(slog.NewTextHandler(&logs, nil)))
+	plantSession(t, s, "probe-token", &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)})
 	get := func(path string) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodGet, path, nil)
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w
@@ -118,11 +119,13 @@ func TestPageLookupErrorsAreNotNotFound(t *testing.T) {
 	if w := get(fmt.Sprintf("/groups/%d", otherGID)); w.Code != http.StatusNotFound {
 		t.Errorf("someone else's group page = %d; want 404", w.Code)
 	}
-	if w := get(fmt.Sprintf("/groups/%d/repos/%d", otherGID, repoID)); w.Code != http.StatusForbidden {
-		t.Errorf("a repository page in someone else's group = %d; want 403", w.Code)
+	// N11 (stage 1 of summary/59): someone else's group answers as a group
+	// that does not exist, on the repository page and the SBOM alike.
+	if w := get(fmt.Sprintf("/groups/%d/repos/%d", otherGID, repoID)); w.Code != http.StatusNotFound {
+		t.Errorf("a repository page in someone else's group = %d; want 404", w.Code)
 	}
-	if w := get(fmt.Sprintf("/groups/%d/repos/%d/sbom", otherGID, repoID)); w.Code != http.StatusForbidden {
-		t.Errorf("an SBOM in someone else's group = %d; want 403", w.Code)
+	if w := get(fmt.Sprintf("/groups/%d/repos/%d/sbom", otherGID, repoID)); w.Code != http.StatusNotFound {
+		t.Errorf("an SBOM in someone else's group = %d; want 404", w.Code)
 	}
 	if w := get(fmt.Sprintf("/groups/%d/repos/%d", gid, repoID+1000000)); w.Code != http.StatusNotFound {
 		t.Errorf("a repository id nobody has = %d; want 404", w.Code)
@@ -162,7 +165,7 @@ func TestPageLookupErrorsAreNotNotFound(t *testing.T) {
 // is pinned at runtime by the store's own test; this pins that the handler
 // asks the typed question and sends everything else to serverError.
 func TestRepoPageClassifiesTheRepoLookup(t *testing.T) {
-	body := srctest.StripGoComments(srctest.FuncBody(t, srctest.Read(t, "internal/web/server.go"), "func (s *Server) handleRepoDetail("))
+	body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/web", "func (s *Server) handleRepoDetail("))
 	if !strings.Contains(body, "errors.Is(err, db.ErrRepoNotFound)") || strings.Count(body, `s.serverError(w, r, "handleRepoDetail", err)`) != 2 {
 		t.Error("handleRepoDetail must answer 404 only for db.ErrRepoNotFound and send the ownership lookup's and the repository lookup's other errors to serverError (a store failure is not \"not found\")")
 	}
@@ -174,7 +177,7 @@ func TestRepoPageClassifiesTheRepoLookup(t *testing.T) {
 // typed not-found is a 404, everything else goes to serverError, and the
 // body never carries the error's text (it did through v0.29.67).
 func TestSBOMDownloadClassifiesTheGenerator(t *testing.T) {
-	body := srctest.StripGoComments(srctest.FuncBody(t, srctest.Read(t, "internal/web/server.go"), "func (s *Server) handleSBOMDownload("))
+	body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/web", "func (s *Server) handleSBOMDownload("))
 	if !strings.Contains(body, "errors.Is(err, db.ErrRepoNotFound)") || strings.Count(body, `s.serverError(w, r, "handleSBOMDownload", err)`) != 2 || strings.Contains(body, "err.Error()") {
 		t.Error("handleSBOMDownload must answer 404 for db.ErrRepoNotFound, send the ownership lookup's and the generator's other errors to serverError, and never write err.Error() into the body")
 	}
@@ -194,7 +197,7 @@ func TestLogURLRedactsBeforeTruncating(t *testing.T) {
 	// package that defines a logURL — review round 3: a line-based check
 	// here missed a hand-wrapped call). Only the inline order is banned here.
 	for _, f := range srctest.PackageFiles(t, "internal/web", 1) {
-		if strings.Contains(srctest.StripGoComments(f), "RedactURLUserinfo(truncateForLog(") {
+		if body := srctest.StripGoComments(f); strings.Contains(body, "RedactURLUserinfo(truncateForLog(") || strings.Contains(body, "RedactURLUserinfo(platform.TruncateForLog(") {
 			t.Error("the inline redact-after-truncate spelling is banned")
 		}
 	}

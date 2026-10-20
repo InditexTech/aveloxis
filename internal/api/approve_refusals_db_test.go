@@ -55,6 +55,7 @@ func TestAPIApproveRefusalsAreNotServerErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	adminUID := seedAdminAccount(t, store, member+"-admin")
 	var reqID int64
 	if err := store.Pool().QueryRow(ctx, `
 		INSERT INTO aveloxis_ops.collection_add_requests (user_id, group_id, kind, org_url, status, item_count)
@@ -63,11 +64,12 @@ func TestAPIApproveRefusalsAreNotServerErrors(t *testing.T) {
 	}
 	logs := &lockedBuffer{}
 	s := &Server{store: store, logger: slog.New(slog.NewTextHandler(logs, nil)), auth: newAuthenticator(store, false, nil)}
+	s.admin = testAdminService(s)
 	decide := func(id int64) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/add-requests/x/approve", nil)
 		r.SetPathValue("requestID", strconv.FormatInt(id, 10))
 		r.SetPathValue("decision", "approve")
-		r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, authInfo{UserID: muid + 1_000_000, IsAdmin: true}))
+		r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, authInfo{UserID: adminUID, IsAdmin: true}))
 		w := httptest.NewRecorder()
 		s.handleAdminAddRequestDecision(w, r)
 		return w
@@ -87,9 +89,13 @@ func TestAPIApproveRefusalsAreNotServerErrors(t *testing.T) {
 	}
 }
 
-// TestAPIDemotingTheLastAdminIsRefusedNotA500 (PR #218 fix review r1): the
-// API twin of the web last-admin test — the store's ErrLastAdmin is a 409
-// with its reason, not a logged 500.
+// TestAPIDemotingTheLastAdminIsRefusedNotA500 (PR #218 fix review r1; stage
+// 1 of summary/59): the API twin of the web last-admin test. A stale cached
+// identity — it says admin, the database no longer does — is refused as a
+// non-administrator (403) before any write, since the admin service reads
+// the row for every operation; the store's ErrLastAdmin (reachable only by
+// a real administrator, through the concurrent-demotion race pinned in
+// internal/admin) renders as a 409 with its reason, never a 500.
 func TestAPIDemotingTheLastAdminIsRefusedNotA500(t *testing.T) {
 	store := approveRefusalStore(t)
 	ctx := context.Background()
@@ -98,38 +104,34 @@ func TestAPIDemotingTheLastAdminIsRefusedNotA500(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO aveloxis_ops.users (login_name, admin) VALUES ('_avapi_last_admin', TRUE) RETURNING user_id`).Scan(&target); err != nil {
 		t.Fatal(err)
 	}
-	var others []int
-	rows, err := pool.Query(ctx, `SELECT user_id FROM aveloxis_ops.users WHERE admin AND user_id <> $1`, target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err != nil {
-			t.Fatal(err)
-		}
-		others = append(others, id)
-	}
-	rows.Close()
 	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `UPDATE aveloxis_ops.users SET admin = TRUE WHERE user_id = ANY($1)`, others)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM aveloxis_ops.users WHERE user_id = $1`, target)
 	})
-	if _, err := pool.Exec(ctx, `UPDATE aveloxis_ops.users SET admin = FALSE WHERE user_id = ANY($1)`, others); err != nil {
-		t.Fatal(err)
-	}
 	logs := &lockedBuffer{}
 	s := &Server{store: store, logger: slog.New(slog.NewTextHandler(logs, nil)), auth: newAuthenticator(store, false, nil)}
+	s.admin = testAdminService(s)
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/x/admin", strings.NewReader(`{"admin": false}`))
 	r.SetPathValue("userID", strconv.Itoa(target))
-	// A stale cached admin identity: the database no longer says so.
+	// A stale cached admin identity: the database has no such row.
 	r = r.WithContext(context.WithValue(r.Context(), authCtxKey{}, authInfo{UserID: target + 1_000_000, IsAdmin: true}))
 	w := httptest.NewRecorder()
 	s.handleAdminSetUserAdmin(w, r)
-	if w.Code != http.StatusConflict || !strings.Contains(strings.ToLower(w.Body.String()), "last admin") {
-		t.Fatalf("demoting the last admin = %d %q; want 409 with the reason", w.Code, strings.TrimSpace(w.Body.String()))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("a stale admin identity's demotion = %d %q; want 403", w.Code, strings.TrimSpace(w.Body.String()))
+	}
+	var still bool
+	if err := pool.QueryRow(ctx, `SELECT admin FROM aveloxis_ops.users WHERE user_id = $1`, target).Scan(&still); err != nil || !still {
+		t.Errorf("the target was demoted by a stale identity (admin=%v, %v)", still, err)
 	}
 	if strings.Contains(logs.String(), "level=ERROR") {
 		t.Errorf("a refusal was logged as a server error:\n%s", logs.String())
+	}
+	// The last-admin refusal renders as a 409 with its reason.
+	w = httptest.NewRecorder()
+	if !s.refuse(w, authInfo{UserID: 1, IsAdmin: true}, db.ErrLastAdmin) {
+		t.Fatal("refuse did not classify db.ErrLastAdmin")
+	}
+	if w.Code != http.StatusConflict || !strings.Contains(strings.ToLower(w.Body.String()), "last admin") {
+		t.Errorf("the last-admin refusal = %d %q; want 409 with the reason", w.Code, strings.TrimSpace(w.Body.String()))
 	}
 }

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration &mdash; Aveloxis 0.29.96 documentation</title>
+  <title>Configuration &mdash; Aveloxis 0.29.107 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=57ddef21"></script>
+      <script src="../_static/documentation_options.js?v=4510acb2"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -332,6 +332,8 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#health-check">Health Check</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#public-fleet-stats">Public fleet stats</a></li>
@@ -1329,6 +1331,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#when-not-to-use-a-source-contract-test">When NOT to use a source-contract test</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#the-v0-21-1-lesson">The v0.21.1 lesson</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#shared-helpers-internal-srctest-v0-27-118">Shared helpers: <code class="docutils literal notranslate"><span class="pre">internal/srctest</span></code> (v0.27.118)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#finding-a-subject-across-a-package-v0-29-98-stage-0-5">Finding a subject across a package (v0.29.98, stage 0.5)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#sql-write-scanning-internal-srctest-sqlscan-v0-27-124">SQL write scanning: <code class="docutils literal notranslate"><span class="pre">internal/srctest/sqlscan</span></code> (v0.27.124)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#column-write-policy-registry-v0-27-126">Column write-policy registry (v0.27.126)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#standing-rules-registry-v0-27-127">Standing-rules registry (v0.27.127)</a></li>
@@ -1405,7 +1408,10 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#adding-a-foreign-key">Adding a foreign key</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#migration-ordering">Migration ordering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#migration-ordering">Migration ordering</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/schema-migrations.html#where-a-new-step-goes-stages-are-subjects-v0-29-98-n29">Where a new step goes: stages are subjects (v0.29.98, N29)</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#materialized-views">Materialized views</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#the-aveloxis-migrate-skip-views-flag">The <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">migrate</span> <span class="pre">--skip-views</span></code> flag</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#version-bump-checklist-for-a-schema-touching-change">Version-bump checklist for a schema-touching change</a></li>
@@ -1502,7 +1508,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../contributing/adding-a-visualization.html#how-visualizations-work-today">How visualizations work today</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/adding-a-visualization.html#walkthrough-add-a-contributor-activity-chart">Walkthrough: add a “contributor activity” chart</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-1-make-sure-the-data-is-available">Step 1 — make sure the data is available</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-2-find-the-right-template">Step 2 — find the right template</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-2-find-the-right-template-and-its-script">Step 2 — find the right template and its script</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-3-add-the-canvas-the-fetch">Step 3 — add the canvas + the fetch</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-4-handle-the-data-shape-mismatch">Step 4 — handle the data-shape mismatch</a></li>
 </ul>
@@ -1793,9 +1799,7 @@ claim on two axes, and they have different reach:</p>
 <li><p><strong>Presence — every block, every key.</strong> Each section of the snippet
 must carry every field of its Go config struct. An omitted key is
 invisible to any value check (absent simply means “use the
-default”), so presence is asserted separately. The one reasoned
-exemption is <code class="docutils literal notranslate"><span class="pre">github.gitlab_hosts</span></code>: the two forge blocks share one
-struct and that field is GitLab-only.</p></li>
+default”), so presence is asserted separately.</p></li>
 <li><p><strong>Values — every block, every field, plus the top-level scalars.</strong>
 Each field is compared against the compiled default: through its
 effective accessor where it has one, and by value where it does
@@ -1830,8 +1834,7 @@ a half against its own reference table below:</p>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">&quot;gitlab&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;api_keys&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;glpat-your_token_here&quot;</span><span class="p">],</span>
-<span class="w">    </span><span class="nt">&quot;base_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://gitlab.com/api/v4&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;gitlab_hosts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;gitlab.freedesktop.org&quot;</span><span class="p">]</span>
+<span class="w">    </span><span class="nt">&quot;base_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://gitlab.com/api/v4&quot;</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">&quot;mail&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;gmail_user&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;aveloxis-ops@yourdomain.com&quot;</span><span class="p">,</span>
@@ -1920,7 +1923,6 @@ a half against its own reference table below:</p>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">&quot;web&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;addr&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;:8082&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;session_secret&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;generate-a-random-32-byte-string&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;base_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://aveloxis.example.com&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;dev_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;github_client_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;your-github-oauth-app-client-id&quot;</span><span class="p">,</span>
@@ -2061,12 +2063,7 @@ a half against its own reference table below:</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gitlab.base_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;https://gitlab.com/api/v4&quot;</span></code></p></td>
-<td><p>GitLab API base URL. Change for self-hosted GitLab instances. It also names the one host the <code class="docutils literal notranslate"><span class="pre">gitlab.api_keys</span></code> are sent to (v0.29.11): the periodic GitLab group refresh skips, with a WARN, any group whose URL is on a different host rather than send it the keys. Before v0.29.11 that refresh used the GitHub keys.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gitlab.gitlab_hosts</span></code></p></td>
-<td><p>string[]</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">[]</span></code></p></td>
-<td><p>Additional hostnames to recognize as GitLab instances. Use this for self-hosted GitLab servers whose hostnames do not contain “gitlab”.</p></td>
+<td><p>GitLab API base URL. Change for self-hosted GitLab instances. It names the one instance the <code class="docutils literal notranslate"><span class="pre">gitlab.api_keys</span></code> are sent to (v0.29.11) and, from 0.29.100, the instance whose organization and repository URLs are classified as GitLab whatever the host name says: a GitLab group on another instance is refused when added (web, API, CLI loaders, admin approval), as a GitHub organization off <code class="docutils literal notranslate"><span class="pre">github.base_url</span></code> is, and the periodic group refresh skips a pre-existing such row with a WARN. The value must be an absolute <code class="docutils literal notranslate"><span class="pre">http://</span></code> or <code class="docutils literal notranslate"><span class="pre">https://</span></code> URL of the instance’s API, ending in <code class="docutils literal notranslate"><span class="pre">/api/v4</span></code> (from 0.29.101: the REST client appends paths to the value as given, so a bare <code class="docutils literal notranslate"><span class="pre">https://gitlab.example.org</span></code> would send every call to the wrong path), with no query, fragment or user name, or the process refuses to start naming it; an explicit <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> runs without a GitLab instance (every GitLab group is then refused).</p></td>
 </tr>
 </tbody>
 </table>
@@ -2566,67 +2563,62 @@ a half against its own reference table below:</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;:8082&quot;</span></code></p></td>
 <td><p>Listen address for the web GUI.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.session_secret</span></code></p></td>
-<td><p>string</p></td>
-<td><p>(none)</p></td>
-<td><p>Reserved: accepted by the loader and not read today. Web sessions are random tokens held in the web process, so a web restart signs everyone out whatever this is set to; the API’s Bearer tokens are stored in the database and survive restarts. Set a long random string anyway, so a release that starts using it needs no change.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.base_url</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.base_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p>(none)</p></td>
 <td><p>Public-facing external URL of the web GUI (e.g. <code class="docutils literal notranslate"><span class="pre">https://aveloxis.example.com</span></code>). Used to build OAuth callback URLs only. Links in emails, including account-email confirmation links, come from <code class="docutils literal notranslate"><span class="pre">mail.site_url</span></code>; when <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code> is set, the group, pending-approvals and confirmation links lead to that front end’s pages instead (see <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code>).</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.dev_mode</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.dev_mode</span></code></p></td>
 <td><p>boolean</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>When <code class="docutils literal notranslate"><span class="pre">true</span></code>, disables the <code class="docutils literal notranslate"><span class="pre">Secure</span></code> flag on cookies so the GUI works over plain HTTP, and lets a loopback request (<code class="docutils literal notranslate"><span class="pre">localhost</span></code>, <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>, <code class="docutils literal notranslate"><span class="pre">[::1]</span></code>) build email confirmation links when <code class="docutils literal notranslate"><span class="pre">mail.site_url</span></code> is unset. <strong>Production must leave this <code class="docutils literal notranslate"><span class="pre">false</span></code></strong> so browsers only send cookies over HTTPS and confirmation links always come from <code class="docutils literal notranslate"><span class="pre">mail.site_url</span></code> (or <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code>). <code class="docutils literal notranslate"><span class="pre">HttpOnly</span></code> is always set regardless.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_id</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_id</span></code></p></td>
 <td><p>string</p></td>
 <td><p>(none)</p></td>
 <td><p>GitHub OAuth App client ID. Create one at <a class="reference external" href="https://github.com/settings/developers">https://github.com/settings/developers</a>. The callback URL must match <code class="docutils literal notranslate"><span class="pre">&lt;base_url&gt;/auth/github/callback</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_secret</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_secret</span></code></p></td>
 <td><p>string</p></td>
 <td><p>(none)</p></td>
 <td><p>GitHub OAuth App client secret.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_id</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_id</span></code></p></td>
 <td><p>string</p></td>
 <td><p>(none)</p></td>
 <td><p>GitLab OAuth Application ID. Create one at <a class="reference external" href="https://gitlab.com/-/profile/applications">https://gitlab.com/-/profile/applications</a> (or your self-hosted instance’s <code class="docutils literal notranslate"><span class="pre">/admin/applications</span></code>).</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_secret</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_secret</span></code></p></td>
 <td><p>string</p></td>
 <td><p>(none)</p></td>
 <td><p>GitLab OAuth Application secret.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_base_url</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_base_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;https://gitlab.com&quot;</span></code></p></td>
-<td><p>GitLab base URL for OAuth (the HTML site, NOT the API URL). Override for self-hosted GitLab. Accounts signed in through GitLab belong to this instance (v0.29.69): after moving to another instance, the same people sign in as new accounts, and a name the old instance’s accounts hold is refused until an administrator frees it (see <a class="reference internal" href="../guide/web-gui.html#login-flow"><span class="std std-ref">Login Flow</span></a>). GitLab accounts from before v0.29.69 carry no instance; <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> records this value on them at every start with GitLab sign-in configured (<code class="docutils literal notranslate"><span class="pre">web.gitlab_client_id</span></code> set), so start 0.29.69 once that way, with the instance those accounts came from, before you change this setting or turn GitLab sign-in on under another instance.</p></td>
+<td><p>GitLab base URL for OAuth (the HTML site, NOT the API URL — the OAuth endpoints and the <code class="docutils literal notranslate"><span class="pre">/api/v4/user</span></code> read are appended to it). Override for self-hosted GitLab; a trailing slash is dropped and an empty value means gitlab.com. From 0.29.101 the value must be an absolute <code class="docutils literal notranslate"><span class="pre">http://</span></code> or <code class="docutils literal notranslate"><span class="pre">https://</span></code> URL with no <code class="docutils literal notranslate"><span class="pre">/api/v4</span></code> suffix, query, fragment or user name, or the process refuses to start naming the field (it used to fail at the first sign-in). Accounts signed in through GitLab belong to this instance (v0.29.69): after moving to another instance, the same people sign in as new accounts, and a name the old instance’s accounts hold is refused until an administrator frees it (see <a class="reference internal" href="../guide/web-gui.html#login-flow"><span class="std std-ref">Login Flow</span></a>). GitLab accounts from before v0.29.69 carry no instance; <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> records this value on them at every start with GitLab sign-in configured (<code class="docutils literal notranslate"><span class="pre">web.gitlab_client_id</span></code> set), so start 0.29.69 once that way, with the instance those accounts came from, before you change this setting or turn GitLab sign-in on under another instance.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.api_internal_url</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.api_internal_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;http://127.0.0.1:8383&quot;</span></code></p></td>
 <td><p>Server-to-server URL where the web process reaches <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">api</span></code>. The web server reverse-proxies <code class="docutils literal notranslate"><span class="pre">/api/*</span></code> requests to this URL so the browser only talks to the web origin. Set this to a remote URL if running the API on a different host.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
-<td><p>Trusted origin of the separate-repo SPA (aveloxis-gui), e.g. <code class="docutils literal notranslate"><span class="pre">https://gui.example.org</span></code> (or <code class="docutils literal notranslate"><span class="pre">http://localhost:8000</span></code> in dev). When set, the OAuth flow honors a <code class="docutils literal notranslate"><span class="pre">?next=</span></code> URL under this origin so signing in from the SPA returns the user to the SPA instead of the server-rendered <code class="docutils literal notranslate"><span class="pre">/dashboard</span></code>. Relative <code class="docutils literal notranslate"><span class="pre">next</span></code> paths are always honored; anything else is rejected (open-redirect protection). When set, the emails the web AND api processes send link to that front end’s pages (its group, pending-approvals and profile pages; the confirmation link carries its token in the URL fragment) instead of the web process’s own — restart both processes after changing it; empty keeps the web process’s pages. Must be the origin exactly as the browser’s address bar shows it (lowercase scheme and ASCII host, no default port, no path, no trailing slash, query or fragment): the loader refuses anything else and names the key.</p></td>
+<td><p>Trusted origin of the separate-repo SPA (aveloxis-gui), e.g. <code class="docutils literal notranslate"><span class="pre">https://gui.example.org</span></code> (or <code class="docutils literal notranslate"><span class="pre">http://localhost:8000</span></code> in dev). Since 0.29.102 it is also the one foreign origin whose <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/auth/token</span></code> and <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/logout</span></code> the web process accepts (the cross-site guard refuses every other origin), so a GUI on its own origin needs it set. When set, the OAuth flow honors a <code class="docutils literal notranslate"><span class="pre">?next=</span></code> URL under this origin so signing in from the SPA returns the user to the SPA instead of the server-rendered <code class="docutils literal notranslate"><span class="pre">/dashboard</span></code>. Relative <code class="docutils literal notranslate"><span class="pre">next</span></code> paths are always honored; anything else is rejected (open-redirect protection). When set, the emails the web AND api processes send link to that front end’s pages (its group, pending-approvals and profile pages; the confirmation link carries its token in the URL fragment) instead of the web process’s own — restart both processes after changing it; empty keeps the web process’s pages. Must be the origin exactly as the browser’s address bar shows it (lowercase scheme and ASCII host, no default port, no path, no trailing slash, query or fragment): the loader refuses anything else and names the key.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.auto_approve_add_limit</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.auto_approve_add_limit</span></code></p></td>
 <td><p>int</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
 <td><p>Per-add approval (v0.27.20): when &gt; 0, a non-admin batch of NOT-yet-tracked repo URLs at or under this size is collected immediately (with an auto-approved audit request); larger batches — and a NEW org registration — wait for admin approval on the Approvals page. An org already registered in a group that is not rejected auto-approves (it adds no new collection). <code class="docutils literal notranslate"><span class="pre">0</span></code> (default) = every non-admin addition of new repos requires approval. Already-collected repos always link instantly for everyone; approval gates collection load, never visibility. The repositories an automatically approved paste adds count toward <code class="docutils literal notranslate"><span class="pre">capacity.repo_links_per_day</span></code> (v0.29.91).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>The address of the proxy in front of the web GUI (<code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> for nginx on the same host), in canonical form (v0.29.89). Only from it is <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code> believed, which gives the sign-in callback the browser’s address for <code class="docutils literal notranslate"><span class="pre">capacity.signups_per_address_per_day</span></code>. Behind nginx without it, every sign-up looks like nginx’s address and the quota counts them all as one. Empty believes no header. It also decides the one client address the web’s <code class="docutils literal notranslate"><span class="pre">/api</span></code> proxy forwards to the api (v0.29.91).</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.signup_escrow_recipient</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.signup_escrow_recipient</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>Your age public key (<code class="docutils literal notranslate"><span class="pre">age1…</span></code>, v0.29.89). Each new account’s network address is sealed to it and kept for one year, so it can be opened offline with the matching private key if a legal requirement demands it; the server can never open it. Empty keeps no address past its UTC day. Make the pair with <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">signup-escrow</span> <span class="pre">keygen</span></code> on an offline machine. The whole procedure, including opening an envelope, is in <a class="reference internal" href="../guide/signup-escrow.html"><span class="std std-doc">Sign-up address escrow</span></a>. An invalid key is refused at startup.</p></td>
@@ -2811,7 +2803,7 @@ a half against its own reference table below:</p>
 </tbody>
 </table>
 <p>An approved organization is collected in full, but the account links its repositories only up to its repository value: when you approve a large organization for an account, raise that account’s value. An administrator can raise or lower one account’s repository and request values on the Capacity page; their own signed-in session is never refused (it is still counted). A new quota ships in shadow so its effect can be read in the logs for about a week before it is turned on.</p>
-<p><strong>Set your own contact address before you enforce any quota.</strong> The migrate seeds the contact address every refusal names as <code class="docutils literal notranslate"><span class="pre">aveloxis.io&#64;gmail.com</span></code>, the Aveloxis project’s address, on every deployment. Left as it is, heavy users of your host are told to write to the Aveloxis project. Change it to your own on the Capacity page, or with <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/capacity/contact</span></code> and <code class="docutils literal notranslate"><span class="pre">{&quot;contact_email&quot;:</span> <span class="pre">&quot;…&quot;}</span></code> from an administrator’s session (an empty value offers no address); see the API guide, “Capacity (admin)”.</p>
+<p><strong>Set your own contact address before you enforce any quota.</strong> The address every refusal names comes from <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.capacity_settings</span></code>. A new install (0.29.100 on) seeds it from <code class="docutils literal notranslate"><span class="pre">mail.operator_email</span></code> when that key is set, and leaves it empty otherwise (a refusal then names no address); a deployment first migrated by 0.29.89–0.29.99 was seeded with <code class="docutils literal notranslate"><span class="pre">aveloxis.io&#64;gmail.com</span></code>, the Aveloxis project’s address, and keeps it until you change it — left as it is, heavy users of your host are told to write to the Aveloxis project. Set it on the Capacity page, or with <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/capacity/contact</span></code> and <code class="docutils literal notranslate"><span class="pre">{&quot;contact_email&quot;:</span> <span class="pre">&quot;…&quot;}</span></code> from an administrator’s session (an empty value offers no address); see the API guide, “Capacity (admin)”.</p>
 <p>Log level descriptions:</p>
 <ul class="simple">
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">debug</span></code></strong> – Very verbose. Includes individual API calls, staging writes, and contributor resolution details. Use for troubleshooting.</p></li>
@@ -3050,7 +3042,7 @@ does).</p>
 </section>
 <section id="email-gmail-smtp-optional">
 <h2>Email (Gmail SMTP, optional)<a class="headerlink" href="#email-gmail-smtp-optional" title="Link to this heading"></a></h2>
-<p>Aveloxis can send transactional emails (welcome on first signup, group-approval notifications) via Gmail SMTP. The mailer is <strong>optional</strong> — when not configured, the application works fine without sending email.</p>
+<p>Aveloxis can send transactional emails (welcome on first signup, account-email confirmation links, the operator’s notice of a pending addition and its decision, the vulnerability digest) via Gmail SMTP. The mailer is <strong>optional</strong> — when not configured, the application works fine without sending email.</p>
 <section id="setup">
 <h3>Setup<a class="headerlink" href="#setup" title="Link to this heading"></a></h3>
 <ol class="arabic simple">
@@ -3098,14 +3090,14 @@ does).</p>
 </section>
 <section id="validation-at-startup">
 <h3>Validation at startup<a class="headerlink" href="#validation-at-startup" title="Link to this heading"></a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code>, <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">api</span></code> and <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code> each run <code class="docutils literal notranslate"><span class="pre">mailer.ValidateConfig</span></code> against the supplied block when they start, and log the result: <code class="docutils literal notranslate"><span class="pre">mailer</span> <span class="pre">configured</span></code> (with <code class="docutils literal notranslate"><span class="pre">operator_email</span></code>; since 0.29.71 both addresses on that line are masked to their first character and domain, e.g. <code class="docutils literal notranslate"><span class="pre">o***&#64;example.com</span></code>), <code class="docutils literal notranslate"><span class="pre">mailer</span> <span class="pre">disabled</span></code>, or a WARN. If validation fails, the WARN line is emitted before any user can sign up:</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">mail</span></code> block is checked when <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> loads, by every command (0.29.100 on): an invalid block stops the process with <code class="docutils literal notranslate"><span class="pre">invalid</span> <span class="pre">config:</span> <span class="pre">mail:</span> <span class="pre">…</span></code> naming the field, before any user can sign up. A valid block is reported once at startup by <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code>, <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">api</span></code> and <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code>: <code class="docutils literal notranslate"><span class="pre">mailer</span> <span class="pre">configured</span></code> (with <code class="docutils literal notranslate"><span class="pre">operator_email</span></code>; since 0.29.71 both addresses on that line are masked to their first character and domain, e.g. <code class="docutils literal notranslate"><span class="pre">o***&#64;example.com</span></code>) or <code class="docutils literal notranslate"><span class="pre">mailer</span> <span class="pre">disabled</span></code>. The refusals:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">mail.gmail_user</span> <span class="pre">&quot;aveloxis.io&quot;</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">an</span> <span class="pre">email</span> <span class="pre">address</span></code> — you set the bare domain. Use the full address (<code class="docutils literal notranslate"><span class="pre">ops&#64;aveloxis.io</span></code>).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">mail.gmail_app_password</span> <span class="pre">is</span> <span class="pre">N</span> <span class="pre">character(s)</span> <span class="pre">after</span> <span class="pre">removing</span> <span class="pre">display-format</span> <span class="pre">spaces</span> <span class="pre">but</span> <span class="pre">Google</span> <span class="pre">App</span> <span class="pre">Passwords</span> <span class="pre">are</span> <span class="pre">exactly</span> <span class="pre">16</span> <span class="pre">lowercase</span> <span class="pre">letters</span></code> — you pasted a regular password or something else. Generate an actual App Password.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">mail.gmail_user</span> <span class="pre">is</span> <span class="pre">empty</span> <span class="pre">but</span> <span class="pre">mail.gmail_app_password</span> <span class="pre">is</span> <span class="pre">set</span></code> (or vice versa) — partial config. Either fill both fields or empty both.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">mail.site_url</span> <span class="pre">must</span> <span class="pre">be</span> <span class="pre">an</span> <span class="pre">absolute</span> <span class="pre">http://</span> <span class="pre">or</span> <span class="pre">https://</span> <span class="pre">URL</span> <span class="pre">with</span> <span class="pre">a</span> <span class="pre">host</span></code> (or <code class="docutils literal notranslate"><span class="pre">must</span> <span class="pre">not</span> <span class="pre">contain</span> <span class="pre">a</span> <span class="pre">query</span> <span class="pre">(?),</span> <span class="pre">a</span> <span class="pre">fragment</span> <span class="pre">(#),</span> <span class="pre">a</span> <span class="pre">user</span> <span class="pre">name</span> <span class="pre">or</span> <span class="pre">spaces</span></code>) — the value would make links that cannot be followed, such as a bare domain or a comma-separated list of URLs. Use the one full public URL (<code class="docutils literal notranslate"><span class="pre">https://aveloxis.example</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mail.site_url</span> <span class="pre">must</span> <span class="pre">be</span> <span class="pre">an</span> <span class="pre">absolute</span> <span class="pre">http://</span> <span class="pre">or</span> <span class="pre">https://</span> <span class="pre">URL</span> <span class="pre">with</span> <span class="pre">a</span> <span class="pre">host</span></code> (or <code class="docutils literal notranslate"><span class="pre">must</span> <span class="pre">not</span> <span class="pre">contain</span> <span class="pre">a</span> <span class="pre">query</span> <span class="pre">(?),</span> <span class="pre">a</span> <span class="pre">fragment</span> <span class="pre">(#),</span> <span class="pre">a</span> <span class="pre">user</span> <span class="pre">name</span> <span class="pre">or</span> <span class="pre">spaces</span></code>) — the value would make links that cannot be followed, such as a bare domain or a comma-separated list of URLs. Use the one full public URL (<code class="docutils literal notranslate"><span class="pre">https://aveloxis.example</span></code>). A set <code class="docutils literal notranslate"><span class="pre">site_url</span></code> is checked even with the Gmail pair empty: a value that is set must be right.</p></li>
 </ul>
-<p>When validation fails, the mailer falls back to disabled behavior so the rest of the application keeps working: no email is sent, and every send returns a “not configured” error. Notification emails (welcome, approval and add-request) ignore that error; <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">test-mail</span></code> refuses before sending and exits non-zero with the validation error, <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code> does not start the vulnerability digest and logs an ERROR saying why, and the account-email form refuses new addresses. Fix the config and restart the processes (<code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">stop</span> <span class="pre">all</span></code>, then <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">start</span> <span class="pre">all</span></code>) to enable the mailer.</p>
+<p>When validation fails, every process refuses to start (0.29.100 on): <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> is loaded with <code class="docutils literal notranslate"><span class="pre">invalid</span> <span class="pre">config:</span> <span class="pre">mail:</span> <span class="pre">…</span></code> naming the field, as for any other invalid value — a half-filled block (<code class="docutils literal notranslate"><span class="pre">gmail_user</span></code> without <code class="docutils literal notranslate"><span class="pre">gmail_app_password</span></code> or the reverse), a <code class="docutils literal notranslate"><span class="pre">gmail_user</span></code> that is not an address, a password that is not a 16-letter App Password, a <code class="docutils literal notranslate"><span class="pre">site_url</span></code> that is not a URL. Until 0.29.99 the mailer ran with mail disabled and a WARN instead, so a mistyped password surfaced only at the first refused confirmation link. Fix the block, or empty it to run without mail, then start the processes again.</p>
 </section>
 <section id="verifying-the-setup-with-aveloxis-test-mail">
 <h3>Verifying the setup with <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">test-mail</span></code><a class="headerlink" href="#verifying-the-setup-with-aveloxis-test-mail" title="Link to this heading"></a></h3>
@@ -3113,11 +3105,11 @@ does).</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>aveloxis<span class="w"> </span>test-mail<span class="w"> </span>your-personal-address@example.com
 </pre></div>
 </div>
-<p>The command runs the same <code class="docutils literal notranslate"><span class="pre">ValidateConfig</span></code> check, then calls <code class="docutils literal notranslate"><span class="pre">mailer.Send</span></code> against <code class="docutils literal notranslate"><span class="pre">smtp.gmail.com:587</span></code>. Output:</p>
+<p>The mail block was already checked when <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> loaded (an invalid one stops the command like any other, naming the field); the command then calls <code class="docutils literal notranslate"><span class="pre">mailer.Send</span></code> against <code class="docutils literal notranslate"><span class="pre">smtp.gmail.com:587</span></code>. Output:</p>
 <ul class="simple">
 <li><p><strong>Success</strong>: <code class="docutils literal notranslate"><span class="pre">test</span> <span class="pre">email</span> <span class="pre">sent</span> <span class="pre">successfully</span> <span class="pre">to=...</span></code> — Gmail accepted the message, so the credentials are working. The test email arrives within seconds.</p></li>
 <li><p><strong>Not sent</strong>: <code class="docutils literal notranslate"><span class="pre">send</span> <span class="pre">failed:</span> <span class="pre">mailer:</span> <span class="pre">mail</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">configured</span></code> (the <code class="docutils literal notranslate"><span class="pre">mail</span></code> block is empty) or <code class="docutils literal notranslate"><span class="pre">send</span> <span class="pre">failed:</span> <span class="pre">mailer:</span> <span class="pre">recipient</span> <span class="pre">skipped:</span> <span class="pre">…</span></code> (the recipient is not one deliverable address — a list, a quoted local part, or longer than the SMTP limits). The command exits non-zero; no SMTP attempt is made.</p></li>
-<li><p><strong>Validation error</strong>: command exits non-zero with a clear message. Fix <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> and try again. No SMTP attempt is made.</p></li>
+<li><p><strong>Invalid mail block</strong>: the command stops at load with <code class="docutils literal notranslate"><span class="pre">invalid</span> <span class="pre">config:</span> <span class="pre">mail:</span> <span class="pre">…</span></code> naming the field. Fix <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> and try again. No SMTP attempt is made.</p></li>
 <li><p><strong>SMTP error from Gmail itself</strong> (e.g. <code class="docutils literal notranslate"><span class="pre">535</span> <span class="pre">5.7.8</span> <span class="pre">Username</span> <span class="pre">and</span> <span class="pre">Password</span> <span class="pre">not</span> <span class="pre">accepted</span></code>): credentials look syntactically correct but Gmail rejected them. Most likely: App Password generated against a different account, or 2-Step Verification was just disabled on the account that owns the App Password.</p></li>
 </ul>
 </section>

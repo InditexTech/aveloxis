@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 )
 
@@ -36,14 +37,15 @@ func TestAdminDecisionFailureLogsOneLine(t *testing.T) {
 		serve                       func(*Server, http.ResponseWriter, *http.Request)
 		values                      map[string]string
 	}{
-		{"group decision", "/api/v1/admin/groups/42/approve", "handleAdminGroupDecision", "group 42",
-			(*Server).handleAdminGroupDecision, map[string]string{"groupID": "42", "decision": "approve"}},
+		{"group decision", "/api/v1/admin/groups/42/reject", "handleAdminGroupReject", "group 42",
+			(*Server).handleAdminGroupReject, map[string]string{"groupID": "42"}},
 		{"add-request decision", "/api/v1/admin/add-requests/43/reject", "handleAdminAddRequestDecision", "request 43",
 			(*Server).handleAdminAddRequestDecision, map[string]string{"requestID": "43", "decision": "reject"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logs := &lockedBuffer{}
 			s := &Server{store: closed, logger: slog.New(slog.NewTextHandler(logs, nil)), auth: newAuthenticator(closed, false, nil)}
+			s.admin = admin.New(closed, admin.Options{}, apiHooks{s}, s.logger)
 			r := httptest.NewRequest(http.MethodPost, tc.path, nil)
 			for k, v := range tc.values {
 				r.SetPathValue(k, v)

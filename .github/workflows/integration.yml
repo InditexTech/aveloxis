@@ -150,3 +150,139 @@ jobs:
           CFG
           /tmp/aveloxis migrate -c /tmp/ci-verify.json
           /tmp/aveloxis data-verify -c /tmp/ci-verify.json
+
+  # The upgrade a host performs (0.29.107, after the PR #238 loops): the
+  # BASE release — the PR's base branch, or the newest release tag on a
+  # push — migrates an empty database and populates it; the HEAD release
+  # then migrates that database the way the deploy ladders do (plain,
+  # --skip-views, plain again) and the stamp, the seeded rows, the index
+  # validity and data-verify must hold. The empty-database golden cannot
+  # see a same-release column+index ordering (SR-8), a CONCURRENTLY index
+  # over existing rows (SR-2) or a once-only step that is not; this can.
+  upgrade-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aveloxis_test
+          POSTGRES_PASSWORD: aveloxis_test
+          POSTGRES_DB: aveloxis_upgrade
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TZ: America/Chicago
+      PGTZ: America/Chicago
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build the head release
+        run: go build -o "$RUNNER_TEMP/aveloxis-head" ./cmd/aveloxis
+      # A pull request upgrades from its base branch; a push upgrades from
+      # the newest release tag (what a host runs).
+      - name: Build the base release
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$BASE_REF" ]; then ref="origin/$BASE_REF"; else ref=$(git tag --list 'v*' --sort=-v:refname | head -1); fi
+          [ -n "$ref" ] || { echo "no base ref: no base branch and no v* tag"; exit 1; }
+          echo "base ref: $ref ($(git rev-parse --short "$ref"))"
+          mkdir -p "$RUNNER_TEMP/base"
+          git archive "$ref" | tar -x -C "$RUNNER_TEMP/base"
+          (cd "$RUNNER_TEMP/base" && GOWORK=off go build -o "$RUNNER_TEMP/aveloxis-base" ./cmd/aveloxis)
+      - name: Upgrade the populated database from base to head
+        env:
+          BASE_BIN: ${{ runner.temp }}/aveloxis-base
+          HEAD_BIN: ${{ runner.temp }}/aveloxis-head
+          CFG: ${{ runner.temp }}/ci-upgrade.json
+          PGURL: postgres://aveloxis_test:aveloxis_test@localhost:5432/aveloxis_upgrade?sslmode=disable
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A push whose head still carries the newest tag's version (a branch
+          # cut from the tagged commit, a docs-only push after a release) has
+          # nothing to upgrade: a notice, not a failure. On a pull request equal
+          # versions mean a missing bump and stay a failure.
+          SAME_VERSION_OK: ${{ github.event_name != 'pull_request' }}
+        run: |
+          cat > "$CFG" <<'CFG'
+          {"database": {"host": "localhost", "port": 5432,
+            "dbname": "aveloxis_upgrade", "user": "aveloxis_test",
+            "password": "aveloxis_test", "sslmode": "disable"}}
+          CFG
+          scripts/ci-upgrade-path.sh
+
+  # The three processes a deployment runs, started from one binary against
+  # one database, and the contracts BETWEEN them exercised over HTTP
+  # (0.29.107): the API refuses an anonymous call; a web session exchanges
+  # for a Bearer token; the web guard refuses a multipart or over-size form
+  # before any gate; privilege is read per request; a sign-out in web is a
+  # 401 in api at once; serve starts on the migrated database and every
+  # process stops cleanly on SIGTERM. The run's own token is serve's one
+  # API key (serve refuses to start without one); nothing is collected.
+  processes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aveloxis_test
+          POSTGRES_PASSWORD: aveloxis_test
+          POSTGRES_DB: aveloxis_processes
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TZ: America/Chicago
+      PGTZ: America/Chicago
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build -o "$RUNNER_TEMP/aveloxis" ./cmd/aveloxis
+      - name: Run serve, api and web and exercise the contracts between them
+        env:
+          BIN: ${{ runner.temp }}/aveloxis
+          CFG: ${{ runner.temp }}/ci-processes.json
+          PGURL: postgres://aveloxis_test:aveloxis_test@localhost:5432/aveloxis_processes?sslmode=disable
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WEB_ADDR: 127.0.0.1:8082
+          API_ADDR: 127.0.0.1:8383
+          LOGDIR: ${{ runner.temp }}/process-logs
+        run: |
+          mkdir -p "$LOGDIR"
+          cat > "$CFG" <<'CFG'
+          {"database": {"host": "localhost", "port": 5432,
+            "dbname": "aveloxis_processes", "user": "aveloxis_test",
+            "password": "aveloxis_test", "sslmode": "disable"},
+           "api": {"addr": "127.0.0.1:8383", "require_auth": true,
+            "exempt_cidrs": ["192.0.2.0/24"],
+            "rate_limit_rps": 100, "rate_limit_burst": 100},
+           "web": {"addr": "127.0.0.1:8082", "dev_mode": true,
+            "base_url": "http://127.0.0.1:8082",
+            "api_internal_url": "http://127.0.0.1:8383"}}
+          CFG
+          scripts/ci-process-contracts.sh
+      - name: Keep the three processes' logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: process-logs
+          path: ${{ runner.temp }}/process-logs
+          if-no-files-found: ignore

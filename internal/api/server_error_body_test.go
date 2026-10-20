@@ -108,7 +108,7 @@ func TestServerErrorBodyIsGeneric(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logs strings.Builder
+	var logs lockedBuffer
 	s := New(servedStore(t, dsn), slog.New(slog.NewTextHandler(&logs, nil)))
 	get := func() *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/groups", nil)
@@ -121,7 +121,8 @@ func TestServerErrorBodyIsGeneric(t *testing.T) {
 	if rec := get(); rec.Code != http.StatusOK {
 		t.Fatalf("priming GET /api/v1/groups = %d %s", rec.Code, rec.Body.String())
 	}
-	s.store.Close() // the token stays cached; the handler's query now fails
+	s.auth.store = authStandIn(uid, token) // the handler's store failure is the subject; the per-call token recheck (0.29.102) answers from a stand-in
+	s.store.Close()                        // the token stays cached; the handler's query now fails
 	rec := get()
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("GET /api/v1/groups over a closed pool = %d %s; want 500", rec.Code, rec.Body.String())
@@ -130,8 +131,14 @@ func TestServerErrorBodyIsGeneric(t *testing.T) {
 	if strings.Contains(body, "closed pool") || strings.Contains(body, "pgx") || strings.Contains(body, "aveloxis_ops") {
 		t.Errorf("the 500 body carries the store's error text: %q", body)
 	}
-	if !strings.Contains(logs.String(), "level=ERROR") || !strings.Contains(logs.String(), "closed pool") {
-		t.Errorf("the failure's cause is not in the log:\n%s", logs.String())
+	// The ERROR line itself names the cause (the capacity refresh's WARN
+	// also carries "closed pool" once the pool is closed under it).
+	logged := false
+	for _, line := range strings.Split(logs.String(), "\n") {
+		logged = logged || (strings.Contains(line, "level=ERROR") && strings.Contains(line, "closed pool"))
+	}
+	if !logged {
+		t.Errorf("the failure's cause is not on an ERROR line in the log:\n%s", logs.String())
 	}
 }
 
@@ -244,7 +251,7 @@ func TestGroupAddRepoBustsTheTokenCache(t *testing.T) {
 // failure — nobody is listening — and its sibling refuseStoreError already
 // classifies it as Debug; an ERROR per abandoned navigation is noise.
 func TestServerErrorIsQuietOnACanceledRequest(t *testing.T) {
-	var logs strings.Builder
+	var logs lockedBuffer
 	s := &Server{logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))}
 	rec := httptest.NewRecorder()
 	// NET-6 review r5 F1: "cancelled" is the REQUEST's context being done.
@@ -316,7 +323,7 @@ func TestGroupListsAreNot403OnAStoreFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logs strings.Builder
+	var logs lockedBuffer
 	s := New(servedStore(t, dsn), slog.New(slog.NewTextHandler(&logs, nil)))
 	get := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -332,17 +339,18 @@ func TestGroupListsAreNot403OnAStoreFailure(t *testing.T) {
 			t.Fatalf("priming GET %s = %d %s", p, rec.Code, rec.Body.String())
 		}
 	}
-	// Someone else's group, and a group id nobody has, are still the
-	// caller's 403 (PR #218 review C14: only the missing id was exercised,
-	// under a comment naming someone else's group).
+	// Someone else's group, and a group id nobody has, are the caller's
+	// 404 alike (N11, stage 1 of summary/59; PR #218 review C14: only the
+	// missing id was exercised, under a comment naming someone else's group).
 	for _, g := range []int64{otherGID, otherGID + 1000000} {
 		for _, p := range []string{fmt.Sprintf("/api/v1/groups/%d/repos", g), fmt.Sprintf("/api/v1/groups/%d/orgs", g)} {
-			if rec := get(p); rec.Code != http.StatusForbidden {
-				t.Errorf("GET %s, a group the caller does not own = %d; want 403", p, rec.Code)
+			if rec := get(p); rec.Code != http.StatusNotFound {
+				t.Errorf("GET %s, a group the caller does not own = %d; want 404", p, rec.Code)
 			}
 		}
 	}
-	s.store.Close() // the token stays cached; the list queries now fail
+	s.auth.store = authStandIn(uid, token) // the handler's store failure is the subject; the per-call token recheck (0.29.102) answers from a stand-in
+	s.store.Close()                        // the token stays cached; the list queries now fail
 	for _, p := range []string{repos, orgs} {
 		logs.Reset()
 		rec := get(p)
@@ -393,7 +401,7 @@ func TestRepoLookupsAreNot404OnAStoreFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logs strings.Builder
+	var logs lockedBuffer
 	s := New(servedStore(t, dsn), slog.New(slog.NewTextHandler(&logs, nil)))
 	get := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -409,7 +417,8 @@ func TestRepoLookupsAreNot404OnAStoreFailure(t *testing.T) {
 			t.Errorf("GET %s (nothing there) = %d %q; want 404", p, rec.Code, rec.Body.String())
 		}
 	}
-	s.store.Close() // the token stays cached; the lookups now fail
+	s.auth.store = authStandIn(uid, token) // the handler's store failure is the subject; the per-call token recheck (0.29.102) answers from a stand-in
+	s.store.Close()                        // the token stays cached; the lookups now fail
 	for _, p := range paths {
 		logs.Reset()
 		rec := get(p)
@@ -490,7 +499,7 @@ func TestSBOMDownloadAnswers404ForARepoNobodyHas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logs strings.Builder
+	var logs lockedBuffer
 	s := New(servedStore(t, dsn), slog.New(slog.NewTextHandler(&logs, nil)))
 	get := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -504,9 +513,18 @@ func TestSBOMDownloadAnswers404ForARepoNobodyHas(t *testing.T) {
 	if rec := get(path); rec.Code != http.StatusNotFound || strings.Contains(rec.Body.String(), "no rows") {
 		t.Errorf("SBOM of a repository nobody has = %d %q; want a plain 404", rec.Code, rec.Body.String())
 	}
+	s.auth.store = authStandIn(uid, token) // the handler's store failure is the subject; the per-call token recheck (0.29.102) answers from a stand-in
 	s.store.Close()
 	logs.Reset()
 	if rec := get(path); rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "closed pool") || !strings.Contains(logs.String(), "level=ERROR") {
 		t.Errorf("SBOM over a closed pool = %d %q (logs: %q); want a logged 500 without the store's text", rec.Code, rec.Body.String(), logs.String())
 	}
+}
+
+// authStandIn answers the authenticator's per-call token recheck (0.29.102:
+// a session token is validated against its row on every request) for a
+// test whose subject is the HANDLER's store failure: the identity was
+// resolved and cached from the live store; only the recheck comes here.
+func authStandIn(uid int, token string) *fakeSessionStore {
+	return &fakeSessionStore{userID: uid, valid: map[string]bool{token: true}}
 }

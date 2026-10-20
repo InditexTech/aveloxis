@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 	"github.com/aveloxis/aveloxis/internal/mailer"
+	"github.com/aveloxis/aveloxis/internal/model"
 	"github.com/aveloxis/aveloxis/internal/platform"
 )
 
@@ -38,6 +40,8 @@ func defaultCloneDir() string {
 
 // Config is the top-level Aveloxis configuration.
 type Config struct {
+	loadWarnings []string // LoadWarnings: removed keys the file still carries
+
 	Database DatabaseConfig `json:"database"`
 	GitHub   PlatformConfig `json:"github"`
 	GitLab   PlatformConfig `json:"gitlab"`
@@ -224,23 +228,35 @@ func (d DatabaseConfig) ConnectionStringWithAppName(name string) string {
 type PlatformConfig struct {
 	APIKeys []string `json:"api_keys"`
 	BaseURL string   `json:"base_url,omitempty"` // override for self-hosted instances
-
-	// GitLabHosts lists additional hostnames that should be recognized as
-	// GitLab instances (for self-hosted). Only relevant for GitLab config.
-	GitLabHosts []string `json:"gitlab_hosts,omitempty"`
 }
+
+// removedKeys are configuration keys that no longer exist, each with what
+// replaced it. The loader ignores unknown keys silently (json.Unmarshal),
+// so a file still carrying one is reported through LoadWarnings — an
+// operator who relied on the documented behaviour learns that it never
+// ran (stage 1 of summary/59, N15: gitlab.gitlab_hosts was read nowhere;
+// the configured gitlab.base_url names the instance a URL is classified
+// against).
+var removedKeys = map[string]string{
+	"gitlab.gitlab_hosts": "the GitLab instance is gitlab.base_url; a repository URL under its web URL is classified as GitLab (the key was never read)",
+	"web.session_secret":  "sessions are hashed rows of aveloxis_ops.user_session_tokens that sign nothing (0.29.102; the key was never read)",
+}
+
+// LoadWarnings are the warnings Load collected about the file: one line
+// per removed key it still carries. The caller logs them at WARN.
+func (c *Config) LoadWarnings() []string { return c.loadWarnings }
 
 // WebConfig configures the web GUI and OAuth.
 type WebConfig struct {
 	// Addr is the listen address for the web GUI (default ":8082").
 	Addr string `json:"addr"`
 
-	// SessionSecret is reserved: the loader accepts it and nothing reads it
-	// today. Web sessions are random tokens held in the web process (lost on
-	// its restart); the API's Bearer tokens are stored in the database.
-	// Pinned by scripts/session_secret_docs_test.go: while it stays unread,
-	// no page may say it signs cookies or keeps sessions across restarts.
-	SessionSecret string `json:"session_secret"`
+	// web.session_secret was REMOVED in 0.29.102 (CORE-11): sessions are
+	// hashed random rows of aveloxis_ops.user_session_tokens that survive a
+	// restart and sign nothing, so nothing could ever read it. A file that
+	// still carries the key loads with a LoadWarnings line (removedKeys,
+	// 0.29.106); scripts/session_secret_removed_test.go keeps it out of the
+	// code, the examples and the docs.
 
 	// BaseURL is the external URL for OAuth callbacks (e.g., "https://aveloxis.example.com").
 	BaseURL string `json:"base_url"`
@@ -260,7 +276,12 @@ type WebConfig struct {
 	// GitLab OAuth app credentials (from https://gitlab.com/-/profile/applications).
 	GitLabClientID     string `json:"gitlab_client_id"`
 	GitLabClientSecret string `json:"gitlab_client_secret"`
-	GitLabBaseURL      string `json:"gitlab_base_url"` // default "https://gitlab.com"
+	// GitLabBaseURL is the web base of the GitLab instance people sign in
+	// through (its OAuth endpoints and /api/v4/user read are appended to
+	// it; the users rows record it as the account's instance). Read
+	// through GitLabOAuthBase; validated at load. Default
+	// platform.PublicGitLabWebBase.
+	GitLabBaseURL string `json:"gitlab_base_url"`
 
 	// APIInternalURL is where the web server reaches the `aveloxis api` process
 	// server-to-server. The web server reverse-proxies /api/* requests to this
@@ -308,6 +329,23 @@ type WebConfig struct {
 	// nothing. Generate the pair with `aveloxis signup-escrow keygen`; the
 	// private key never goes on the server. Refused at load if invalid.
 	SignupEscrowRecipient string `json:"signup_escrow_recipient,omitempty"`
+}
+
+// GitLabOAuthBase is the GitLab instance's web base the OAuth endpoints
+// and the stored instance key are built from: web.gitlab_base_url trimmed
+// of space and trailing slashes (a trailing slash made the token URL
+// "//oauth/token" and every GitLab sign-in failed, 2026-09-28), or
+// platform.PublicGitLabWebBase when empty. The ONE default (0.29.101,
+// WEB-14 of summary/59: the web server, the callback and the store each
+// spelled it). Load has validated a non-empty value as an instance web
+// URL (model.NormalizeInstanceWebBase's rule); the spelling is kept as
+// typed, since an instance path is case-sensitive.
+func (w WebConfig) GitLabOAuthBase() string {
+	base := strings.TrimRight(strings.TrimSpace(w.GitLabBaseURL), "/")
+	if base == "" {
+		return platform.PublicGitLabWebBase
+	}
+	return base
 }
 
 // AutoApproveAddLimitValue returns the effective auto-approve limit:
@@ -1575,7 +1613,29 @@ func Load(path string) (*Config, error) {
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
+	cfg.loadWarnings = removedKeyWarnings(data)
 	return cfg, nil
+}
+
+// removedKeyWarnings names every removed key the raw file still carries.
+func removedKeyWarnings(data []byte) []string {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil
+	}
+	var out []string
+	for key, replacement := range removedKeys {
+		block, field, _ := strings.Cut(key, ".")
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw[block], &fields); err != nil {
+			continue
+		}
+		if _, present := fields[field]; present {
+			out = append(out, fmt.Sprintf("config key %s is ignored — it was removed: %s", key, replacement))
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ErrNotFound is Load's answer to a config file that does not exist — the
@@ -1584,10 +1644,65 @@ func Load(path string) (*Config, error) {
 // is a file the operator wrote and must not be silently replaced.
 var ErrNotFound = errors.New("config file not found")
 
+// MailerConfig is the mailer's configuration as aveloxis.json gives it —
+// the one derivation every process's mailer is built from (cmd's
+// newWebServer, apiOptions, wireDigestMailer and test-mail; stage 1f of
+// summary/59 moved it here from cmd so Load validates the same value).
+func (c *Config) MailerConfig() mailer.Config {
+	return mailer.Config{
+		GmailUser:        c.Mail.GmailUser,
+		GmailAppPassword: c.Mail.GmailAppPassword,
+		FromName:         c.Mail.FromName,
+		SiteURL:          c.Mail.SiteURL,
+		OperatorEmail:    c.Mail.OperatorEmail,
+		SPAURL:           c.Web.SPAURL,
+	}
+}
+
 // validate refuses values no accessor can honour without a silent
 // coercion (SR-10: one default layer, never a clamp the operator cannot
 // see). Every refusal names the JSON key.
 func (c *Config) validate() error {
+	// An invalid mail block is fatal at load (N7, stage 1f of summary/59),
+	// as every other invalid value is since v0.29.61: a half-filled block
+	// (one of gmail_user / gmail_app_password), a user that is not an
+	// address, a password that is not an App Password, a bad site_url.
+	// Until now mailer.New logged a WARN and ran with mail disabled, so an
+	// operator who mistyped the password found out at the first refused
+	// confirmation link. An empty block (mail off) is valid.
+	if err := mailer.ValidateConfig(c.MailerConfig()); err != nil {
+		return fmt.Errorf("mail: %w", err)
+	}
+	// github.base_url has no twin of the two GitLab rules below (0.29.101
+	// round 1, declined): GitHub Enterprise is finished as a designed feature
+	// on the forge-instances shape (worklist 44, the 0.29.57 decision), and
+	// until then the public default is the only supported value — an https
+	// rule applies at key-lend time (platform.IsPublicGitHubBase).
+	// gitlab.base_url names the one instance the GitLab keys are sent to
+	// and the web base every classifier takes as its hint (0.29.100). A
+	// value from which no web base derives (no scheme, a query, …) would
+	// build keyed clients from one string while every gate read "no
+	// instance" (round-4 review): refused here. Empty means no instance.
+	if b := strings.TrimSpace(c.GitLab.BaseURL); b != "" {
+		if _, ok := platform.GitLabWebBaseForAPI(b); !ok {
+			// Echoed redacted (the refusal lands in the log; a pasted token
+			// must not). The suffix is required from 0.29.101: the REST
+			// client appends to the base as given.
+			return fmt.Errorf("gitlab.base_url %q is not an absolute http:// or https:// URL of the instance's API ending in %s, such as https://gitlab.example.org%s (no query, fragment or user name); empty it to run without a GitLab instance", platform.RedactURLUserinfo(b), platform.GitLabAPISuffix, platform.GitLabAPISuffix)
+		}
+	}
+	// web.gitlab_base_url is the instance people sign in through: the
+	// OAuth endpoints and the /api/v4/user read are appended to it and the
+	// users rows record it (0.29.101, the round-6 sibling of the rule
+	// above). A value that is not an instance's web URL — the API URL, no
+	// scheme, a query, a user name — is refused here, not at the first
+	// failed sign-in; its error text is not wrapped (it echoes the raw
+	// value). Empty means gitlab.com.
+	if b := strings.TrimSpace(c.Web.GitLabBaseURL); b != "" {
+		if _, err := model.NormalizeInstanceWebBase(b); err != nil {
+			return fmt.Errorf("web.gitlab_base_url %q is not an absolute http:// or https:// URL of the GitLab instance's web site, such as https://gitlab.example.org (not its %s API URL; no query, fragment or user name); empty it to sign in through %s", platform.RedactURLUserinfo(b), platform.GitLabAPISuffix, platform.PublicGitLabWebBase)
+		}
+	}
 	for name, word := range c.Capacity {
 		if _, known := capacity.Shipped[name]; !known {
 			return fmt.Errorf("capacity.%s is not a quota — the quotas are %s", name, strings.Join(capacity.QuotaNames(), ", "))
@@ -1959,11 +2074,11 @@ func DefaultConfig() *Config {
 			BaseURL: platform.PublicGitHubAPIBase,
 		},
 		GitLab: PlatformConfig{
-			BaseURL: "https://gitlab.com/api/v4",
+			BaseURL: platform.PublicGitLabAPIBase,
 		},
 		Web: WebConfig{
 			Addr:           ":8082",
-			GitLabBaseURL:  "https://gitlab.com",
+			GitLabBaseURL:  platform.PublicGitLabWebBase,
 			APIInternalURL: "http://127.0.0.1:8383",
 		},
 		Collection: CollectionConfig{

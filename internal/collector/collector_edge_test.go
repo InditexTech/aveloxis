@@ -54,7 +54,7 @@ func TestCollectResult_CountSummation(t *testing.T) {
 func TestClientForRepo_NilGitHubClient(t *testing.T) {
 	// ClientForRepo returns nil client without error when client is nil.
 	// The caller is expected to check.
-	client, owner, repo, err := ClientForRepo("https://github.com/org/repo", nil, nil)
+	client, owner, repo, err := ClientForRepo("https://github.com/org/repo", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestClientForRepo_NilGitHubClient(t *testing.T) {
 }
 
 func TestClientForRepo_NilGitLabClient(t *testing.T) {
-	client, owner, repo, err := ClientForRepo("https://gitlab.com/group/project", nil, nil)
+	client, owner, repo, err := ClientForRepo("https://gitlab.com/group/project", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

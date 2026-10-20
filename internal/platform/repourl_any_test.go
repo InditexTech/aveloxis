@@ -121,7 +121,10 @@ func TestParseOrgURL(t *testing.T) {
 }
 
 func TestParseOrgURL_Errors(t *testing.T) {
-	for _, u := range []string{"", "https://github.com", "https://github.com/"} {
+	// ftp://github.com/chaoss: not an org a browser or the API reaches —
+	// ParseOrgRef refuses the scheme, and so does this parser (0.29.106
+	// whole-branch review P5: OrgOnGitHubHost admitted it as enumerable).
+	for _, u := range []string{"", "https://github.com", "https://github.com/", "ftp://github.com/chaoss", "ssh://git@github.com/chaoss"} {
 		if _, _, err := ParseOrgURL(u); err == nil {
 			t.Errorf("ParseOrgURL(%q) expected error, got nil", u)
 		}

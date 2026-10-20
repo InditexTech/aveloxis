@@ -269,11 +269,11 @@ func TestAddRepoToGroupSharesRepoAcrossGroups(t *testing.T) {
 	}
 
 	canonicalURL := "https://github.com/" + slug + "_Org/Repo"
-	if err := store.AddRepoToGroup(ctx, userID, groupA, canonicalURL); err != nil {
+	if _, err := store.AddReposToGroup(ctx, userID, groupA, []string{canonicalURL}, 0, ""); err != nil {
 		t.Fatalf("group A add: %v", err)
 	}
 	// Second group adds the CASE VARIANT of the same repo.
-	if err := store.AddRepoToGroup(ctx, userID, groupB, strings.ToLower(canonicalURL)); err != nil {
+	if _, err := store.AddReposToGroup(ctx, userID, groupB, []string{strings.ToLower(canonicalURL)}, 0, ""); err != nil {
 		t.Fatalf("group B case-variant add: %v", err)
 	}
 

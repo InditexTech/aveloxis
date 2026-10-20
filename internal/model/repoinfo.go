@@ -132,3 +132,16 @@ func ForgeIDString(id int64) string {
 	}
 	return strconv.FormatInt(id, 10)
 }
+
+// ParseForgeID is ForgeIDString's inverse: the ID a forge ID string names,
+// and whether the string is one (the decimal of a positive int64, as
+// ForgeIDString writes it — no sign, no leading zero, no spaces). Input
+// that names a stored forge ID (an adoption's old and new IDs) is checked
+// here before it is looked up or logged (round-2 review of 0.29.100).
+func ParseForgeID(s string) (int64, bool) {
+	id, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || id <= 0 || ForgeIDString(id) != s {
+		return 0, false
+	}
+	return id, true
+}

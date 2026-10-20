@@ -11,11 +11,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/importers"
 	"github.com/aveloxis/aveloxis/internal/importers/apache"
 	"github.com/aveloxis/aveloxis/internal/importers/cncf"
-	"github.com/aveloxis/aveloxis/internal/model"
 	"github.com/aveloxis/aveloxis/internal/platform"
 	"github.com/spf13/cobra"
 )
@@ -114,22 +114,17 @@ func orgGroupName(foundation string) string {
 	}
 }
 
-// orgURLForRepo derives the canonical org URL from a project repo URL,
-// e.g. "https://github.com/apache/arrow" → "https://github.com/apache".
-// Returns "" for hosts we can't track as an org.
-func orgURLForRepo(rurl string) string {
-	parsed, err := platform.ParseRepoURL(rurl)
-	if err != nil || parsed.Owner == "" {
+// orgURLForRepo derives the organisation URL from a project repo URL on the
+// repository's own host (platform.OrgURLFor, the one spelling; CMD-12: the
+// loader sent every GitLab group to gitlab.com): "https://github.com/apache/arrow"
+// → "https://github.com/apache", "https://gitlab.example/g/sub/p" →
+// "https://gitlab.example/g/sub". "" for a host nothing enumerates.
+func orgURLForRepo(rurl string, gitlabWebBases []string) string {
+	parsed, err := platform.ParseRepoURLWithHints(rurl, gitlabWebBases)
+	if err != nil {
 		return ""
 	}
-	switch parsed.Platform {
-	case model.PlatformGitHub:
-		return "https://github.com/" + parsed.Owner
-	case model.PlatformGitLab:
-		return "https://gitlab.com/" + parsed.Owner
-	default:
-		return ""
-	}
+	return platform.OrgURLFor(parsed)
 }
 
 func runLoadFoundationOrgs(cfgPath string, opts foundationOrgsOpts) error {
@@ -163,7 +158,7 @@ func runLoadFoundationOrgs(cfgPath string, opts foundationOrgsOpts) error {
 	orgsByFoundation := map[string]map[string]bool{}
 	for _, p := range projects {
 		for _, rurl := range p.RepoURLs {
-			org := orgURLForRepo(rurl)
+			org := orgURLForRepo(rurl, platform.GitLabHints(cfg.GitLab.BaseURL))
 			if org == "" {
 				continue
 			}
@@ -212,18 +207,23 @@ func runLoadFoundationOrgs(cfgPath string, opts foundationOrgsOpts) error {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer store.Close()
+	// The loaders write groups and organisation registrations as the
+	// operator acting for the dashboard user (stage 1 of summary/59: only
+	// the admin service writes them; no hooks — the CLI has no caches).
+	svc := admin.New(store, admin.Options{GitHubAPIBase: cfg.GitHub.GitHubAPIBase(), GitLabAPIBase: cfg.GitLab.BaseURL}, nil, logger)
+	operator := admin.Actor{UserID: opts.UserID, Kind: admin.Operator}
 
 	added, failed := 0, 0
 	for _, f := range foundations {
 		name := orgGroupName(f)
-		groupID, gerr := store.CreateUserGroup(ctx, opts.UserID, name)
+		groupID, gerr := svc.CreateGroup(ctx, operator, name)
 		if gerr != nil {
 			logger.Warn("failed to create org-tracking group", "name", name, "error", gerr)
 			failed++
 			continue
 		}
 		for _, org := range sortedKeys(orgsByFoundation[f]) {
-			if _, err := store.AddOrgToGroup(ctx, opts.UserID, groupID, org, cfg.GitHub.GitHubAPIBase()); err != nil {
+			if _, err := svc.AddOrgToGroup(ctx, operator, groupID, org); err != nil {
 				// org_url: under the redaction pin's key rule. The value is
 				// rebuilt from a parsed owner (orgURLForRepo) and cannot carry
 				// userinfo, so the wrap is the identity here (review 5268977585

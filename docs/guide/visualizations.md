@@ -9,7 +9,7 @@ The visualization layer follows these core principles from the [GHData/CHAOSS de
 1. **Time is an essential dimension** — all data is shown as weekly time series, never as static snapshots. Understanding a project over time reveals cycles and trends.
 2. **Comparisons with other projects** help identify similarities and differences in measurable process components.
 3. **Traceability** — metrics should be traceable back to CHAOSS metrics definitions.
-4. **Iterate quickly** — the implementation uses Chart.js via CDN with no build step, enabling rapid iteration.
+4. **Iterate quickly** — the implementation uses Chart.js served by the web process itself (vendored, no CDN, no build step), enabling rapid iteration.
 
 ## Requirements
 
@@ -126,7 +126,7 @@ The visualization layer consists of:
 
 - **Backend**: Go functions in `internal/db/timeseries.go` and `internal/db/repo_stats.go`
 - **API**: Endpoints in `internal/api/server.go` serving JSON
-- **Frontend**: Chart.js 4.x loaded from CDN, embedded in Go HTML templates in `internal/web/templates.go`
+- **Frontend**: Chart.js 4.4.7 vendored in `internal/static/vendor` and served at `/static/vendor/chart.umd.js` (since 0.29.102: no CDN, so the pages work offline and the Content-Security-Policy names one script source); the page scripts live in `internal/static` and the HTML templates in `internal/web/templates`
 - **No build step**: No npm, no webpack, no node_modules — just a `<script>` tag and vanilla JavaScript
 
 This architecture was chosen for rapid iteration and zero frontend infrastructure overhead. If visualization needs outgrow Chart.js, the JSON API is ready for a separate frontend framework.

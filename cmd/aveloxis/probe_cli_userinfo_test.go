@@ -93,9 +93,9 @@ func TestAddRepoReportsARefusedOrgURL(t *testing.T) {
 	// the same two guards as the org arm (round 8: it had neither — a dead
 	// arm and a dropped continue both passed). Anchored on the parse site,
 	// not on the last ErrURLUserinfo in the function.
-	parse := strings.Index(body, "platform.ParseRepoURL(repoURL)")
+	parse := strings.Index(body, "platform.ParseRepoURLWithHints(repoURL, platform.GitLabHints(cfg.GitLab.BaseURL))")
 	if parse < 0 {
-		t.Fatal("runAddRepo must parse the repository URL with platform.ParseRepoURL")
+		t.Fatal("runAddRepo must parse the repository URL with platform.ParseRepoURLWithHints and the configured GitLab instance's hint")
 	}
 	after := body[parse:]
 	repoArm := strings.Index(after, "errors.Is(err, platform.ErrURLUserinfo)")

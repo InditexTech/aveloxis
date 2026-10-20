@@ -111,11 +111,11 @@ func isValidAppPassword(p string) bool {
 	return true
 }
 
-// ValidateConfig checks the operator-supplied mail block when the mailer
-// is built (New, at process start-up) — not when the config file is
-// loaded, so an invalid mail block does not stop start-up the way an
-// invalid config file does (summary/59 N7 decides whether it should).
-// Returns nil for both:
+// ValidateConfig checks the operator-supplied mail block. Since 0.29.100
+// config.Load runs it (summary/59 N7): an invalid block stops every
+// process at load with "invalid config: mail: …", like any other invalid
+// value; New runs it again only to decide whether the mailer it builds is
+// enabled. Returns nil for both:
 //   - a fully-configured block (gmail_user contains @ AND the
 //     normalized app password is 16 lowercase letters), and
 //   - a fully-empty block (mailer disabled — Send attempts nothing
@@ -123,17 +123,22 @@ func isValidAppPassword(p string) bool {
 //
 // Returns a descriptive error for everything else. The error
 // message names the exact field that's wrong so operators don't
-// have to guess.
-//
-// Called from New() (logs at WARN and continues with a disabled
-// mailer if validation fails) so a misconfiguration doesn't
-// break the rest of the application but is surfaced loudly at
-// startup instead of waiting for the first email send.
+// have to guess. A set site_url is checked whatever the Gmail pair
+// says (round-2 review of 0.29.100).
 func ValidateConfig(cfg Config) error {
 	user := strings.TrimSpace(cfg.GmailUser)
 	pass := normalizeAppPassword(cfg.GmailAppPassword)
 
-	// Fully empty: mailer disabled, valid state.
+	// site_url starts every link the mailer writes. A set value is checked
+	// whatever the Gmail pair says: since 0.29.100 an invalid block stops
+	// every process at load, so a field that is set must be right (round-2
+	// review: the docs promised that a site_url that is not a URL refuses
+	// to start; with the pair empty it loaded).
+	if err := validateSiteURL(normalizeSiteURL(cfg.SiteURL)); err != nil {
+		return err
+	}
+
+	// Gmail pair empty: mailer disabled, valid state.
 	if user == "" && pass == "" {
 		return nil
 	}
@@ -159,15 +164,14 @@ func ValidateConfig(cfg Config) error {
 		return fmt.Errorf("mail.gmail_app_password is %d character(s) after removing display-format spaces but Google App Passwords are exactly 16 lowercase letters. Generate one at https://myaccount.google.com/apppasswords (2-Step Verification must be enabled on the account). The displayed format `abcd efgh ijkl mnop` is fine — spaces are stripped on load. Regular account passwords do NOT work with SMTP since Google deprecated 'less secure app access' in 2022", len(pass))
 	}
 
-	// site_url starts every link the mailer writes.
-	return validateSiteURL(normalizeSiteURL(cfg.SiteURL))
+	return nil
 }
 
-// ValidateAndLog runs ValidateConfig and emits a clear WARN line
-// when it fails. Returns the same error for callers that want to
-// decide what to do (e.g. fail-fast in a CLI vs a disabled mailer
-// in the web server). When the config is empty (mailer disabled),
-// logs an INFO so operators see the absence is intentional.
+// ValidateAndLog runs ValidateConfig and is New's start-up line: INFO
+// "mailer configured" or "mailer disabled" (an empty block, so operators
+// see the absence is intentional). A block config.Load accepted never
+// fails here (Load refuses an invalid one, 0.29.100); the WARN arm
+// remains for a Config built without Load (tests) and returns the error.
 func ValidateAndLog(cfg Config, logger *slog.Logger) error {
 	err := ValidateConfig(cfg)
 	if err == nil {

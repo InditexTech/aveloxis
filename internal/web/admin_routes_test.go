@@ -4,9 +4,10 @@
 // Source-contract tests for v0.19.0 admin web routes.
 //
 // New routes:
-//   - GET  /admin/groups/pending       — list of pending groups awaiting review
-//   - POST /admin/groups/{id}/approve  — admin approves a group
-//   - POST /admin/groups/{id}/reject   — admin rejects a group
+//   - GET  /admin/groups/pending       — the approvals page (pending additions)
+//   - POST /admin/groups/{id}/reject   — admin rejects a group (the approve
+//     route went with group approval in 0.29.100: the approval unit is the
+//     addition, v0.27.20)
 //   - GET  /admin/users                — list of all users
 //   - POST /admin/users/{id}/admin     — toggle admin role
 //
@@ -17,42 +18,39 @@
 package web
 
 import (
-	"os"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // TestRequireAdminMiddlewareExists pins the admin gate.
 func TestRequireAdminMiddlewareExists(t *testing.T) {
-	src := mustReadServerSource(t)
-	if !strings.Contains(src, "func (s *Server) requireAdmin(") {
-		t.Error("server.go must define requireAdmin middleware that gates routes on session.IsAdmin")
+	// PackageFunc is fatal when the middleware is gone (v0.29.98, P-2).
+	body := srctest.PackageFunc(t, "internal/web", "func (s *Server) requireAdmin(")
+	if !strings.Contains(body, "IsAdmin") {
+		t.Error("requireAdmin must gate on the session's IsAdmin")
 	}
 }
 
-// TestSessionStructHasIsAdmin pins that the in-memory session carries
-// the admin flag so requireAdmin doesn't need a DB roundtrip per request.
+// TestSessionStructHasIsAdmin pins that the request's Session carries the
+// privilege requireAdmin gates on. Since 0.29.102 (stage 2c) that field is
+// filled per request from the session row's join with the users row
+// (LookupWebSession → storeSession), never at login: a demotion shows at
+// the next request. The gate reads the Session, not the store, so the
+// field is where the per-request read lands.
 func TestSessionStructHasIsAdmin(t *testing.T) {
-	src := mustReadServerSource(t)
-	idx := strings.Index(src, "type Session struct {")
-	if idx < 0 {
-		t.Fatal("could not locate Session struct")
-	}
-	end := strings.Index(src[idx:], "\n}")
-	if end < 0 {
-		t.Fatal("could not find end of Session struct")
-	}
-	decl := src[idx : idx+end]
+	// Session stays in server.go with Server, New and Handler (P-2).
+	decl := srctest.TypeBody(t, srctest.Read(t, "internal/web/server.go"), "Session")
 	if !strings.Contains(decl, "IsAdmin") {
-		t.Error("Session struct must hold IsAdmin so requireAdmin can gate without a DB lookup. " +
-			"Set it from the OAuth callback's UpsertOAuthUser return.")
+		t.Error("Session struct must hold IsAdmin, filled per request from the session row's users join; requireAdmin gates on it")
 	}
 }
 
 // TestAdminRoutesRegistered pins that all admin endpoints are wired
 // through requireAdmin.
 func TestAdminRoutesRegistered(t *testing.T) {
-	src := mustReadServerSource(t)
+	src := srctest.PackageFunc(t, "internal/web", "func (s *Server) Handler(")
 
 	for _, route := range []string{
 		"/admin/groups/pending",
@@ -60,7 +58,7 @@ func TestAdminRoutesRegistered(t *testing.T) {
 		"/admin/users",
 	} {
 		if !strings.Contains(src, route) {
-			t.Errorf("server.go must register the %q route", route)
+			t.Errorf("Handler must register the %q route", route)
 		}
 	}
 
@@ -71,35 +69,17 @@ func TestAdminRoutesRegistered(t *testing.T) {
 	}
 }
 
-// TestApproveGroupHandlerExists pins the POST handler.
-func TestApproveGroupHandlerExists(t *testing.T) {
-	src := mustReadServerSource(t)
-	if !strings.Contains(src, "handleApproveGroup") {
-		t.Error("server.go must define handleApproveGroup — the POST /admin/groups/{id}/approve handler")
-	}
-}
-
 // TestRejectGroupHandlerExists pins the rejection POST handler.
 func TestRejectGroupHandlerExists(t *testing.T) {
-	src := mustReadServerSource(t)
-	if !strings.Contains(src, "handleRejectGroup") {
-		t.Error("server.go must define handleRejectGroup — the POST /admin/groups/{id}/reject handler")
+	if !strings.Contains(srctest.PackageFunc(t, "internal/web", "func (s *Server) Handler("), "s.requireAdmin(s.handleRejectGroup)") {
+		t.Error("Handler must register handleRejectGroup — the POST /admin/groups/{id}/reject handler — behind requireAdmin")
 	}
+	srctest.PackageFunc(t, "internal/web", "func (s *Server) handleRejectGroup(")
 }
 
 // TestSetAdminHandlerExists pins the admin-role toggle handler.
 func TestSetAdminHandlerExists(t *testing.T) {
-	src := mustReadServerSource(t)
-	if !strings.Contains(src, "handleSetUserAdmin") || !strings.Contains(src, "SetUserAdmin") {
-		t.Error("server.go must define handleSetUserAdmin and call s.store.SetUserAdmin to toggle the admin role")
+	if !strings.Contains(srctest.PackageFunc(t, "internal/web", "func (s *Server) handleSetUserAdmin("), "SetUserAdmin(") {
+		t.Error("handleSetUserAdmin must call s.store.SetUserAdmin to toggle the admin role")
 	}
-}
-
-func mustReadServerSource(t *testing.T) string {
-	t.Helper()
-	data, err := os.ReadFile("server.go")
-	if err != nil {
-		t.Fatalf("read server.go: %v", err)
-	}
-	return string(data)
 }

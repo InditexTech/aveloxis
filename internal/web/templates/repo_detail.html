@@ -1,0 +1,85 @@
+{{define "repo_detail"}}
+{{template "head" (dict "Title" .Repo.Name)}}
+<script src="/static/vendor/chart.umd.js"></script>
+<div class="nav">
+<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
+<div class="nav-user">
+{{if .Session.AvatarURL}}<img src="{{.Session.AvatarURL}}" alt="">{{end}}
+<span>{{.Session.LoginName}}</span>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="nav-link">Logout</button></form>
+</div>
+</div>
+<div class="breadcrumb">
+<a href="/dashboard">Home</a>{{if .Session.IsAdmin}}<span class="sep">|</span><a href="/monitor">Monitor</a>{{end}}<span class="sep">/</span>
+<a href="/groups/{{.GroupID}}">{{.Group.Name}}</a><span class="sep">/</span>
+<span class="current">{{.Repo.Owner}}/{{.Repo.Name}}</span>
+</div>
+<div class="container">
+<div class="card">
+<h2>{{.Repo.Owner}}/{{.Repo.Name}}</h2>
+<p style="margin-bottom:8px"><a href="{{.Repo.GitURL}}" style="color:#586069;font-size:13px">{{.Repo.GitURL}}</a></p>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+<div class="stat"><div class="value">{{if .Stats}}{{.Stats.GatheredIssues}}{{else}}0{{end}}</div><div class="label">Issues</div></div>
+<div class="stat"><div class="value">{{if .Stats}}{{.Stats.GatheredPRs}}{{else}}0{{end}}</div><div class="label">PRs</div></div>
+<div class="stat"><div class="value">{{if .Stats}}{{.Stats.GatheredCommits}}{{else}}0{{end}}</div><div class="label">Commits</div></div>
+<div class="stat"><div class="value" {{if .Stats}}{{if .Stats.CriticalVulns}}style="color:#dc2626"{{end}}{{end}}>{{if .Stats}}{{.Stats.Vulnerabilities}}{{else}}0{{end}}</div><div class="label">Vulns{{if .Stats}}{{if .Stats.CriticalVulns}} ({{.Stats.CriticalVulns}} crit){{end}}{{if .Stats.VulnsVersionUnknown}} · {{.Stats.VulnsVersionUnknown}} version unknown{{end}}{{end}}</div></div>
+</div>
+
+<div class="chart-grid">
+<div><canvas id="chart-commits" height="200"></canvas></div>
+<div><canvas id="chart-prs-opened" height="200"></canvas></div>
+<div><canvas id="chart-prs-merged" height="200"></canvas></div>
+<div><canvas id="chart-issues" height="200"></canvas></div>
+</div>
+
+<div class="section" id="license-section" style="margin-top:24px">
+<h3>Dependency Licenses</h3>
+<table id="license-table" style="max-width:600px">
+<tr><th>License</th><th style="text-align:right">Count</th><th style="text-align:center">OSI</th></tr>
+<tr><td colspan="3" class="empty">Loading...</td></tr>
+</table>
+</div>
+
+<div class="section" style="margin-top:24px">
+<h3>Source Code Licenses</h3>
+<p style="font-size:13px;color:#6b7280;margin-bottom:4px">Detected by <a href="https://github.com/aboutcode-org/scancode-toolkit" target="_blank">ScanCode</a> from source file analysis. Each repo is rescanned on a configurable cadence (default 6 months — see <code>collection.scancode_cadence_days</code>).</p>
+<p id="scancode-freshness" style="font-size:13px;color:#6b7280;margin-bottom:8px">Last run: <em>loading…</em></p>
+<table id="scancode-license-table" style="max-width:600px">
+<tr><th>License (SPDX)</th><th style="text-align:right">Files</th><th style="text-align:center">OSI</th></tr>
+<tr><td colspan="3" class="empty">Loading...</td></tr>
+</table>
+<div id="scancode-files-section" style="margin-top:16px">
+<h4 style="font-size:14px;margin-bottom:4px">File-Level Detections <span style="font-weight:normal;color:#6b7280;font-size:12px">(click column to sort)</span></h4>
+<div style="max-height:400px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px">
+<table id="scancode-files-table" style="width:100%;font-size:12px;border-collapse:collapse">
+<thead style="position:sticky;top:0;background:#f9fafb"><tr>
+<th style="text-align:left;padding:6px 8px;cursor:pointer;border-bottom:1px solid #e5e7eb" data-sort-col="0">File</th>
+<th style="text-align:left;padding:6px 8px;cursor:pointer;border-bottom:1px solid #e5e7eb;max-width:160px" data-sort-col="1">License</th>
+<th style="text-align:left;padding:6px 8px;cursor:pointer;border-bottom:1px solid #e5e7eb;max-width:300px" data-sort-col="2">Copyright</th>
+</tr></thead>
+<tbody id="scancode-files-body"><tr><td colspan="3" class="empty">Loading...</td></tr></tbody>
+</table>
+</div>
+<div id="copyright-section" style="margin-top:16px;display:none">
+<h4 style="font-size:14px;margin-bottom:4px">Copyright Holders</h4>
+<ul id="copyright-list" style="font-size:13px;color:#374151;padding-left:20px"></ul>
+</div>
+</div>
+</div>
+
+<div class="section">
+<h3>Downloads</h3>
+<div style="display:flex;gap:8px">
+<a href="/groups/{{.GroupID}}/repos/{{.RepoID}}/sbom?format=cyclonedx" class="btn btn-primary" style="font-size:13px">Download CycloneDX SBOM</a>
+<a href="/groups/{{.GroupID}}/repos/{{.RepoID}}/sbom?format=spdx" class="btn btn-primary" style="font-size:13px">Download SPDX SBOM</a>
+</div>
+</div>
+</div>
+</div>
+
+<div id="repo-page" data-repo-id="{{.RepoID}}" hidden></div>
+<script src="/static/repo-detail.js"></script>
+</body></html>
+{{end}}
+

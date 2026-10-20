@@ -786,11 +786,7 @@ func migrateStage3ScancodeDistribution(ctx context.Context, pg *PostgresStore, l
 	// default into its quota row (once, ledgered) and keeps the old column
 	// as the rollback mirror.
 	seedCapacitySettings(ctx, pg, logger, errs)
-	// v0.29.82: the API-token defaults' one row — since 0.29.89 only the
-	// lifetime (30 days); the allowances are quotas. Never overwrites an edit.
-	execMigrationStep(ctx, pg, logger, errs, "v0.29.82 seed api_token_settings",
-		fmt.Sprintf(`INSERT INTO aveloxis_ops.api_token_settings (id, default_lifetime_days)
-		VALUES (1, %d) ON CONFLICT (id) DO NOTHING`, DefaultAPITokenLifetimeDays))
+	seedAPITokenSettings(ctx, pg, logger, errs)
 	// v0.29.89: each API token gets a daily allowance (its own value, like
 	// the hour; the default comes from the token_requests_per_day quota).
 	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.api_tokens", "rate_limit_per_day",
@@ -861,6 +857,38 @@ func migrateStage3ScancodeDistribution(ctx context.Context, pg *PostgresStore, l
 	// already scanned) are not treated as incomplete on first
 	// startup. Only NEW scans under v0.25.0+ can mark this false.
 	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_data.repos", "distribution_scan_complete", "BOOLEAN DEFAULT TRUE")
+	// 0.29.102 (stage 2c of summary/59): web sessions in user_session_tokens
+	// (kind, parent_token) and confirmation links hashed at rest.
+	addWebSessionColumns(ctx, pg, logger, errs)
+	deleteUnhashedEmailConfirmations(ctx, pg, logger, errs)
+}
+
+// addWebSessionColumns (0.29.102, N12/B2/B4): the session kind ('api' on
+// every existing row — they are all Bearer tokens) and the parent session
+// of a token /auth/token minted, with the partial index the sign-out
+// delete reads. The columns go ahead of the index (SR-8).
+func addWebSessionColumns(ctx context.Context, pg *PostgresStore, logger *slog.Logger, errs *[]error) {
+	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.user_session_tokens", "kind", "TEXT NOT NULL DEFAULT 'api'")
+	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.user_session_tokens", "parent_token", "TEXT REFERENCES aveloxis_ops.user_session_tokens(token) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED")
+	execCreateIndexConcurrently(ctx, pg, logger, errs, "aveloxis_ops", "idx_user_session_tokens_parent",
+		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_session_tokens_parent
+		 ON aveloxis_ops.user_session_tokens (parent_token) WHERE parent_token IS NOT NULL`)
+}
+
+// deleteUnhashedEmailConfirmations (0.29.102, DBS-14): every migrate
+// deletes confirmation rows an older binary stored raw (no "sha256$"
+// tag). A link lives a day, so the owner asks for a new one; a raw value
+// is never re-hashed into a credential a backup already shows.
+func deleteUnhashedEmailConfirmations(ctx context.Context, pg *PostgresStore, logger *slog.Logger, errs *[]error) {
+	tag, err := pg.pool.Exec(ctx, `DELETE FROM aveloxis_ops.email_confirmations WHERE token NOT LIKE $1`, tokenHashTag+"%")
+	if err != nil {
+		logger.Error("schema migration error", "step", "remove unhashed e-mail confirmation tokens", "error", err)
+		*errs = append(*errs, fmt.Errorf("unhashed email confirmations: %w", err))
+		return
+	}
+	if n := tag.RowsAffected(); n > 0 {
+		logger.Warn("removed e-mail confirmation links an older binary stored unhashed — their owners request a new link", "rows", n)
+	}
 }
 
 // migrateStage4DedupAndIndexes — commit dedup, repo-name cleanup, case-insensitive unique, performance indexes.
@@ -3082,7 +3110,7 @@ func seedCapacitySettings(ctx context.Context, pg *PostgresStore, logger *slog.L
 	err := retryOnDeadlock(ctx, logger, "v0.29.89 seed capacity", func() error {
 		if _, err := pg.pool.Exec(ctx, `
 			INSERT INTO aveloxis_ops.capacity_settings (id, contact_email)
-			VALUES (1, $1) ON CONFLICT (id) DO NOTHING`, DefaultCapacityContactEmail); err != nil {
+			VALUES (1, $1) ON CONFLICT (id) DO NOTHING`, seedCapacityContactPlaceholder); err != nil {
 			return err
 		}
 		for _, name := range capacity.QuotaNames() {
@@ -3141,6 +3169,33 @@ func seedCapacitySettings(ctx context.Context, pg *PostgresStore, logger *slog.L
 		UPDATE aveloxis_ops.api_token_settings s SET default_rate_limit_per_hour = q.allowed
 		FROM aveloxis_ops.capacity_quotas q
 		WHERE s.id = 1 AND q.name = 'token_requests_per_hour' AND s.default_rate_limit_per_hour IS DISTINCT FROM q.allowed`)
+}
+
+// seedAPITokenSettings (v0.29.82) seeds the API-token defaults' one row —
+// since 0.29.89 only the lifetime (30 days) is decided here; the
+// allowances are quotas. Never overwrites an edit.
+//
+// v0.29.97: the row carries the rollback mirror too. A schema born on
+// 0.29.82–0.29.88 declares default_rate_limit_per_hour NOT NULL with no
+// default (schema.sql gained DEFAULT 1000 in 0.29.89, and
+// addColumnIfMissing above is a no-op on a column that exists), so the
+// 0.29.89–0.29.96 seed — which stopped supplying the column — failed with
+// 23502 on every such fleet whose row 1 was not there yet (the operator's
+// 2026-10-17 migrate on 0.29.96). The INSERT supplies the shipped hourly
+// allowance (the mirror's own sync step then follows the stored quota on
+// every migrate), and the column gets the default schema.sql declares.
+func seedAPITokenSettings(ctx context.Context, pg *PostgresStore, logger *slog.Logger, errs *[]error) {
+	execMigrationStep(ctx, pg, logger, errs, "v0.29.97 default_rate_limit_per_hour carries the default schema.sql declares",
+		`ALTER TABLE aveloxis_ops.api_token_settings ALTER COLUMN default_rate_limit_per_hour SET DEFAULT 1000`)
+	// The mirror is born equal to the STORED hourly quota (an edited value
+	// too — review B3: the mirror sync runs before this seed, so a row born
+	// with the shipped value was wrong until the next migrate), the shipped
+	// value only when the quota row is absent.
+	execMigrationStep(ctx, pg, logger, errs, "v0.29.82 seed api_token_settings",
+		fmt.Sprintf(`INSERT INTO aveloxis_ops.api_token_settings (id, default_rate_limit_per_hour, default_lifetime_days)
+		VALUES (1, COALESCE((SELECT allowed FROM aveloxis_ops.capacity_quotas WHERE name = 'token_requests_per_hour'), %d), %d)
+		ON CONFLICT (id) DO NOTHING`,
+			capacity.Shipped[capacity.QuotaTokenRequestsPerHour].Allowed, DefaultAPITokenLifetimeDays))
 }
 
 // execMigrationStep runs a schema-changing SQL statement, logging the
@@ -3236,13 +3291,6 @@ func stampSchemaVersion(ctx context.Context, pg *PostgresStore, logger *slog.Log
 		return fmt.Errorf("stamp schema version %s: no aveloxis_ops.schema_meta row (id = TRUE) to stamp", ToolVersion)
 	}
 	return nil
-}
-
-// GetSchemaVersion reads the schema version from the database. Returns an
-// empty string if the schema_meta table doesn't exist yet (pre-v0.14.5 DB).
-func (s *PostgresStore) GetSchemaVersion(ctx context.Context) string {
-	v, _ := s.schemaVersionProbe(ctx)
-	return v
 }
 
 // SchemaVersion is schemaVersionProbe for callers outside the package
@@ -3612,9 +3660,9 @@ func startupMigrateRefusal(stamp string, stampErr error, sight OtherServe) error
 		ErrOtherServeConnected, sight.Describe(), stampDesc, ToolVersion, sight.Advice(), DeployStepsAdvice)
 }
 
-// schemaVersionProbe is GetSchemaVersion with the error arm kept (SR-5:
-// a lookup ERROR is not "no"). Copilot round 8: GetSchemaVersion maps
-// EVERY failure to "", and runOnceSeedIfApplied reads "" as "no stamp,
+// schemaVersionProbe reads the stamp with the error arm kept (SR-5: a
+// lookup ERROR is not "no"). Its predecessor GetSchemaVersion (deleted in
+// stage 0.5 of summary/59) mapped EVERY failure to "", and runOnceSeedIfApplied reads "" as "no stamp,
 // so the step has not run" — a transient catalog or connection error
 // during migrate therefore re-flagged the ENTIRE GitLab fleet for a
 // full recollect, which is the outcome the seed exists to prevent.
@@ -3649,8 +3697,8 @@ func (s *PostgresStore) schemaVersionProbe(ctx context.Context) (string, error) 
 // `start serve` refuses while the stamp is behind, so restarting serve is
 // not the remedy.
 func (s *PostgresStore) CheckSchemaVersion(ctx context.Context, logger *slog.Logger) {
-	// schemaVersionProbe, not GetSchemaVersion: the latter maps every read
-	// failure to "", which reported a timeout or a missing grant as "migrate
+	// schemaVersionProbe keeps the error arm: the former GetSchemaVersion
+	// mapped every read failure to "", which reported a timeout or a missing grant as "migrate
 	// has not run" (SR-5, v0.29.57 L10 round 3).
 	stamp, err := s.schemaVersionProbe(ctx)
 	logSchemaVersionCheck(logger, stamp, err)
@@ -4098,7 +4146,7 @@ func addSessionTokenHashedColumn(ctx context.Context, pg *PostgresStore, logger 
 	// hashed made the value a database read or a backup showed BEFORE the
 	// migrate a working credential after it (L10 round 2 on 0.29.87). Their
 	// sessions are signed out once, the contract a rollback already had.
-	// The default is FALSE (CreateSessionToken writes TRUE); SET DEFAULT is
+	// The default is FALSE (createSessionToken, the one writer, writes TRUE); SET DEFAULT is
 	// for fleets that added the column TRUE (0.29.82–0.29.86).
 	//
 	// A database last migrated by 0.29.82–0.29.86 still has the default

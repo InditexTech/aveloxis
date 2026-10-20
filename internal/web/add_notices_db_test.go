@@ -86,10 +86,11 @@ func TestAddNoticesAreShownToTheUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s := New(store, config.WebConfig{}, nil, "", logger)
-	s.sessions["probe-token"] = &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)}
+	s := New(store, config.WebConfig{}, "", logger)
+	plantSession(t, s, "probe-token", &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)})
 	serve := func(r *http.Request) *httptest.ResponseRecorder {
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w
@@ -163,7 +164,7 @@ func TestAddNoticesAreShownToTheUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RejectGroup(ctx, rejected, uid); err != nil {
+	if _, err := store.RejectGroup(ctx, rejected, uid); err != nil {
 		t.Fatal(err)
 	}
 	w = post("/groups/add-org", url.Values{"group_id": {fmt.Sprint(rejected)}, "org_url": {orgPrefix + "-to-rejected"}})

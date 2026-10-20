@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/importers"
@@ -106,6 +107,9 @@ func runImportFoundations(cfgPath string, opts runOpts) error {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer store.Close()
+	// Dashboard groups are written through the admin service as the
+	// operator acting for the dashboard user (stage 1 of summary/59).
+	svc := admin.New(store, admin.Options{GitHubAPIBase: cfg.GitHub.GitHubAPIBase(), GitLabAPIBase: cfg.GitLab.BaseURL}, nil, logger)
 
 	// v0.21.5: store.Migrate(ctx) intentionally NOT called here.
 	// Pre-v0.21.5 this ran unconditionally, including on --dry-run,
@@ -156,7 +160,7 @@ func runImportFoundations(cfgPath string, opts runOpts) error {
 				continue
 			}
 			name := groupDisplayName(p.Foundation, p.Status)
-			gid, err := store.CreateUserGroup(ctx, dashboardUserID, name)
+			gid, err := svc.CreateGroup(ctx, admin.Actor{UserID: dashboardUserID, Kind: admin.Operator}, name)
 			if err != nil {
 				logger.Warn("failed to create dashboard group", "name", name, "error", err)
 				continue
@@ -190,7 +194,7 @@ func runImportFoundations(cfgPath string, opts runOpts) error {
 		}
 		for _, rurl := range p.RepoURLs {
 			t.repos++
-			parsed, perr := platform.ParseRepoURL(rurl)
+			parsed, perr := platform.ParseRepoURLWithHints(rurl, platform.GitLabHints(cfg.GitLab.BaseURL))
 			if perr != nil {
 				logger.Warn("skipping unparseable repo URL", "url", platform.RedactURLUserinfo(rurl), "project", p.Name, "error", perr)
 				t.skipped++

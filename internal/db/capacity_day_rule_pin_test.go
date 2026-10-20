@@ -22,9 +22,9 @@ import (
 func TestCapacityDayRulesHaveOneOwner(t *testing.T) {
 	truncDay := regexp.MustCompile(`Truncate\(\s*24\s*\*\s*time\.Hour\s*\)`)
 	dayLength := regexp.MustCompile(`\(\s*24\s*\*\s*time\.Hour\s*\)\.Seconds\(\)`)
-	// A chart floor, not a quota's day: the contributions window starts two
-	// years before today's UTC midnight (a different subsystem; reviewed).
-	excused := map[string]int{"internal/api/contributions.go": 1}
+	// (The one reviewed exception, the contributions window's two-year
+	// floor, moved onto db.UTCDay with the date reader in stage 1b.)
+	excused := map[string]int{}
 	capacityFiles := map[string]bool{
 		"internal/db/capacity_store.go": true, "internal/db/capacity_admin_store.go": true, "internal/db/signup_escrow.go": true,
 		"internal/api/capacity_limits.go": true, "internal/api/capacity_admin.go": true, "internal/api/ratelimit.go": true,

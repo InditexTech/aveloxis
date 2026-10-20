@@ -26,41 +26,37 @@ import (
 // with the reason its error cannot be the request's end. The api is also
 // pinned per route by TestNoEndpointBlamesTheRequestsEnd.
 func TestRequestHandlersLogThroughLogFailure(t *testing.T) {
+	// Keyed dir|func|message (srctest.SiteKey, v0.29.98): a split of a
+	// handler file does not churn the registry, and two identical messages
+	// in two functions stay two reviewed sites (L2 granularity).
 	reviewed := map[string]string{
-		"internal/web/server.go|failed to clear the pending email after a failed confirmation send":                                          "a detached clean-up (WithoutCancel): its failure leaves the dashboard's pending banner, never a nobody-is-listening case (NET-6 review r7 F1)",
-		"internal/web/server.go|failed to send confirmation email":                                                                           "the mailer takes no context: an SMTP failure is never the request's end (NET-6 review r6 F2)",
-		"internal/web/server.go|oauth callback: the forge did not answer within the callback bound":                                          "logOAuthFailure: its first arm returns (Debug) when reqCtx is done; this is the 30 s callback bound's own expiry on a live request",
-		"internal/web/server.go|oauth callback: forge request failed":                                                                        "logOAuthFailure: its first arm returns (Debug) when reqCtx is done",
-		"internal/api/server.go|request failed":                                                                                              "serverError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
-		"internal/web/server.go|request failed":                                                                                              "serverError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
-		"internal/monitor/monitor.go|request failed":                                                                                         "serverError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
-		"internal/api/auth.go|session token could not be resolved — store failure, request refused (503)":                                    "refuseStoreError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
-		"internal/api/portal.go|group add: some repositories could not be added":                                                             "db.ErrAddItemsFailed carries counts; a context end takes the default arm (serverError)",
-		"internal/api/portal.go|admin add-request approval refused — the org cannot be registered":                                           "a refusal on the request's content, not a store error",
-		"internal/api/forge_id_changes.go|admin forge-ID adopt: request body unreadable":                                                     "a body read error (EOF, limit), not a context end",
-		"internal/web/admin.go|add-request approval refused — the org cannot be registered":                                                  "a refusal on the request's content, not a store error",
-		"internal/web/server.go|building the GitHub user request failed":                                                                     "http.NewRequestWithContext: a malformed request, never a context end",
-		"internal/web/server.go|building the GitLab user request failed":                                                                     "http.NewRequestWithContext: a malformed request, never a context end",
-		"internal/web/server.go|github /user response unmarshal failed":                                                                      "JSON decoding of a body already read",
-		"internal/web/server.go|gitlab /user response unmarshal failed":                                                                      "JSON decoding of a body already read",
-		"internal/web/server.go|failed to upsert OAuth user":                                                                                 "guarded: the httpserver.RequestEnded return just above it (pinned by TestLoginLogsAFailedAdminLookup)",
-		"internal/web/server.go|admin flag lookup failed at login — session created as non-admin":                                            "guarded: the httpserver.RequestEnded return just above it (pinned by TestLoginLogsAFailedAdminLookup)",
-		"internal/web/server.go|failed to send welcome email":                                                                                "the mailer's own error; the send runs off the request context",
-		"internal/web/server.go|org not added — invalid URL":                                                                                 "URL validation, not a store error",
-		"internal/web/server.go|repo page: stats unavailable":                                                                                "guarded: `err != nil && !httpserver.RequestEnded(err)`",
-		"internal/web/server.go|monitor page: repository details unavailable":                                                                "guarded: `err != nil && !httpserver.RequestEnded(err)`",
-		"internal/web/server.go|monitor page: repository stats unavailable":                                                                  "guarded: `err != nil && !httpserver.RequestEnded(err)`",
-		"internal/api/capacity_limits.go|could not delete old daily request counts; retried next tick":                                       "RunCapacity's own loop context, no request: guarded by `ctx.Err() == nil` (a stop is silent)",
-		"internal/api/capacity_limits.go|could not delete past sign-up secrets and keys; retried next tick":                                  "RunCapacity's own loop context, no request: guarded by `ctx.Err() == nil` (a stop is silent)",
-		"internal/api/capacity_limits.go|could not save daily request counts; kept for the next save":                                        "FlushCapacity runs on RunCapacity's bounded step context or runAPI's stop context, never a request's: silent only when that context was cancelled (v0.29.91: a step's own timeout is logged)",
-		"internal/api/repo_page_rewarm.go|repository page cache re-warm: state unreadable — skipping this pass":                              "the re-warm loop's own context, no request: guarded by `ctx.Err() == nil` (a shutdown is silent)",
-		"internal/api/repo_page_rewarm.go|repository page cache re-warm: state unreadable after a replay — the rest waits for the next pass": "the re-warm loop's own context, no request: the branch returns on ctx.Err() before logging (a shutdown is silent)",
-		"internal/api/repo_page_rewarm.go|repository page cache re-warm: unreplayable request":                                               "http.NewRequestWithContext on a recorded URI: a malformed request, never a context end",
+		srctest.SiteKey("internal/admin", "SubmitAccountEmail", "failed to clear the pending email after a failed confirmation send"):                      "a detached clean-up (WithoutCancel): its failure leaves the dashboard's pending banner, never a nobody-is-listening case (NET-6 review r7 F1)",
+		srctest.SiteKey("internal/admin", "SubmitAccountEmail", "failed to send confirmation email"):                                                       "the mailer takes no context: an SMTP failure is never the request's end (NET-6 review r6 F2)",
+		srctest.SiteKey("internal/admin", "AddToGroup", "admin: add repositories: some could not be added"):                                                "db.ErrAddItemsFailed carries counts; a context end is not that sentinel and takes the failure arm",
+		srctest.SiteKey("internal/web", "logOAuthFailure", "oauth callback: the forge did not answer within the callback bound"):                           "logOAuthFailure: its first arm returns (Debug) when reqCtx is done; this is the 30 s callback bound's own expiry on a live request",
+		srctest.SiteKey("internal/web", "logOAuthFailure", "oauth callback: forge request failed"):                                                         "logOAuthFailure: its first arm returns (Debug) when reqCtx is done",
+		srctest.SiteKey("internal/api", "serverError", "request failed"):                                                                                   "serverError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
+		srctest.SiteKey("internal/web", "serverError", "request failed"):                                                                                   "serverError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
+		srctest.SiteKey("internal/monitor", "serverError", "request failed"):                                                                               "serverError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
+		srctest.SiteKey("internal/api", "refuseStoreError", "session token could not be resolved — store failure, request refused (503)"):                  "refuseStoreError: guarded by the httpserver.RequestEnded(r.Context(), err) return above it",
+		srctest.SiteKey("internal/web", "fetchOAuthUser", "building the OAuth user request failed"):                                                        "http.NewRequestWithContext: a malformed request, never a context (0.29.102: the one head of both callbacks)",
+		srctest.SiteKey("internal/web", "fetchOAuthUser", "OAuth /user response unmarshal failed"):                                                         "JSON decoding of a body already read (0.29.102: the one head of both callbacks)",
+		srctest.SiteKey("internal/web", "completeOAuthLogin", "failed to upsert OAuth user"):                                                               "guarded: the httpserver.RequestEnded return just above it (the login's failure arms; the gate's privilege read is TestGateWithFailedAdminLookupIs500NotARefusal)",
+		srctest.SiteKey("internal/web", "completeOAuthLogin", "failed to send welcome email"):                                                              "the mailer's own error; the send runs off the request context",
+		srctest.SiteKey("internal/web", "handleRepoDetail", "repo page: stats unavailable"):                                                                "guarded: `err != nil && !httpserver.RequestEnded(err)`",
+		srctest.SiteKey("internal/web", "handleMonitor", "monitor page: repository details unavailable"):                                                   "guarded: `err != nil && !httpserver.RequestEnded(err)`",
+		srctest.SiteKey("internal/web", "handleMonitor", "monitor page: repository stats unavailable"):                                                     "guarded: `err != nil && !httpserver.RequestEnded(err)`",
+		srctest.SiteKey("internal/api", "capacityTick", "could not delete old daily request counts; retried next tick"):                                    "RunCapacity's own loop context, no request: guarded by `ctx.Err() == nil` (a stop is silent)",
+		srctest.SiteKey("internal/api", "capacityTick", "could not delete past sign-up secrets and keys; retried next tick"):                               "RunCapacity's own loop context, no request: guarded by `ctx.Err() == nil` (a stop is silent)",
+		srctest.SiteKey("internal/api", "FlushCapacity", "could not save daily request counts; kept for the next save"):                                    "FlushCapacity runs on RunCapacity's bounded step context or runAPI's stop context, never a request's: silent only when that context was cancelled (v0.29.91: a step's own timeout is logged)",
+		srctest.SiteKey("internal/api", "rewarmOnce", "repository page cache re-warm: state unreadable — skipping this pass"):                              "the re-warm loop's own context, no request: guarded by `ctx.Err() == nil` (a shutdown is silent)",
+		srctest.SiteKey("internal/api", "rewarmOnce", "repository page cache re-warm: state unreadable after a replay — the rest waits for the next pass"): "the re-warm loop's own context, no request: the branch returns on ctx.Err() before logging (a shutdown is silent)",
+		srctest.SiteKey("internal/api", "replay", "repository page cache re-warm: unreplayable request"):                                                   "http.NewRequestWithContext on a recorded URI: a malformed request, never a context end",
 	}
 	root := srctest.Root(t)
 	seen := map[string]bool{}
 	examined := 0
-	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor"} {
+	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor", "internal/admin"} {
 		files, err := filepath.Glob(filepath.Join(root, dir, "*.go"))
 		if err != nil {
 			t.Fatal(err)
@@ -78,6 +74,9 @@ func TestRequestHandlersLogThroughLogFailure(t *testing.T) {
 			}
 			for _, d := range af.Decls {
 				fd, ok := d.(*ast.FuncDecl)
+				// The admin service's operations run under the request's
+				// context too (stage 1 of summary/59): takesHTTPRequest
+				// admits a context parameter, so they are examined.
 				if !ok || fd.Body == nil || !takesHTTPRequest(fd) {
 					continue
 				}
@@ -120,7 +119,7 @@ func TestRequestHandlersLogThroughLogFailure(t *testing.T) {
 					if bl, ok := c.Args[0].(*ast.BasicLit); ok {
 						msg, _ = strconv.Unquote(bl.Value)
 					}
-					key := rel + "|" + msg
+					key := srctest.SiteKey(srctest.SiteDir(rel), fd.Name.Name, msg)
 					seen[key] = true
 					if _, ok := reviewed[key]; !ok {
 						t.Errorf("%s: %s logs an error at %s directly from a request handler (%s); use httpserver.LogFailure so the request's own end (http_timeout_seconds, a departed client) is not blamed, or review it here with the reason", fset.Position(c.Pos()), fd.Name.Name, strings.ToUpper(sel.Sel.Name), msg)
@@ -166,12 +165,12 @@ func takesHTTPRequest(fd *ast.FuncDecl) bool {
 // name is part of the contract). Anything else is reviewed.
 func TestLogFailureClassifiesByTheRequestsContext(t *testing.T) {
 	reviewed := map[string]string{
-		"internal/web/server.go|render": "no request in scope; a render refused after the bound is http.ErrHandlerTimeout, which RequestEnded recognises on any context",
+		srctest.SiteKey("internal/web", "render"): "no request in scope; a render refused after the bound is http.ErrHandlerTimeout, which RequestEnded recognises on any context",
 	}
 	root := srctest.Root(t)
 	seen := map[string]bool{}
 	calls := 0
-	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor"} {
+	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor", "internal/admin"} {
 		files, err := filepath.Glob(filepath.Join(root, dir, "*.go"))
 		if err != nil {
 			t.Fatal(err)
@@ -242,7 +241,7 @@ func TestLogFailureClassifiesByTheRequestsContext(t *testing.T) {
 					case *ast.Ident:
 						okCtx = ctxParams[a.Name] && !reassigned[a.Name]
 					}
-					key := rel + "|" + fd.Name.Name
+					key := srctest.SiteKey(srctest.SiteDir(rel), fd.Name.Name)
 					if !okCtx {
 						seen[key] = true
 						if _, ok := reviewed[key]; !ok {

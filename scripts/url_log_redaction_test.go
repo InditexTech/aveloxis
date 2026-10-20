@@ -496,7 +496,8 @@ func TestBareRedactionsInLogCallsFixtures(t *testing.T) {
 // asserts, and whether the call is REACHED — a skip or early return before
 // it, a dead branch, a closure never invoked — is the recorded boundary.
 var logURLRuntimeTests = map[string]string{
-	"internal/web": "TestLogURLRedactsBeforeTruncating",
+	"internal/web":   "TestLogURLRedactsBeforeTruncating",
+	"internal/admin": "TestLogURLRedactsBeforeTruncating",
 }
 
 // TestLogURLHelpersRedact reserves the two names redactedValue trusts, over

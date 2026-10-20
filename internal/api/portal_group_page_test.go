@@ -54,7 +54,7 @@ func TestHandleGroupReposEnvelope(t *testing.T) {
 	body := extractFuncBody(t, src, "handleGroupRepos")
 	for _, needle := range []string{
 		"parsePortalPage(", `Get("sort")`, `Get("dir")`,
-		"CollectionRepoSortValid(",
+		"db.NormalizeListingPage(", // the store's one clamp + allowlist (DBS-2); the echo is its effective values
 		`"total"`, `"page"`, `"page_size"`, `"sort"`, `"dir"`,
 	} {
 		if !strings.Contains(body, needle) {
@@ -84,7 +84,7 @@ func TestHandleGroupReposEnvelope(t *testing.T) {
 	// windowed per-request aggregation (the v0.27.4 timeout class).
 	for _, needle := range []string{"last_issues", "last_updated", "user_repo_stars", "collectionRepoSorts"} {
 		if !strings.Contains(storeSrc, needle) {
-			t.Errorf("GetPortalGroupReposForUser must use %s — cached counts + shared sort allowlist", needle)
+			t.Errorf("GetPortalGroupRepos must use %s — cached counts + shared sort allowlist", needle)
 		}
 	}
 	if strings.Contains(storeSrc, "90 days") || strings.Contains(storeSrc, "INTERVAL '90") {

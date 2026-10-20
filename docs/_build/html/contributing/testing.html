@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Testing &mdash; Aveloxis 0.29.96 documentation</title>
+  <title>Testing &mdash; Aveloxis 0.29.107 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=57ddef21"></script>
+      <script src="../_static/documentation_options.js?v=4510acb2"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -332,6 +332,8 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#health-check">Health Check</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#public-fleet-stats">Public fleet stats</a></li>
@@ -1329,6 +1331,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#when-not-to-use-a-source-contract-test">When NOT to use a source-contract test</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#the-v0-21-1-lesson">The v0.21.1 lesson</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#shared-helpers-internal-srctest-v0-27-118">Shared helpers: <code class="docutils literal notranslate"><span class="pre">internal/srctest</span></code> (v0.27.118)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#finding-a-subject-across-a-package-v0-29-98-stage-0-5">Finding a subject across a package (v0.29.98, stage 0.5)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sql-write-scanning-internal-srctest-sqlscan-v0-27-124">SQL write scanning: <code class="docutils literal notranslate"><span class="pre">internal/srctest/sqlscan</span></code> (v0.27.124)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#column-write-policy-registry-v0-27-126">Column write-policy registry (v0.27.126)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#standing-rules-registry-v0-27-127">Standing-rules registry (v0.27.127)</a></li>
@@ -1405,7 +1408,10 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="schema-migrations.html#adding-a-foreign-key">Adding a foreign key</a></li>
-<li class="toctree-l2"><a class="reference internal" href="schema-migrations.html#migration-ordering">Migration ordering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="schema-migrations.html#migration-ordering">Migration ordering</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="schema-migrations.html#where-a-new-step-goes-stages-are-subjects-v0-29-98-n29">Where a new step goes: stages are subjects (v0.29.98, N29)</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="schema-migrations.html#materialized-views">Materialized views</a></li>
 <li class="toctree-l2"><a class="reference internal" href="schema-migrations.html#the-aveloxis-migrate-skip-views-flag">The <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">migrate</span> <span class="pre">--skip-views</span></code> flag</a></li>
 <li class="toctree-l2"><a class="reference internal" href="schema-migrations.html#version-bump-checklist-for-a-schema-touching-change">Version-bump checklist for a schema-touching change</a></li>
@@ -1502,7 +1508,7 @@
 <li class="toctree-l2"><a class="reference internal" href="adding-a-visualization.html#how-visualizations-work-today">How visualizations work today</a></li>
 <li class="toctree-l2"><a class="reference internal" href="adding-a-visualization.html#walkthrough-add-a-contributor-activity-chart">Walkthrough: add a “contributor activity” chart</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="adding-a-visualization.html#step-1-make-sure-the-data-is-available">Step 1 — make sure the data is available</a></li>
-<li class="toctree-l3"><a class="reference internal" href="adding-a-visualization.html#step-2-find-the-right-template">Step 2 — find the right template</a></li>
+<li class="toctree-l3"><a class="reference internal" href="adding-a-visualization.html#step-2-find-the-right-template-and-its-script">Step 2 — find the right template and its script</a></li>
 <li class="toctree-l3"><a class="reference internal" href="adding-a-visualization.html#step-3-add-the-canvas-the-fetch">Step 3 — add the canvas + the fetch</a></li>
 <li class="toctree-l3"><a class="reference internal" href="adding-a-visualization.html#step-4-handle-the-data-shape-mismatch">Step 4 — handle the data-shape mismatch</a></li>
 </ul>
@@ -1968,6 +1974,30 @@ exists to catch → confirm RED → revert → green. Interdependent pins (ones 
 read other test files or share allowlists) migrate as a closed cluster in one
 change.</p>
 </section>
+<section id="finding-a-subject-across-a-package-v0-29-98-stage-0-5">
+<h3>Finding a subject across a package (v0.29.98, stage 0.5)<a class="headerlink" href="#finding-a-subject-across-a-package-v0-29-98-stage-0-5" title="Link to this heading"></a></h3>
+<p>A pin that reads a production file BY NAME (<code class="docutils literal notranslate"><span class="pre">os.ReadFile(&quot;server.go&quot;)</span></code>,
+<code class="docutils literal notranslate"><span class="pre">srctest.Read(t,</span> <span class="pre">&quot;internal/web/server.go&quot;)</span></code>) breaks when that file is split —
+or, for a negative needle, passes vacuously because the old file still exists.
+Name the function instead:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">srctest.PackageFunc(t,</span> <span class="pre">dir,</span> <span class="pre">sig)</span></code> / <code class="docutils literal notranslate"><span class="pre">PackageFuncAt</span></code> — the ONE declaration
+starting with <code class="docutils literal notranslate"><span class="pre">sig</span></code> among the package’s non-test files that build on this
+host (build constraints honoured); zero or several matches are fatal, and
+<code class="docutils literal notranslate"><span class="pre">sig</span></code> must end with <code class="docutils literal notranslate"><span class="pre">(</span></code> or <code class="docutils literal notranslate"><span class="pre">[</span></code> (the complete name, so a prefix cannot pin a
+longer name). <code class="docutils literal notranslate"><span class="pre">FuncBody</span></code> follows the same rules on a source you already hold.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">srctest.PackageSource(t,</span> <span class="pre">dir,</span> <span class="pre">minFiles)</span></code> — the package’s production source
+in one string, for NEGATIVE needles only (a token that must appear nowhere);
+never widen a positive needle to it.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">srctest.FuncParts(t,</span> <span class="pre">src)</span></code> — a source split by function for registries
+keyed <code class="docutils literal notranslate"><span class="pre">srctest.SiteKey(dir,</span> <span class="pre">func)</span></code>; <code class="docutils literal notranslate"><span class="pre">srctest.ExecOrder</span></code> orders sites by
+execution from a root function (the migrate analyzer’s resolver).</p></li>
+</ul>
+<p>The split of a file migrates only the pins it breaks (the strangler rule, N26)
+and each migrated pin is re-redded. <code class="docutils literal notranslate"><span class="pre">scripts/source_file_reads_baseline.txt</span></code>
+lists every remaining by-name read (<code class="docutils literal notranslate"><span class="pre">TestSourceFileReadsOnlyShrink</span></code>; one
+literal, or a <code class="docutils literal notranslate"><span class="pre">filepath.Join</span></code> of literal segments) and only shrinks; a per-file count registry that stays keyed by file is listed there too.</p>
+</section>
 <section id="sql-write-scanning-internal-srctest-sqlscan-v0-27-124">
 <h3>SQL write scanning: <code class="docutils literal notranslate"><span class="pre">internal/srctest/sqlscan</span></code> (v0.27.124)<a class="headerlink" href="#sql-write-scanning-internal-srctest-sqlscan-v0-27-124" title="Link to this heading"></a></h3>
 <p>Tests that reason about SQL WRITE statements use the Phase 2 engine
@@ -2315,7 +2345,22 @@ go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>./
 <p>GitHub Actions runs:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">test.yml</span></code>: <code class="docutils literal notranslate"><span class="pre">go</span> <span class="pre">test</span> <span class="pre">./...</span></code> (with <code class="docutils literal notranslate"><span class="pre">-race</span></code>) on every push.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">integration.yml</span></code>: PostgreSQL service container + <code class="docutils literal notranslate"><span class="pre">AVELOXIS_TEST_DB</span></code> integration tests.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">integration.yml</span></code>: PostgreSQL service container + <code class="docutils literal notranslate"><span class="pre">AVELOXIS_TEST_DB</span></code> integration tests
+(the <code class="docutils literal notranslate"><span class="pre">migrate</span></code> job), plus two deployment jobs (0.29.107): <code class="docutils literal notranslate"><span class="pre">upgrade-path</span></code>
+(the base release — the PR’s base branch, or the newest release tag on a
+push — migrates an empty database and populates it; the head release
+migrates it again plain, <code class="docutils literal notranslate"><span class="pre">--skip-views</span></code> and plain, then the stamp, the
+seeded rows, index validity and data-verify must hold;
+<code class="docutils literal notranslate"><span class="pre">scripts/ci-upgrade-path.sh</span></code>) and <code class="docutils literal notranslate"><span class="pre">processes</span></code> (serve, api and web from
+one binary against one database, the contracts between them over HTTP:
+anonymous API refused, session → Bearer exchange, the form guard’s 415/413
+before any gate, privilege per request, sign-out in web = 401 in api,
+clean SIGTERM; <code class="docutils literal notranslate"><span class="pre">scripts/ci-process-contracts.sh</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">nightly.yml</span></code> (scheduled on <code class="docutils literal notranslate"><span class="pre">main</span></code>, and by hand on any branch): <code class="docutils literal notranslate"><span class="pre">race-stress</span></code>
+(api, web, scheduler, platform under <code class="docutils literal notranslate"><span class="pre">-race</span> <span class="pre">-count=8</span> <span class="pre">-cpu=2</span> <span class="pre">-shuffle=on</span></code>)
+and <code class="docutils literal notranslate"><span class="pre">golden-collection</span></code> (<code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">data-test</span></code> between the newest release
+tag and the branch over a small fixed set; the GitLab half needs the
+<code class="docutils literal notranslate"><span class="pre">GITLAB_TOKEN</span></code> secret and the <code class="docutils literal notranslate"><span class="pre">GOLDEN_GITLAB_PROJECT</span></code> variable).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">lint.yml</span></code>: <code class="docutils literal notranslate"><span class="pre">go</span> <span class="pre">vet</span></code> → <code class="docutils literal notranslate"><span class="pre">staticcheck</span></code> → <code class="docutils literal notranslate"><span class="pre">golangci-lint</span></code> (pinned version), all blocking.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">codeql.yml</span></code>: security scanning.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">cifuzz.yml</span></code>: ClusterFuzzLite over the 7 native Go fuzz targets.</p></li>

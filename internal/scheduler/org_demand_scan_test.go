@@ -55,6 +55,15 @@ func TestMaybeScanNewOrgsShape(t *testing.T) {
 	if !strings.Contains(body, "HasNeverScannedOrgs(") {
 		t.Error("maybeScanNewOrgs must consult store.HasNeverScannedOrgs — the DB row is the demand signal")
 	}
+	// Both forges' rows count only while that forge has a usable key
+	// (0.29.106 whole-branch review P2: the GitHub arm was gated in the pass
+	// only, so one never-scanned GitHub registration with no GitHub key
+	// logged three INFO lines every 10 s poll forever).
+	for _, gate := range []string{"githubKeysAvailable()", "gitlabKeysAvailable()"} {
+		if i := strings.Index(body, gate); i < 0 || i > strings.Index(body, "HasNeverScannedOrgs(") {
+			t.Errorf("maybeScanNewOrgs must decide %s before the probe, so a forge without a key passes no base", gate)
+		}
+	}
 	probeIdx := strings.Index(body, "HasNeverScannedOrgs(")
 	gateIdx := strings.Index(body, "dbHealthy.Load()")
 	if gateIdx < 0 || gateIdx > probeIdx {

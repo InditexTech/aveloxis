@@ -51,12 +51,14 @@ func (s *PostgresStore) GetRepoTimeSeries(ctx context.Context, repoID int64, sin
 		return nil, fmt.Errorf("time series repo lookup: %w", err)
 	}
 
-	// The upper bound is at most the latest plausible commit time (a UTC
-	// midnight: an open-ended window stays day-aligned so the daily commit
-	// table can serve it — summary/49; and bogus future author dates never
-	// stretch the series — 2026-10-07, NVIDIA/nova's 2080s).
-	upper := BoundedUpper(until)
-	since = BoundedLower(since) // and no earlier than the plausible floor (an unset clock stamps the epoch)
+	// The bounds are resolveWindow's (stage 1b: one normalizer, shared
+	// with the contributions readers): the upper bound is at most the
+	// latest plausible commit time (a UTC midnight: an open-ended window
+	// stays day-aligned so the daily commit table can serve it —
+	// summary/49; and bogus future author dates never stretch the series —
+	// 2026-10-07, NVIDIA/nova's 2080s), the lower no earlier than the
+	// plausible floor (an unset clock stamps the epoch).
+	since, upper := resolveWindow(since, until)
 
 	// The commit series (summary/49): the daily table when it serves this
 	// window, the commits table otherwise (one row per file per commit, so
@@ -128,7 +130,7 @@ func (s *PostgresStore) weeklySeries(ctx context.Context, query string, repoID i
 		return nil, err
 	}
 	defer rows.Close()
-	var out []WeeklyDataPoint
+	out := []WeeklyDataPoint{} // D6: a series with no activity is []
 	for rows.Next() {
 		var dp WeeklyDataPoint
 		if err := rows.Scan(&dp.WeekStart, &dp.Count); err != nil {
@@ -157,14 +159,6 @@ func normalizeLicense(license string) string {
 	return spdx.DisplayKey(NormalizeLicenseToSPDX(license))
 }
 
-// GetRepoLicenses returns a summary of dependency licenses for a repo,
-// with counts and OSI compliance indicators. Dependencies with no declared
-// license (empty, whitespace, or sentinel values like NOASSERTION) are
-// grouped under "Unknown".
-func (s *PostgresStore) GetRepoLicenses(ctx context.Context, repoID int64) ([]LicenseCount, error) {
-	return s.GetRepoLicensesScoped(ctx, repoID, false)
-}
-
 // licenseRowUniverseSQL is the ONE spelling (SR-17) of the licenses
 // table's row-universe predicates, shared by the aggregate
 // (GetRepoLicensesScoped) and the drill-down (DepsFiltered) so the
@@ -178,7 +172,10 @@ const licenseRowUniverseSQL = `
 		  AND ($2 = FALSE OR COALESCE(type, '') NOT IN ('dev','test','build','optional','peer'))
 		  AND package_manager <> 'githubactions'`
 
-// GetRepoLicensesScoped is GetRepoLicenses with an optional
+// GetRepoLicensesScoped returns a summary of dependency licenses for a
+// repo, with counts and OSI compliance indicators; dependencies with no
+// declared license (empty, whitespace, or sentinel values like
+// NOASSERTION) are grouped under "Unknown". An optional
 // runtime-scope filter (v0.27.46, summary/19 P3 — decision #8:
 // license COMPLIANCE obligations attach overwhelmingly to distributed
 // runtime deps; dev tooling licenses are informational). runtimeOnly
@@ -213,7 +210,7 @@ func (s *PostgresStore) GetRepoLicensesScoped(ctx context.Context, repoID int64,
 		return nil, err
 	}
 
-	var result []LicenseCount
+	result := []LicenseCount{} // D6: no dependencies is []
 	for lic, cnt := range counts {
 		result = append(result, LicenseCount{
 			License: lic,
@@ -236,14 +233,3 @@ func (s *PostgresStore) GetRepoLicensesScoped(ctx context.Context, repoID int64,
 // Normalizing it again (isOSILicense) read an unidentified text's truncated
 // first line ("MIT License") as that license (mcp-gopls review, v0.29.67).
 func licenseKeyIsOSI(key string) bool { return spdx.OSIApproved(key) }
-
-// isOSILicense judges a RAW stored license (tests and ad-hoc callers; the
-// table badges judge their already-normalized key with licenseKeyIsOSI): the
-// license, normalized, judged against the
-// SPDX list's isOsiApproved by internal/spdx.OSIApproved (worklist 53). An OR
-// is approved when any option is, an AND when every term is, and X WITH an
-// exception follows X. The v0.28.1 " AND " split and the hand-kept allowlist
-// it read are gone: the allowlist disagreed with SPDX in both directions.
-func isOSILicense(license string) bool {
-	return spdx.OSIApproved(NormalizeLicenseToSPDX(license))
-}

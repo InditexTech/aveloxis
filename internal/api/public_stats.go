@@ -62,5 +62,5 @@ func (s *Server) handlePublicStats(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "stats unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	jsonResponse(w, stats)
+	s.writeJSON(w, r, stats)
 }

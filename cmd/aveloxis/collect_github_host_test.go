@@ -25,12 +25,9 @@ func TestCollectPassesTheConfiguredGitHubHost(t *testing.T) {
 	if !strings.Contains(body, call) {
 		t.Errorf("the collect command must build its collector as %q — the keys and the host they belong to travel together, or an Enterprise token reaches public GitHub", call)
 	}
-	// add-repo on an ORGANISATION builds its own client from the same pool
-	// (Copilot review 5260880711): the CLI half of the leak the scheduler's
-	// clients had.
-	if !strings.Contains(body, "platform.NewHTTPClient(cfg.GitHub.GitHubAPIBase(), ghKeys, logger, platform.AuthGitHub)") {
-		t.Error("the org-expansion client must take cfg.GitHub.GitHubAPIBase() — adding an organisation on a self-hosted deployment otherwise sends the Enterprise token to public GitHub")
-	}
+	// add-repo on an ORGANISATION built its own client from the same pool
+	// (Copilot review 5260880711): since stage 1 of summary/59 the CLI
+	// builds none — serve lists the org (TestAddRepoRegistersAnOrganizationAndListsNothing).
 	// A literal here would compile and would be wrong: the whole point is
 	// that this deployment's configuration decides.
 	if strings.Contains(body, `NewWithOptions(client, store, logger, ghKeys, "`) {

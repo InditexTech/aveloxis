@@ -260,7 +260,7 @@ func TestEnsureRepoSharedWithUserEndToEnd(t *testing.T) {
 
 	// (6) Pre-existing group with the reserved name is reused, never
 	// duplicated (unique (user_id, name) backs this; assert anyway).
-	if _, err := store.FindOrCreateUserGroupByName(ctx, userC, SharedWithMeGroupName); err != nil {
+	if _, err := store.findOrCreateNamedGroup(ctx, userC, SharedWithMeGroupName); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.EnsureRepoSharedWithUser(ctx, userC, repoQ); err != nil {
@@ -306,7 +306,7 @@ func TestEnsureRepoSharedWithUserEndToEnd(t *testing.T) {
 	// spurious "Shared with Me" link (the 2026-08-05 compare-page
 	// double-group report).
 	userD := seedUser("d")
-	realGroup, err := store.FindOrCreateUserGroupByName(ctx, userD, "Real Group")
+	realGroup, err := store.CreateUserGroup(ctx, userD, "Real Group")
 	if err != nil {
 		t.Fatal(err)
 	}
