@@ -1,0 +1,39 @@
+internal/platform/github/testdata/traffic_zero_views_day.json
+  s_347fec83078389::t_7316c23bb00296 1
+internal/platform/github/testdata/traffic_zero_clones_week.json
+  s_347fec83078389::t_395bea3c6eae61 1
+internal/platform/github/testdata/traffic_zero_popular_paths.json
+  s_347fec83078389::t_d389ddad9f938c 1
+internal/platform/github/testdata/traffic_zero_views_week.json
+  s_347fec83078389::t_3400ccf9939c5f 1
+internal/platform/github/testdata/traffic_zero_popular_referrers.json
+  s_347fec83078389::t_3affc407e36305 1
+internal/platform/github/testdata/traffic_zero_clones_day.json
+  s_347fec83078389::t_e0ddca588c1331 1
+internal/platform/github/traffic_fixtures_test.go
+  s_347fec83078389::t_fbb26a40b25ec0 1-274
+internal/platform/github/testdata/traffic_openapi_clones.json
+  s_347fec83078389::t_cfafab162728b2 1-81
+internal/platform/github/testdata/traffic_openapi_popular_paths.json
+  s_347fec83078389::t_2c9dd6240dd174 1-62
+internal/platform/github/testdata/traffic_openapi_popular_referrers.json
+  s_347fec83078389::t_fb5598f5f68200 1-22
+internal/platform/github/testdata/traffic_openapi_views.json
+  s_347fec83078389::t_78081a2e6bb3f0 1-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a0790d400d7f28f2a913657156352ceab87833aa",
+  "prompts": {},
+  "sessions": {
+    "s_347fec83078389": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7df70ca-1922-4acd-8501-d573526c8aea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
