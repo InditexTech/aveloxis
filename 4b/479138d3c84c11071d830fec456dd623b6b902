@@ -1,0 +1,47 @@
+README.md
+  s_347fec83078389::t_2c3b24a1a2d1ac 107,549-550,965
+docs/architecture/overview.md
+  s_347fec83078389::t_808c0721d2ebaa 46,74,242
+docs/contributing/README.md
+  s_347fec83078389::t_4a689b03c09617 12
+docs/contributing/development-setup.md
+  s_347fec83078389::t_0b46ad6f1e12ce 100
+docs/getting-started/augur-migration.md
+  s_347fec83078389::t_847291afb2dade 49,102
+docs/getting-started/quickstart.md
+  s_347fec83078389::t_e5d64395880906 70
+docs/guide/commands.md
+  s_347fec83078389::t_9ad1d2c8c8de4a 426,428
+internal/db/fk_constraints_extra.go
+  s_347fec83078389::t_8f4d6f98358043 26-28,100-106
+internal/db/fk_extra_test.go
+  s_347fec83078389::t_66a61dc6859edd 23,144-155
+internal/db/fk_indexes_extra.go
+  s_347fec83078389::t_3c5ccd63242929 30-32,108-114
+internal/db/repo_dedup.go
+  s_347fec83078389::t_e4a8535860645b 309-314
+internal/db/repo_dedup_integration_test.go
+  s_347fec83078389::t_4bc7ee22c0c6a3 115-174,440-449
+internal/db/schema.sql
+  s_347fec83078389::t_5f0e888133d31e 1383-1470,3216-3220
+internal/db/traffic_schema_integration_test.go
+  s_347fec83078389::t_fd2c3ee5fbc7dd 1-196
+internal/db/traffic_schema_test.go
+  s_347fec83078389::t_b732cda046d8da 1-164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4b479138d3c84c11071d830fec456dd623b6b902",
+  "prompts": {},
+  "sessions": {
+    "s_347fec83078389": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7df70ca-1922-4acd-8501-d573526c8aea",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
