@@ -590,6 +590,12 @@ var deployChecklists = map[string][]deployStep{
 	// 5559632343 on PR #229 — the organization reconcile's warning names
 	// the quota that refused; the skip census prints failed tests' output
 	// and CI keeps it. No schema change.
+	// v0.29.97 (2026-10-20, branch feat/github-traffic): GitHub repository
+	// traffic kept past GitHub's 14 days (aveloxis/aveloxis#234) — five
+	// aveloxis_data tables born empty, one read-only route, and traffic
+	// errors other than a skip recorded as collection errors. No index on
+	// a fleet-scale table, no view change.
+	"0.29.97": v02997DeployChecklist,
 	"0.29.96": v02996DeployChecklist,
 	"0.29.95": v02995DeployChecklist,
 	"0.29.94": v02994DeployChecklist,
@@ -623,6 +629,19 @@ var deployChecklists = map[string][]deployStep{
 // ALTER): repository answers are cached until the repository changes; it
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
+
+// v02997DeployChecklist is 0.29.96's ladder with a note on the start step.
+var v02997DeployChecklist = func() []deployStep {
+	prev := v02996DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.97: GitHub repository traffic is now kept past the 14 days GitHub serves (aveloxis/aveloxis#234). The migrate adds five empty tables to aveloxis_data (repo_views, repo_traffic_paths, repo_traffic_referrers, repo_traffic_windows, repo_traffic_weeks) and changes no existing table; nothing is backfilled: GitHub returns only the last 14 days, so each repository's history starts at its first collection on this release. New read-only route GET /api/v1/repos/{repoID}/traffic: the stored daily views and clones, the 14-day and complete-week uniques, and the latest popular paths and referrers. Reading traffic needs push access to the repository with a classic token, or the 'Administration' repository permission set to read with a fine-grained token. A key without it gets 403 on the daily clones read (a request earlier releases already made): the collection logs one Info line 'skipping traffic endpoints' per repository and collection, records no error and makes no further traffic request. Any other traffic error is now recorded as a collection error, as a releases error is: the job completes with success=false and the message in last_error ('clone stats: ...' for the daily clones read, whose errors earlier releases dropped silently, or 'traffic <endpoint>: ...'), and the collection's other phases still run. A key that can read traffic makes five more GitHub requests per repository and collection (views by day and by week, clones by week, popular paths, popular referrers). GitLab repositories get no traffic rows. A fleet already running 0.29.96 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.96's notes below in the same one migrate. " + out[i].desc
+		}
+	}
+	return out
+}()
 
 // v02996DeployChecklist is 0.29.95's ladder with a note on the start step.
 var v02996DeployChecklist = func() []deployStep {
