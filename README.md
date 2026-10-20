@@ -854,7 +854,7 @@ GitHub and GitLab implement the same `platform.Client` interface with 7 sub-inte
 
 | Sub-interface | Methods | Notes |
 |---|---|---|
-| `RepoCollector` | `FetchRepoInfo`, `FetchCloneStats` | Clone stats unavailable for GitLab via API |
+| `RepoCollector` | `FetchRepoInfo`, `FetchCloneStats` | GitLab clone stats not collected yet (GitLab serves daily HTTP clone and pull counts through `GET /projects/:id/statistics`) |
 | `IssueCollector` | `ListIssues`, `ListIssueLabels`, `ListIssueAssignees` | |
 | `PullRequestCollector` | `ListPullRequests`, `ListPRLabels`, `ListPRAssignees`, `ListPRReviewers`, `ListPRReviews`, `ListPRCommits`, `ListPRFiles`, `FetchPRMeta` | GitLab MRs mapped to PR model |
 | `EventCollector` | `ListIssueEvents`, `ListPREvents` | GitLab uses resource events API |
@@ -1091,7 +1091,7 @@ The following fields are available from GitHub but not from GitLab due to platfo
 | Community profile files (CHANGELOG, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY) | GraphQL file detection | `/repository/tree` file detection (v0.12.2) | Full parity |
 | `repo_info.commit_count` | REST `/repos/{o}/{r}` — accurate | `GET /projects/:id?statistics=true` → often 0 for mirrored or private-low-scope projects | v0.16.9+ backfills from facade's `git log` count after a successful clone so the monitor/web "Metadata commits" column matches reality |
 | Watcher count (`repo_info`) | GraphQL `watchers.totalCount` | Not available | GitLab has no public "watchers" API; `star_count` is the closest analog |
-| Clone statistics (`repo_clones`) | `/traffic/clones` (requires push access) | Not available | GitLab exposes clone data only via admin-only endpoints |
+| Clone statistics (`repo_clones`) | `/traffic/clones` (requires push access) | Not collected yet | GitLab serves daily HTTP clone and pull counts for the last 30 days through `GET /projects/:id/statistics` to a key with at least the Reporter role, with no unique counts; Aveloxis does not read that endpoint yet, so GitLab repositories have no `repo_clones` rows |
 | Traffic (`repo_views`, `repo_traffic_paths`, `repo_traffic_referrers`, `repo_traffic_windows`, `repo_traffic_weeks`) | `/traffic/views` (daily and weekly), `/traffic/clones?per=week`, `/traffic/popular/paths`, `/traffic/popular/referrers` (push access with a classic token, or the "Administration" repository permission set to read with a fine-grained token) | Not available | GitLab has no API for page views, popular paths, referrers or unique visitors and cloners; the GitLab client makes no traffic request, so GitLab repositories have no traffic rows |
 | GraphQL node IDs (`pr_src_node_id`) | Available on all entities | Not applicable | GitLab uses numeric IDs, not GraphQL node IDs — architectural difference |
 | Contributor URL fields (`gh_followers_url`, etc.) | 10+ URL fields per contributor | Not available | GitLab API doesn't expose follower/following/gist/etc. URLs |

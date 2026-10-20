@@ -979,9 +979,7 @@ Point-in-time snapshots of repository metadata and statistics. A new row is inse
 
 #### repo_clones
 
-Daily clone traffic (GitHub-only feature). One row per repository and UTC day: GitHub returns the last 14 days, zero-filled, and every bucket is stored, zeros included. A later read of the same day replaces its counts (the latest read wins, v0.29.97), because GitHub can still revise its newest day.
-
-**Access:** GitHub serves traffic only to a key with push access to the repository (classic token) or with the "Administration" repository permission set to read (fine-grained token). A key without it gets `403`; the collection then skips the traffic reads and stores nothing. GitHub-only: the GitLab client reads no traffic, so GitLab repositories have no rows.
+Clone traffic data. Only available for repos where you have push access (GitHub-only feature). A fine-grained token needs the "Administration" permission set to read instead; a key without access gets `403` and nothing is stored.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
@@ -998,9 +996,7 @@ Daily clone traffic (GitHub-only feature). One row per repository and UTC day: G
 
 #### repo_views
 
-Daily page views of the repository on GitHub (v0.29.97), shaped like `repo_clones`. One row per repository and UTC day: GitHub returns the last 14 days, zero-filled, and every bucket is stored, zeros included, so a day with a row was read and a day without one was not (a missed or failed collection). A later read of the same day replaces its counts (the latest read wins). No total is stored for a week, a window or any other period: a period's views are the sum of its daily rows.
-
-**Access:** GitHub serves traffic only to a key with push access to the repository (classic token) or with the "Administration" repository permission set to read (fine-grained token). A key without it gets `403`; the collection then skips the traffic reads and stores nothing. GitHub-only: the GitLab client reads no traffic, so GitLab repositories have no rows.
+Daily page views on GitHub (v0.29.97), shaped like `repo_clones`: zeros are stored, so a day without a row was not read. A later read of a day replaces its counts. Same key access as `repo_clones`.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
@@ -1017,9 +1013,7 @@ Daily page views of the repository on GitHub (v0.29.97), shaped like `repo_clone
 
 #### repo_traffic_paths
 
-The repository's top 10 viewed paths on GitHub over GitHub's 14-day period (v0.29.97), kept as a daily snapshot keyed by the UTC date of the collection that read them. A later collection on the same date replaces that date's rows as a whole, so an entry that dropped out of the top 10 is not kept; other dates' snapshots stay.
-
-**Access:** GitHub serves traffic only to a key with push access to the repository (classic token) or with the "Administration" repository permission set to read (fine-grained token). A key without it gets `403`; the collection then skips the traffic reads and stores nothing. GitHub-only: the GitLab client reads no traffic, so GitLab repositories have no rows.
+The repository's top 10 viewed paths over GitHub's 14-day period (v0.29.97), kept as a daily snapshot keyed by the UTC collection date and replaced as a whole when that date is collected again. Same key access as `repo_clones`.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
@@ -1038,9 +1032,7 @@ The repository's top 10 viewed paths on GitHub over GitHub's 14-day period (v0.2
 
 #### repo_traffic_referrers
 
-The repository's top 10 referring sites on GitHub over GitHub's 14-day period (v0.29.97), kept as a daily snapshot keyed by the UTC date of the collection that read them, and replaced as a whole like `repo_traffic_paths`.
-
-**Access:** GitHub serves traffic only to a key with push access to the repository (classic token) or with the "Administration" repository permission set to read (fine-grained token). A key without it gets `403`; the collection then skips the traffic reads and stores nothing. GitHub-only: the GitLab client reads no traffic, so GitLab repositories have no rows.
+The repository's top 10 referring sites over GitHub's 14-day period (v0.29.97), kept as a daily snapshot and replaced as a whole like `repo_traffic_paths`. Same key access as `repo_clones`.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
@@ -1058,9 +1050,7 @@ The repository's top 10 referring sites on GitHub over GitHub's 14-day period (v
 
 #### repo_traffic_windows
 
-Distinct visitors (views) or cloners (clones) over one 14-day window, as GitHub computes them (v0.29.97). Every successful traffic read writes one row per kind, even when `uniques` is 0, so the rows also record which windows were read. Distinct counts cannot be summed from the daily rows, which is why they are stored here; no total views or clones are stored. A later read of the same window replaces `uniques` (the latest read wins).
-
-**Access:** GitHub serves traffic only to a key with push access to the repository (classic token) or with the "Administration" repository permission set to read (fine-grained token). A key without it gets `403`; the collection then skips the traffic reads and stores nothing. GitHub-only: the GitLab client reads no traffic, so GitLab repositories have no rows.
+Distinct visitors (views) or cloners (clones) over one 14-day window, as GitHub computes them (v0.29.97). Every successful read writes one row per kind (only the views window when the daily clones read failed), even when `uniques` is 0, so the rows record which windows were read. Distinct counts cannot be summed from the daily rows. Same key access as `repo_clones`.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
@@ -1078,9 +1068,7 @@ Distinct visitors (views) or cloners (clones) over one 14-day window, as GitHub 
 
 #### repo_traffic_weeks
 
-Distinct visitors (views) or cloners (clones) of one complete Monday-to-Sunday week, as GitHub computes them (v0.29.97). A weekly bucket is stored only when it starts on a Monday and all seven days lie inside the read's window (`repo_traffic_windows`), so the partial first and last weeks of a response are skipped; zeros are stored. A week seen by several reads keeps one row with the latest read's `uniques`. A week's total views or clones are the sum of its seven daily rows.
-
-**Access:** GitHub serves traffic only to a key with push access to the repository (classic token) or with the "Administration" repository permission set to read (fine-grained token). A key without it gets `403`; the collection then skips the traffic reads and stores nothing. GitHub-only: the GitLab client reads no traffic, so GitLab repositories have no rows.
+Distinct visitors (views) or cloners (clones) of one complete Monday-to-Sunday week, as GitHub computes them (v0.29.97). Partial first and last weeks are not stored. A week's total is the sum of its seven daily rows. Same key access as `repo_clones`.
 
 | Column | Type | Source | Description |
 |--------|------|--------|-------------|
