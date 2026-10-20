@@ -1,0 +1,25 @@
+.github/workflows/network-canary.yml
+  s_f822c7fc447da3::t_02214100e54ebc 34-38,72-77
+docs/guide/ci-cd.md
+  s_f822c7fc447da3::t_b84da2c8509d27 267-268
+internal/platform/gitlab/project_statistics_live_test.go
+  s_f822c7fc447da3::t_45a43545642ffd 1-476
+scripts/skip_census_baseline.txt
+  s_f822c7fc447da3::t_d63ca1a4f979d5 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "185be56c504a19b772f859cf5a0b7ea58dc8b844",
+  "prompts": {},
+  "sessions": {
+    "s_f822c7fc447da3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f672e684-a58c-40e1-b963-dda70d94054d",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
