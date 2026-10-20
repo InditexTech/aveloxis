@@ -90,6 +90,10 @@ func TestV02997ChecklistNamesItsOperatorVisibleChanges(t *testing.T) {
 		"traffic <endpoint>: ", // the other reads' errors
 		"five more GitHub requests",
 		"nothing is backfilled",
+		// The scheduler keeps only the collection's first error
+		// (buildOutcome stores result.Errors[0]), so a traffic error
+		// reaches last_error only when nothing failed before it.
+		"the first error's message in last_error",
 	} {
 		if !strings.Contains(own, want) {
 			t.Errorf("the start note must say %q", want)
