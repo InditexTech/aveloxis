@@ -164,6 +164,8 @@ SELECT schema_version FROM aveloxis_ops.schema_meta;   -- equals `aveloxis versi
 
 ## What to watch for in the migrate output
 
+**0.29.117 changes nothing to run.** A CI check is corrected; the binaries behave as 0.29.116's. Nothing beyond the ladder.
+
 **0.29.116 changes nothing to run.** The api's home-page cache no longer starts a redundant second background reload right after one finished. Nothing beyond the ladder.
 
 **0.29.115 corrects the reverse-proxy recipe.** With `api.require_auth` true, the GUI host's `/api/` must reach the web process, which attaches the signed-in session's Bearer token. The earlier recipe in [Production Deployment](deployment.md) sent `/api/` straight to the api port, which answers `401` to every browser outside `exempt_cidrs`. If your nginx site has that `location ^~ /api/` block, remove it (the web's `location /` then takes `/api/`), and give scripts that call the API with their own token a host of their own, as the guide's second server block shows (aveloxis-gui's host forwards `/api/` to the API itself and needs no change). Nothing else to run beyond the ladder.

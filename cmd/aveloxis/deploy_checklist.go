@@ -695,6 +695,10 @@ var deployChecklists = map[string][]deployStep{
 	// background load fixed; no schema change — 0.29.115's ladder with a
 	// note on the start step.
 	"0.29.116": v029116DeployChecklist,
+	// v0.29.117 (Copilot on PR #241): the CI process contract counts the
+	// signed-out account's tokens by user; test-only — 0.29.116's ladder
+	// with a note on the start step.
+	"0.29.117": v029117DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,
@@ -1840,3 +1844,7 @@ var v029115DeployChecklist = withStartNote(v029114DeployChecklist, "0.29.115 (Co
 // v0.29.116 (2026-10-21): the home-repos refresh claim re-checks the entry.
 // 0.29.115's ladder; the notes accumulate.
 var v029116DeployChecklist = withStartNote(v029115DeployChecklist, "0.29.116: no schema change. The api's home-page cache no longer starts a second background reload of an account's ranking when one finished a moment before (one redundant query, and the test that expected one reload failed about once in sixty runs). Nothing to change in aveloxis.json. ")
+
+// v0.29.117 (2026-10-21): Copilot's third review of PR #241 (CI script only).
+// 0.29.116's ladder; the notes accumulate.
+var v029117DeployChecklist = withStartNote(v029116DeployChecklist, "0.29.117: no schema change and no runtime change. The CI check that signing out removes the web proxy's token now counts the account's tokens, which a surviving token cannot escape. Nothing to change in aveloxis.json. ")

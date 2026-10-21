@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Upgrading &mdash; Aveloxis 0.29.116 documentation</title>
+  <title>Upgrading &mdash; Aveloxis 0.29.117 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=85a7f8ef"></script>
+      <script src="../_static/documentation_options.js?v=21df7cf6"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -1936,6 +1936,7 @@ once. Verify the stamp matches the binary afterwards:</p>
 </section>
 <section id="what-to-watch-for-in-the-migrate-output">
 <h2>What to watch for in the migrate output<a class="headerlink" href="#what-to-watch-for-in-the-migrate-output" title="Link to this heading"></a></h2>
+<p><strong>0.29.117 changes nothing to run.</strong> A CI check is corrected; the binaries behave as 0.29.116’s. Nothing beyond the ladder.</p>
 <p><strong>0.29.116 changes nothing to run.</strong> The api’s home-page cache no longer starts a redundant second background reload right after one finished. Nothing beyond the ladder.</p>
 <p><strong>0.29.115 corrects the reverse-proxy recipe.</strong> With <code class="docutils literal notranslate"><span class="pre">api.require_auth</span></code> true, the GUI host’s <code class="docutils literal notranslate"><span class="pre">/api/</span></code> must reach the web process, which attaches the signed-in session’s Bearer token. The earlier recipe in <a class="reference internal" href="deployment.html"><span class="std std-doc">Production Deployment</span></a> sent <code class="docutils literal notranslate"><span class="pre">/api/</span></code> straight to the api port, which answers <code class="docutils literal notranslate"><span class="pre">401</span></code> to every browser outside <code class="docutils literal notranslate"><span class="pre">exempt_cidrs</span></code>. If your nginx site has that <code class="docutils literal notranslate"><span class="pre">location</span> <span class="pre">^~</span> <span class="pre">/api/</span></code> block, remove it (the web’s <code class="docutils literal notranslate"><span class="pre">location</span> <span class="pre">/</span></code> then takes <code class="docutils literal notranslate"><span class="pre">/api/</span></code>), and give scripts that call the API with their own token a host of their own, as the guide’s second server block shows (aveloxis-gui’s host forwards <code class="docutils literal notranslate"><span class="pre">/api/</span></code> to the API itself and needs no change). Nothing else to run beyond the ladder.</p>
 <p><strong>0.29.114 changes two answers, not the schema.</strong> Copilot’s review of 0.29.113: “Sign out everywhere” (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/sessions/revoke</span></code>) is never refused by a spent request quota and is not counted, like sign-out, and a long login in the web GUI’s navigation bar wraps instead of widening the page. Nothing to run beyond the ladder.</p>
