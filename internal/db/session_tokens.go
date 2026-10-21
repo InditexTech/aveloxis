@@ -40,7 +40,8 @@ const DefaultSessionTokenLifetime = 30 * 24 * time.Hour
 // SessionTouchInterval is how often a web session's last_used_at is
 // re-stamped by a request: once a minute at most, the same horizon as the
 // api's authorization cache (authCacheTTL), so a busy session costs one
-// write a minute rather than one per page (0.29.113).
+// write a minute rather than one per page (0.29.113) — shortened to half
+// the inactivity bound when that is less (touchInterval).
 const SessionTouchInterval = time.Minute
 
 // CreateSessionToken mints a Bearer token for the user with the given
@@ -152,15 +153,17 @@ func (s *PostgresStore) ValidateSessionToken(ctx context.Context, token string) 
 	return userID, nil
 }
 
-// SessionTokenCreatedAt is when a live Bearer session token was minted —
-// the sign-in it stands for (its own mint, or the web session it was
-// minted from: a child carries its parent's sign-in). A sensitive change
-// asks for a recent one (ASVS V7.5.1, 0.29.113). ErrInvalidSessionToken
-// for no live token.
+// SessionTokenCreatedAt is the sign-in a live Bearer session token stands
+// for: the web session it was minted from (every production mint has
+// one). A sensitive change asks for a recent one (ASVS V7.5.1, 0.29.113).
+// A token whose parent is gone (the expiry sweep set parent_token NULL)
+// or never had one answers the zero time — never its own mint, which
+// would read a token minted hours after the sign-in as fresh (review
+// round 1 of 0.29.113). ErrInvalidSessionToken for no live token.
 func (s *PostgresStore) SessionTokenCreatedAt(ctx context.Context, token string) (time.Time, error) {
 	var created int64
 	err := s.pool.QueryRow(ctx, `
-		SELECT COALESCE(p.created_at, t.created_at, 0)
+		SELECT COALESCE(p.created_at, 0)
 		FROM aveloxis_ops.user_session_tokens t
 		LEFT JOIN aveloxis_ops.user_session_tokens p ON p.token = t.parent_token
 		WHERE t.token = $1 AND t.kind = $3 AND t.expiration > $2`, hashToken(token), time.Now().Unix(), sessionKindAPI).Scan(&created)
@@ -169,6 +172,9 @@ func (s *PostgresStore) SessionTokenCreatedAt(ctx context.Context, token string)
 	}
 	if err != nil {
 		return time.Time{}, fmt.Errorf("session token created at: %w", err)
+	}
+	if created == 0 {
+		return time.Time{}, nil
 	}
 	return time.Unix(created, 0), nil
 }
@@ -223,4 +229,25 @@ func (s *PostgresStore) GetUserRepoScope(ctx context.Context, userID int) ([]int
 		out = append(out, id)
 	}
 	return out, rows.Err()
+}
+
+// touchInterval is how stale last_used_at may grow before a lookup
+// re-stamps it: SessionTouchInterval, or half the inactivity bound when
+// that is shorter (review round 1 of 0.29.113: at a one-minute bound a
+// one-minute touch could never land before the refusal, so a busy
+// session died 60 s after its first use). No bound: the plain interval.
+func touchInterval(idle time.Duration) time.Duration {
+	if idle > 0 && idle/2 < SessionTouchInterval {
+		return idle / 2
+	}
+	return SessionTouchInterval
+}
+
+// SignInIsRecent is the one re-authentication rule for a sensitive change
+// (ASVS V7.5.1, 0.29.113), read by the web process (a session's
+// CreatedAt) and the api process (SessionTokenCreatedAt): a recorded
+// sign-in no older than the inactivity bound. The zero time — no sign-in
+// the store can vouch for — is never recent.
+func SignInIsRecent(signedIn time.Time, idle time.Duration) bool {
+	return !signedIn.IsZero() && time.Since(signedIn) <= idle
 }

@@ -1799,12 +1799,15 @@ the request is <code class="docutils literal notranslate"><span class="pre">curr
 all (the caller’s own included — its next request is <code class="docutils literal notranslate"><span class="pre">401</span></code>), and
 <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/users/{userID}/sessions/revoke</span></code> lets an administrator
 end an account’s. <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/email</span></code> now answers <code class="docutils literal notranslate"><span class="pre">403</span> <span class="pre">{&quot;error&quot;:</span> <span class="pre">&quot;reauthentication_required&quot;}</span></code> when the token’s sign-in is older
-than <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code> (30 by default; the proxy token of a browser
-session is judged by that session’s sign-in): sign in again and retry. A
+than <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code> (30 by default; every session token — the
+SPA’s from <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code>, the web proxy’s — is judged by the sign-in of the
+browser session it was minted from, and one whose browser session has
+expired is refused): sign in again and retry. A
 browser session of the web GUI idle past that bound is signed out; a
 <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> token is not (it lives its 30 days, and the SPA can keep its
-own idle rule). Every answer of the api process carries
-<code class="docutils literal notranslate"><span class="pre">X-Content-Type-Options:</span> <span class="pre">nosniff</span></code> and <code class="docutils literal notranslate"><span class="pre">Strict-Transport-Security</span></code>. The
+own idle rule). Every answer of the api process’s handlers carries
+<code class="docutils literal notranslate"><span class="pre">X-Content-Type-Options:</span> <span class="pre">nosniff</span></code> and <code class="docutils literal notranslate"><span class="pre">Strict-Transport-Security</span></code> (the
+<code class="docutils literal notranslate"><span class="pre">http_timeout_seconds</span></code> 503 is written outside them and carries neither). The
 per-IP <code class="docutils literal notranslate"><span class="pre">429</span></code> is logged once a minute per address.</p>
 </section>
 <section id="changes-for-api-clients-in-0-29-110">
@@ -1935,7 +1938,7 @@ request’s <code class="docutils literal notranslate"><span class="pre">Origin<
 origin; a browser’s <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site:</span> <span class="pre">cross-site</span></code> is refused. aveloxis-gui
 on its own origin therefore needs <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code> set to that origin. A
 signed-in HTML form also carries a form token; the two GUI calls do not.</p></li>
-<li><p><strong>Every answer of the web process carries security headers</strong>: a
+<li><p><strong>Every answer of the web process’s handlers carries security headers</strong> (the <code class="docutils literal notranslate"><span class="pre">http_timeout_seconds</span></code> 503 is written outside them): a
 Content-Security-Policy with one script source (<code class="docutils literal notranslate"><span class="pre">/static/</span></code>, which now
 serves the page scripts and Chart.js — no CDN), <code class="docutils literal notranslate"><span class="pre">frame-ancestors</span> <span class="pre">'none'</span></code>,
 <code class="docutils literal notranslate"><span class="pre">X-Frame-Options:</span> <span class="pre">DENY</span></code>, <code class="docutils literal notranslate"><span class="pre">X-Content-Type-Options:</span> <span class="pre">nosniff</span></code> and a
@@ -3447,9 +3450,13 @@ profile page when <code class="docutils literal notranslate"><span class="pre">w
 process’s <code class="docutils literal notranslate"><span class="pre">/account/email</span></code> form runs.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/me/sessions</span></code> (0.29.113) — the account’s live sessions:
 <code class="docutils literal notranslate"><span class="pre">{sessions:</span> <span class="pre">[{kind,</span> <span class="pre">from_web_session,</span> <span class="pre">current,</span> <span class="pre">created_at,</span> <span class="pre">last_used_at,</span> <span class="pre">expires_at}]}</span></code>; <code class="docutils literal notranslate"><span class="pre">kind</span></code> is <code class="docutils literal notranslate"><span class="pre">web</span></code> (a browser session of the
-web GUI) or <code class="docutils literal notranslate"><span class="pre">api</span></code> (a Bearer token: <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code>’s, or the web proxy’s,
-<code class="docutils literal notranslate"><span class="pre">from_web_session</span></code>); <code class="docutils literal notranslate"><span class="pre">current</span></code> marks the one presenting the request.
-Operator-issued API tokens are not sessions.</p></li>
+web GUI) or <code class="docutils literal notranslate"><span class="pre">api</span></code> (a Bearer token: <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code>’s or the web proxy’s,
+both minted from a browser session: <code class="docutils literal notranslate"><span class="pre">from_web_session</span></code> is <code class="docutils literal notranslate"><span class="pre">true</span></code> while
+that session lives, <code class="docutils literal notranslate"><span class="pre">false</span></code> once it has expired — the SPA’s token
+outlives it by up to 29 days);
+<code class="docutils literal notranslate"><span class="pre">current</span></code> marks the one presenting the request; <code class="docutils literal notranslate"><span class="pre">last_used_at</span></code> moves
+(at most once a minute (every half bound when the bound is under two minutes)) for browser sessions only, and is a token’s
+mint time. Operator-issued API tokens are not sessions.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/sessions/revoke</span></code> (0.29.113) — ends every session of the
 account, this one included: <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;ok&quot;:</span> <span class="pre">true,</span> <span class="pre">&quot;ended&quot;:</span> <span class="pre">N}</span></code>, then <code class="docutils literal notranslate"><span class="pre">401</span></code>
 for each of them.</p></li>

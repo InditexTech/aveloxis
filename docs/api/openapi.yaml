@@ -3077,11 +3077,16 @@ paths:
       description: |
         Every live session of the account (0.29.113, OWASP ASVS V7.5.2): the
         browser sessions of the web GUI (`kind` `web`), the tokens
-        `POST /api/v1/auth/token` minted (`kind` `api`) and the tokens the
-        web process's `/api/` proxy holds for a browser session (`kind`
-        `api`, `from_web_session` `true`). The session presenting this
-        request is `current`. Operator-issued API tokens are not sessions
-        and are not listed. `last_used_at` moves at most once a minute.
+        `POST /api/v1/auth/token` minted and the tokens the web process's
+        `/api/` proxy holds (`kind` `api`; both are minted from a browser
+        session: `from_web_session` is `true` while that session lives and
+        `false` once it has expired, which the SPA's 30-day token outlives).
+        The session presenting
+        this request is `current`. Operator-issued API tokens are not
+        sessions and are not listed. A browser session idle past
+        `web.session_idle_minutes` is not live and not listed.
+        `last_used_at` moves, at most once a minute (every half bound when the bound is under two minutes), for `kind` `web` only;
+        a token's is its mint time.
 
         Handler: `handleMeSessions`.
       tags: [Account]
@@ -3191,13 +3196,14 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           description: |
-            An API token (`error` `forbidden`; the account-settings rule), or
-            a sign-in older than `web.session_idle_minutes` (`error`
-            `reauthentication_required`, since 0.29.113, OWASP ASVS V7.5.1:
-            the recovery address changes only after a recent sign-in — a
-            `/auth/token` token is judged by its own mint, the web process's
-            proxy token by the browser session it was minted for; sign in
-            again and retry). `message` says which.
+            An operator-issued API token (`error` is a sentence saying an
+            API token cannot change account settings), or a sign-in older
+            than `web.session_idle_minutes` (since 0.29.113, OWASP ASVS
+            V7.5.1: `error` is `reauthentication_required` and `message`
+            says what to do — the recovery address changes only after a
+            recent sign-in; every session token is judged by the sign-in of
+            the browser session it was minted from, and a token whose
+            browser session expired has none that counts).
           content:
             application/json:
               schema:
@@ -8352,6 +8358,9 @@ components:
         error:
           type: string
           description: A machine-readable code or a sentence; see each operation.
+        message:
+          type: string
+          description: A sentence for a person, present when `error` is a code (`reauthentication_required`).
     UserSession:
       type: object
       description: One live session of an account (0.29.113).
@@ -8363,7 +8372,7 @@ components:
           description: '`web` is a browser session of the web GUI; `api` is a Bearer token.'
         from_web_session:
           type: boolean
-          description: The token was minted for a browser session (the web process's proxy token).
+          description: The token's browser session is still live (every `kind` `api` session is minted from one; `false` once it has expired, and for `kind` `web`).
         current:
           type: boolean
           description: This session presented the request.
@@ -8374,7 +8383,7 @@ components:
         last_used_at:
           type: string
           format: date-time
-          description: The session's last request, to the minute; equals `created_at` for one never used since.
+          description: A browser session's last request, to the minute (`created_at` until its first); for `kind` `api`, the mint time.
         expires_at:
           type: string
           format: date-time

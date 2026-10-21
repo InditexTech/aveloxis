@@ -131,3 +131,156 @@ func TestUserSessionsAreListedAndEndedTogether(t *testing.T) {
 		t.Errorf("after ending: %d sessions listed, %v", len(list), err)
 	}
 }
+
+// Review round 1 of 0.29.113 (finding 4, the config-range sweep): at the
+// smallest legal bound the touch must still land inside it. With a fixed
+// one-minute touch, a one-minute bound refused a session 60 s after its
+// first use however busy it was; the touch interval is now at most half
+// the bound.
+func TestTheTouchLandsInsideTheSmallestIdleBound(t *testing.T) {
+	store, uid := webSessionFixture(t)
+	ctx := context.Background()
+	store.SetSessionIdle(time.Minute)
+	t.Cleanup(func() { store.SetSessionIdle(0) })
+	raw, err := store.CreateWebSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-40 * time.Second).Unix() // inside the bound, past half of it
+	if _, err := store.pool.Exec(ctx, `UPDATE aveloxis_ops.user_session_tokens SET last_used_at = $2 WHERE token = $1`, hashToken(raw), old); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LookupWebSession(ctx, raw); err != nil {
+		t.Fatalf("a session used 40 s ago under a 60 s bound must resolve: %v", err)
+	}
+	var after int64
+	if err := store.pool.QueryRow(ctx, `SELECT last_used_at FROM aveloxis_ops.user_session_tokens WHERE token = $1`, hashToken(raw)).Scan(&after); err != nil || after <= old {
+		t.Errorf("under a 60 s bound a use 40 s after the last must re-stamp (stamp %d, was %d, %v); the session would idle out while in use", after, old, err)
+	}
+	for _, c := range []struct{ idle, want time.Duration }{
+		{0, SessionTouchInterval},
+		{time.Minute, 30 * time.Second},
+		{2 * time.Minute, SessionTouchInterval},
+		{30 * time.Minute, SessionTouchInterval},
+	} {
+		if got := touchInterval(c.idle); got != c.want {
+			t.Errorf("touchInterval(%v) = %v, want %v", c.idle, got, c.want)
+		}
+	}
+}
+
+// Review round 1 of 0.29.113 (finding 7): the account page lists live
+// sessions; a web session idle past the bound is no longer one.
+func TestIdledOutWebSessionsAreNotListed(t *testing.T) {
+	store, uid := webSessionFixture(t)
+	ctx := context.Background()
+	store.SetSessionIdle(10 * time.Minute)
+	t.Cleanup(func() { store.SetSessionIdle(0) })
+	idle, err := store.CreateWebSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := store.CreateWebSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.pool.Exec(ctx, `UPDATE aveloxis_ops.user_session_tokens SET last_used_at = $2, created_at = $2 WHERE token = $1`, hashToken(idle), time.Now().Add(-11*time.Minute).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	list, err := store.ListUserSessions(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, s := range list {
+		seen[s.TokenHash] = true
+	}
+	if seen[hashToken(idle)] || !seen[hashToken(live)] {
+		t.Errorf("listed %+v; want the live session and not the idled-out one", list)
+	}
+}
+
+// Review round 1 of 0.29.113 (finding 5): a session token whose parent web
+// session is gone (the expiry sweep set parent_token NULL) carries no
+// sign-in time the re-authentication rule can trust; it answers the zero
+// time, never its own mint (a token minted 23 h 50 min after the sign-in
+// read as "signed in just now" once its parent was swept).
+func TestAParentlessSessionTokenHasNoRecentSignIn(t *testing.T) {
+	store, uid := webSessionFixture(t)
+	ctx := context.Background()
+	web, err := store.CreateWebSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.MintTokenForWebSession(ctx, web, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if at, err := store.SessionTokenCreatedAt(ctx, child); err != nil || at.IsZero() {
+		t.Fatalf("a child of a live session = %v, %v; want its parent's sign-in", at, err)
+	}
+	if _, err := store.pool.Exec(ctx, deleteSessionsSQL("token = $1"), hashToken(web)); err != nil { // the expiry sweep's shape: the parent only
+		t.Fatal(err)
+	}
+	at, err := store.SessionTokenCreatedAt(ctx, child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !at.IsZero() || SignInIsRecent(at, time.Hour) {
+		t.Errorf("a parentless token's sign-in = %v (recent=%v); want the zero time, never recent", at, SignInIsRecent(at, time.Hour))
+	}
+	if SignInIsRecent(time.Now().Add(-2*time.Minute), time.Minute) || !SignInIsRecent(time.Now().Add(-30*time.Second), time.Minute) {
+		t.Error("SignInIsRecent must accept a sign-in inside the bound and refuse one past it")
+	}
+}
+
+// Review round 1 of 0.29.113 (finding 2, the DB-F4 race of 0.29.106 on the
+// account-wide delete): a mint in flight from one of the account's
+// sessions when "sign out everywhere" runs must not leave its child alive.
+func TestEndingAllSessionsWaitsForAMintInFlight(t *testing.T) {
+	store, uid := webSessionFixture(t)
+	ctx := context.Background()
+	web, err := store.CreateWebSession(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := store.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // a committed transaction's rollback is a no-op
+	if _, err := tx.Exec(ctx, `SELECT token FROM aveloxis_ops.user_session_tokens WHERE token = $1 FOR KEY SHARE`, hashToken(web)); err != nil {
+		t.Fatal(err)
+	}
+	child := hashToken("in-flight-child-all")
+	now := time.Now().Unix()
+	if _, err := tx.Exec(ctx, `INSERT INTO aveloxis_ops.user_session_tokens (token, user_id, created_at, expiration, token_hashed, kind, parent_token)
+		VALUES ($1, $2, $3, $4, TRUE, 'api', $5)`, child, uid, now, now+3600, hashToken(web)); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := store.DeleteUserSessions(ctx, uid); done <- err }()
+	select {
+	case err := <-done:
+		t.Fatalf("ending the account's sessions returned (%v) while a mint was in flight; it must wait for the session row", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("ending the account's sessions did not finish after the mint committed")
+	}
+	var n int
+	if err := store.pool.QueryRow(ctx, `SELECT count(*) FROM aveloxis_ops.user_session_tokens WHERE user_id = $1`, uid).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("%d row(s) of the account survive ending its sessions; the child committed meanwhile must go too", n)
+	}
+}

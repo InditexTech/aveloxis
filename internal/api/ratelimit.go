@@ -189,7 +189,8 @@ func (rl *rateLimiter) noteBadToken(r *http.Request, kind string) {
 // noteRateLimited logs a per-IP refusal once per address per
 // badTokenMemory (ASVS V16.3.3, the 0.29.82 review P6 closed on this side
 // by 0.29.113): the address and the path's shape, never a token. The
-// bucket is the caller's, already under rl.mu.
+// bucket is the caller's; the caller has released rl.mu, and this takes it
+// for the stamp.
 func (rl *rateLimiter) noteRateLimited(r *http.Request, b *bucket, now time.Time) {
 	if rl.logger == nil || b == nil {
 		return
@@ -218,7 +219,7 @@ func secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		h.Set("Strict-Transport-Security", httpserver.HSTSValue)
 		next.ServeHTTP(w, r)
 	})
 }

@@ -75,9 +75,9 @@ func (s *PostgresStore) CreateWebSession(ctx context.Context, userID int) (strin
 // names no live web session — expired, or (SetSessionIdle, ASVS V7.3.1)
 // unused for longer than the inactivity bound, read from last_used_at
 // (the sign-in until the first touch). The same statement re-stamps
-// last_used_at when the stamp is older than SessionTouchInterval, so a
-// session in use never idles out and a busy one costs one write a
-// minute. Any other error is the database's (SR-5: never "no session").
+// last_used_at when the stamp is older than touchInterval (a minute, or half
+// the bound when that is shorter), so a session in use never idles out and a busy one costs one write per
+// touch interval. Any other error is the database's (SR-5: never "no session").
 func (s *PostgresStore) LookupWebSession(ctx context.Context, raw string) (WebSession, error) {
 	var ws WebSession
 	var exp, created, used int64
@@ -95,7 +95,7 @@ func (s *PostgresStore) LookupWebSession(ctx context.Context, raw string) (WebSe
 		SELECT live.user_id, u.login_name, COALESCE(u.avatar_url, ''), COALESCE(u.oauth_provider, ''), u.admin,
 		       live.expiration, COALESCE(live.created_at, 0), COALESCE(live.last_used_at, live.created_at, 0)
 		FROM live JOIN aveloxis_ops.users u ON u.user_id = live.user_id`,
-		hashToken(raw), sessionKindWeb, now, int64(s.sessionIdle.Seconds()), int64(SessionTouchInterval.Seconds())).
+		hashToken(raw), sessionKindWeb, now, int64(s.sessionIdle.Seconds()), int64(touchInterval(s.sessionIdle).Seconds())).
 		Scan(&ws.UserID, &ws.LoginName, &ws.AvatarURL, &ws.Provider, &ws.IsAdmin, &exp, &created, &used)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return WebSession{}, ErrNoWebSession
@@ -111,13 +111,15 @@ func (s *PostgresStore) LookupWebSession(ctx context.Context, raw string) (WebSe
 
 // ListUserSessions lists an account's live sessions and the tokens minted
 // for it (every row of user_session_tokens for the user that has not
-// expired), newest first; the page marks the caller's own by hash.
+// expired, a web session also not idle past the bound — the lookup's own
+// predicate), newest first; the page marks the caller's own by hash.
 func (s *PostgresStore) ListUserSessions(ctx context.Context, userID int) ([]UserSession, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT token, kind, parent_token IS NOT NULL, COALESCE(created_at, 0), COALESCE(last_used_at, created_at, 0), expiration
 		FROM aveloxis_ops.user_session_tokens
 		WHERE user_id = $1 AND expiration > $2
-		ORDER BY created_at DESC, token`, userID, time.Now().Unix())
+		  AND (kind <> $4 OR $3 = 0 OR COALESCE(last_used_at, created_at) > $2 - $3)
+		ORDER BY created_at DESC, token`, userID, time.Now().Unix(), int64(s.sessionIdle.Seconds()), sessionKindWeb)
 	if err != nil {
 		return nil, fmt.Errorf("list user sessions: %w", err)
 	}
@@ -139,10 +141,27 @@ func (s *PostgresStore) ListUserSessions(ctx context.Context, userID int) ([]Use
 // account at once (ASVS V7.4.5 an administrator's, V7.5.2 the account's
 // own; 0.29.113): the tree delete over user_id, with the refresh rows.
 // Operator-issued API tokens (api_tokens) are not sessions and stay.
-// Answers the number of rows deleted.
+// Answers the number of rows deleted. DeleteWebSession's shape, for the
+// same reason (review round 1 of 0.29.113, the DB-F4 race): one
+// transaction that first locks the account's web sessions FOR UPDATE,
+// so a mint in flight from one of them (KEY SHARE until it commits) is
+// waited for and its child is in the tree delete's snapshot.
 func (s *PostgresStore) DeleteUserSessions(ctx context.Context, userID int) (int64, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("delete user sessions: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // a committed transaction's rollback is a no-op
+	// The live rows only (a mint can only come from one), in one order, so
+	// two lockers of overlapping rows queue rather than deadlock (L10 round 2).
+	if _, err := tx.Exec(ctx, `SELECT token FROM aveloxis_ops.user_session_tokens WHERE user_id = $1 AND kind = $2 AND expiration > $3 ORDER BY token FOR UPDATE`, userID, sessionKindWeb, time.Now().Unix()); err != nil {
+		return 0, fmt.Errorf("delete user sessions: %w", err)
+	}
 	var n int64
-	if err := s.pool.QueryRow(ctx, deleteSessionTreeSQL("user_id = $1"), userID).Scan(&n); err != nil {
+	if err := tx.QueryRow(ctx, deleteSessionTreeSQL("user_id = $1"), userID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("delete user sessions: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return 0, fmt.Errorf("delete user sessions: %w", err)
 	}
 	return n, nil

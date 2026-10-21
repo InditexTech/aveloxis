@@ -84,3 +84,21 @@ func (s *Server) forgetRefusedProxyToken(resp *http.Response) error {
 	}
 	return nil
 }
+
+// proxyStrippedHeaders are the api's answer headers the web process has
+// already set on the same answer (securityHeaders runs before the proxy):
+// httputil.ReverseProxy adds upstream headers to the ones present, so the
+// api's copies are dropped and each header is sent once (review round 1 of
+// 0.29.113; the web's values are the ones a browser of the web origin is
+// meant to see).
+var proxyStrippedHeaders = []string{"X-Content-Type-Options", "Strict-Transport-Security"}
+
+// modifyProxyResponse is the /api/ proxy's one response hook: the api's
+// duplicates of the web's security headers dropped, then a refused Bearer
+// forgotten (forgetRefusedProxyToken).
+func (s *Server) modifyProxyResponse(resp *http.Response) error {
+	for _, h := range proxyStrippedHeaders {
+		resp.Header.Del(h)
+	}
+	return s.forgetRefusedProxyToken(resp)
+}

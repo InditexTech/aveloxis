@@ -211,7 +211,7 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 		// a separate wait of the same length only raced it. A dead api
 		// fails fast at the dial (connection refused → 502).
 		rp.Transport = &http.Transport{IdleConnTimeout: 60 * time.Second}
-		rp.ModifyResponse = s.forgetRefusedProxyToken // a refused Bearer is dropped, never presented again (0.29.110)
+		rp.ModifyResponse = s.modifyProxyResponse // the api's duplicate security headers dropped; a refused Bearer forgotten (0.29.110, 0.29.113)
 		rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 			if r.Context().Err() != nil {
 				// The web's bound fired (its WARN says so) or the client

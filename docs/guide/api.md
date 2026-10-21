@@ -18,12 +18,15 @@ all (the caller's own included — its next request is `401`), and
 `POST /api/v1/admin/users/{userID}/sessions/revoke` lets an administrator
 end an account's. `POST /api/v1/me/email` now answers `403
 {"error": "reauthentication_required"}` when the token's sign-in is older
-than `web.session_idle_minutes` (30 by default; the proxy token of a browser
-session is judged by that session's sign-in): sign in again and retry. A
+than `web.session_idle_minutes` (30 by default; every session token — the
+SPA's from `/auth/token`, the web proxy's — is judged by the sign-in of the
+browser session it was minted from, and one whose browser session has
+expired is refused): sign in again and retry. A
 browser session of the web GUI idle past that bound is signed out; a
 `/auth/token` token is not (it lives its 30 days, and the SPA can keep its
-own idle rule). Every answer of the api process carries
-`X-Content-Type-Options: nosniff` and `Strict-Transport-Security`. The
+own idle rule). Every answer of the api process's handlers carries
+`X-Content-Type-Options: nosniff` and `Strict-Transport-Security` (the
+`http_timeout_seconds` 503 is written outside them and carries neither). The
 per-IP `429` is logged once a minute per address.
 
 ## Changes for API clients in 0.29.110
@@ -155,7 +158,7 @@ web`, the OAuth origin aveloxis-gui signs in through):
   origin; a browser's `Sec-Fetch-Site: cross-site` is refused. aveloxis-gui
   on its own origin therefore needs `web.spa_url` set to that origin. A
   signed-in HTML form also carries a form token; the two GUI calls do not.
-- **Every answer of the web process carries security headers**: a
+- **Every answer of the web process's handlers carries security headers** (the `http_timeout_seconds` 503 is written outside them): a
   Content-Security-Policy with one script source (`/static/`, which now
   serves the page scripts and Chart.js — no CDN), `frame-ancestors 'none'`,
   `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and a
@@ -1550,9 +1553,13 @@ Per-user:
 - `GET /api/v1/me/sessions` (0.29.113) — the account's live sessions:
   `{sessions: [{kind, from_web_session, current, created_at,
   last_used_at, expires_at}]}`; `kind` is `web` (a browser session of the
-  web GUI) or `api` (a Bearer token: `/auth/token`'s, or the web proxy's,
-  `from_web_session`); `current` marks the one presenting the request.
-  Operator-issued API tokens are not sessions.
+  web GUI) or `api` (a Bearer token: `/auth/token`'s or the web proxy's,
+  both minted from a browser session: `from_web_session` is `true` while
+  that session lives, `false` once it has expired — the SPA's token
+  outlives it by up to 29 days);
+  `current` marks the one presenting the request; `last_used_at` moves
+  (at most once a minute (every half bound when the bound is under two minutes)) for browser sessions only, and is a token's
+  mint time. Operator-issued API tokens are not sessions.
 - `POST /api/v1/me/sessions/revoke` (0.29.113) — ends every session of the
   account, this one included: `200 {"ok": true, "ended": N}`, then `401`
   for each of them.

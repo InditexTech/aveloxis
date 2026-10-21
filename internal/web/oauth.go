@@ -37,10 +37,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// from user A to user B without manually clearing cookies in
 	// DevTools. The /logout handler does the cookie/session cleanup;
 	// this template flag just makes the affordance discoverable.
+	// A ?next= the open-redirect rule accepts rides into the provider links,
+	// where beginOAuth stashes it (0.29.113: the e-mail page's "Sign in
+	// again" comes back to the form); an unsafe one is dropped here.
 	s.render(w, r, "login", map[string]any{
 		"HasGitHub":  s.ghOAuth != nil,
 		"HasGitLab":  s.glOAuth != nil,
 		"HasSession": s.hasSession(r),
+		"Next":       safeNextTarget(r.URL.Query().Get("next"), s.cfg.SPAURL),
 	})
 }
 
@@ -65,7 +69,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		}
 		s.proxyTokens.forget(db.HashToken(cookie.Value)) // the proxy's Bearer for this session (0.29.110): the store revoked it with the session
 	}
-	http.SetCookie(w, s.expireCookie("aveloxis_session"))
+	s.clearBrowserSession(w, "") // the session and form-token cookies (the held Bearer was forgotten above)
 	// v0.20.13: also expire oauth_state defensively. A user who
 	// reached /auth/github but never completed the callback leaves
 	// this cookie behind. Clearing it alongside the session means
@@ -74,9 +78,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	// expire on its own soon, but cleaning it on explicit logout
 	// is the principled behavior.)
 	http.SetCookie(w, s.expireCookie("oauth_state"))
-	// "Sign out & clear cookies" (the login page's control): the form token
-	// and a pending post-login target go too (0.29.106 review, W7).
-	http.SetCookie(w, s.expireCookie(csrfCookieName))
+	// "Sign out & clear cookies" (the login page's control): a pending
+	// post-login target goes too (0.29.106 review, W7; the form token went
+	// with clearBrowserSession).
 	http.SetCookie(w, s.expireCookie("oauth_next"))
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
@@ -376,6 +380,7 @@ func (s *Server) completeOAuthLogin(w http.ResponseWriter, r *http.Request, info
 		if err := s.store.DeleteWebSession(r.Context(), prior.Value); err != nil && !httpserver.RequestEnded(r.Context(), err) {
 			httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "sign-in: the browser's earlier session could not be ended; it expires on its own", "user_id", userID, "error", err)
 		}
+		s.proxyTokens.forget(db.HashToken(prior.Value)) // its held Bearer too; the cookies are replaced just below
 	}
 	// No privilege is read here (0.29.102, D-1): the gate reads the users
 	// row on every request, so the first user's auto-promotion and every

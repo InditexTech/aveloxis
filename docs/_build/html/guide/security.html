@@ -1845,7 +1845,7 @@ Vulnerabilities are reported as <code class="docutils literal notranslate"><span
 <td><p>the mailbox it was sent to</p></td>
 <td><p>a random one-time token, stored hashed</p></td>
 <td><p>24 hours, one use</p></td>
-<td><p>use, expiry, a newer link</p></td>
+<td><p>its use, the confirmation of any other link of the account, expiry (a newer link does not end an older one until one of them is confirmed)</p></td>
 </tr>
 </tbody>
 </table>
@@ -1914,15 +1914,18 @@ and keeps a 24-hour absolute life; the <code class="docutils literal notranslate
 with no inactivity bound, because the front end that holds it is a
 read-mostly analytics client whose every sensitive action is guarded
 otherwise: changing the account’s recovery address requires a sign-in within
-the inactivity bound (<code class="docutils literal notranslate"><span class="pre">403</span> <span class="pre">reauthentication_required</span></code>; the web process’s
-token is judged by its session’s sign-in), administration requires the
+the inactivity bound (<code class="docutils literal notranslate"><span class="pre">403</span> <span class="pre">reauthentication_required</span></code>; every session
+token is judged by the sign-in of the browser session it was minted from,
+and a token whose browser session has expired has none that counts),
+administration requires the
 account row’s privilege at every request, and the token is ended by
 sign-out, by the account page and by an administrator. <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code>
 can be set down to 1 and up to 1440; the absolute lifetimes are not
 configurable.</p>
 <p><strong>Listing and ending sessions</strong> (V7.4.5, V7.5.2): the account page
 (<code class="docutils literal notranslate"><span class="pre">/account</span></code>, or <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/me/sessions</span></code>) lists every live session and
-token of the account with its sign-in time, last use (to the minute) and
+token of the account with its sign-in time, last use (to the minute, for
+browser sessions; a token shows its mint time) and
 expiry, this browser’s marked; “Sign out everywhere” (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/sessions/revoke</span></code>) ends them all. An administrator ends any
 account’s from the Users page (“End sessions”) or <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/users/{userID}/sessions/revoke</span></code>; operator-issued API tokens are
 revoked on the API-tokens page instead. A sign-in from a browser that still
@@ -1951,19 +1954,23 @@ blocked at the forge, cannot create a new session.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>session tokens, API tokens, confirmation tokens, OAuth <code class="docutils literal notranslate"><span class="pre">state</span></code>, the CSRF form token</p></td>
+<tr class="row-even"><td><p>session tokens, API tokens, confirmation tokens</p></td>
 <td><p>256 bits from <code class="docutils literal notranslate"><span class="pre">crypto/rand</span></code></p></td>
 <td><p>the operating system’s generator</p></td>
 </tr>
-<tr class="row-odd"><td><p>storing a token</p></td>
+<tr class="row-odd"><td><p>the OAuth <code class="docutils literal notranslate"><span class="pre">state</span></code> nonce, the CSRF form token</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">crypto/rand</span></code>’s <code class="docutils literal notranslate"><span class="pre">rand.Text</span></code>: 26 base32 characters, about 128 bits</p></td>
+<td><p>single-use or bound to one browser; enough against guessing</p></td>
+</tr>
+<tr class="row-even"><td><p>storing a token</p></td>
 <td><p>SHA-256 of the raw token, hex, tagged <code class="docutils literal notranslate"><span class="pre">sha256$</span></code></p></td>
 <td><p>a plain hash is right here: the input is a 256-bit random secret, not a password, so there is nothing for a salt or a slow hash to protect against</p></td>
 </tr>
-<tr class="row-even"><td><p>the API-key marker in logs</p></td>
+<tr class="row-odd"><td><p>the API-key marker in logs</p></td>
 <td><p>a short prefix of the key’s SHA-256</p></td>
 <td><p>to correlate one key’s log lines; it identifies the key to nobody without the key</p></td>
 </tr>
-<tr class="row-odd"><td><p>transport</p></td>
+<tr class="row-even"><td><p>transport</p></td>
 <td><p>TLS, terminated by the reverse proxy; <code class="docutils literal notranslate"><span class="pre">database.sslmode</span></code> to PostgreSQL</p></td>
 <td><p>the processes listen on plain HTTP on the host and are not exposed directly</p></td>
 </tr>

@@ -67,10 +67,22 @@ func (s *Server) handleAccountSessionsRevoke(w http.ResponseWriter, r *http.Requ
 		s.serviceErr(w, r, "handleAccountSessionsRevoke", err)
 		return
 	}
-	s.proxyTokens.forget(db.HashToken(sess.cookie))
+	s.clearBrowserSession(w, sess.cookie)
+	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+// clearBrowserSession is the browser half of ending a session, the one
+// spelling every path that signs this browser out uses (review round 1 of
+// 0.29.113, L18): the proxy's held Bearer for the session is forgotten
+// (raw "" when the caller already did, or there is none) and the session
+// and form-token cookies are expired. The store half — which rows go — is
+// each caller's own.
+func (s *Server) clearBrowserSession(w http.ResponseWriter, raw string) {
+	if raw != "" {
+		s.proxyTokens.forget(db.HashToken(raw))
+	}
 	http.SetCookie(w, s.expireCookie("aveloxis_session"))
 	http.SetCookie(w, s.expireCookie(csrfCookieName))
-	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
 // handleAdminUserSessionsRevokeConfirm — GET /admin/users/{id}/sessions/revoke:
@@ -98,8 +110,7 @@ func (s *Server) handleAdminUserSessionsRevoke(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if userID == sess.UserID { // an administrator ending their own: this browser too
-		http.SetCookie(w, s.expireCookie("aveloxis_session"))
-		http.SetCookie(w, s.expireCookie(csrfCookieName))
+		s.clearBrowserSession(w, sess.cookie)
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
@@ -112,5 +123,5 @@ func (s *Server) handleAdminUserSessionsRevoke(w http.ResponseWriter, r *http.Re
 // "recent". A session without a recorded sign-in (planted in tests) is
 // never recent.
 func (s *Server) recentSignIn(sess *Session) bool {
-	return !sess.CreatedAt.IsZero() && time.Since(sess.CreatedAt) <= s.cfg.SessionIdle()
+	return db.SignInIsRecent(sess.CreatedAt, s.cfg.SessionIdle())
 }

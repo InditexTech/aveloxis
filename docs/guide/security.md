@@ -25,7 +25,7 @@ Aveloxis holds no passwords. Every way into a deployment is one of these
 | A session token from `POST /api/v1/auth/token` (the aveloxis-gui front end's Bearer) | the front end, in the browser | 256 random bits, stored hashed; minted only from a live web session | 30 days (not shortened by inactivity: the front end keeps its own idle rule) | sign-out of the session it came from, the account page, an administrator |
 | The web process's own token for a session (how its pages reach the API since 0.29.110) | the web process, in memory | 256 random bits, stored hashed | exactly its session's | with the session |
 | An operator-issued API token (the API-tokens page) | a script or a researcher | 256 random bits, stored hashed; its own hourly and daily allowances | 1 to 365 days, set at the grant | the API-tokens page (stops on the next call) |
-| An e-mail confirmation link | the mailbox it was sent to | a random one-time token, stored hashed | 24 hours, one use | use, expiry, a newer link |
+| An e-mail confirmation link | the mailbox it was sent to | a random one-time token, stored hashed | 24 hours, one use | its use, the confirmation of any other link of the account, expiry (a newer link does not end an older one until one of them is confirmed) |
 
 What each can do: a web session and a `/auth/token` token act as the account
 (an administrator's as an administrator); the web process's token the same,
@@ -76,8 +76,10 @@ and keeps a 24-hour absolute life; the `/auth/token` token lives 30 days
 with no inactivity bound, because the front end that holds it is a
 read-mostly analytics client whose every sensitive action is guarded
 otherwise: changing the account's recovery address requires a sign-in within
-the inactivity bound (`403 reauthentication_required`; the web process's
-token is judged by its session's sign-in), administration requires the
+the inactivity bound (`403 reauthentication_required`; every session
+token is judged by the sign-in of the browser session it was minted from,
+and a token whose browser session has expired has none that counts),
+administration requires the
 account row's privilege at every request, and the token is ended by
 sign-out, by the account page and by an administrator. `web.session_idle_minutes`
 can be set down to 1 and up to 1440; the absolute lifetimes are not
@@ -85,7 +87,8 @@ configurable.
 
 **Listing and ending sessions** (V7.4.5, V7.5.2): the account page
 (`/account`, or `GET /api/v1/me/sessions`) lists every live session and
-token of the account with its sign-in time, last use (to the minute) and
+token of the account with its sign-in time, last use (to the minute, for
+browser sessions; a token shows its mint time) and
 expiry, this browser's marked; "Sign out everywhere" (`POST
 /api/v1/me/sessions/revoke`) ends them all. An administrator ends any
 account's from the Users page ("End sessions") or `POST
@@ -113,7 +116,8 @@ The inventory (ASVS V11.1.1, V11.1.2), all from Go's standard library:
 
 | Use | Algorithm | Note |
 |---|---|---|
-| session tokens, API tokens, confirmation tokens, OAuth `state`, the CSRF form token | 256 bits from `crypto/rand` | the operating system's generator |
+| session tokens, API tokens, confirmation tokens | 256 bits from `crypto/rand` | the operating system's generator |
+| the OAuth `state` nonce, the CSRF form token | `crypto/rand`'s `rand.Text`: 26 base32 characters, about 128 bits | single-use or bound to one browser; enough against guessing |
 | storing a token | SHA-256 of the raw token, hex, tagged `sha256$` | a plain hash is right here: the input is a 256-bit random secret, not a password, so there is nothing for a salt or a slow hash to protect against |
 | the API-key marker in logs | a short prefix of the key's SHA-256 | to correlate one key's log lines; it identifies the key to nobody without the key |
 | transport | TLS, terminated by the reverse proxy; `database.sslmode` to PostgreSQL | the processes listen on plain HTTP on the host and are not exposed directly |

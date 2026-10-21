@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
@@ -76,15 +75,16 @@ func (s *Server) handleMeEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The recovery address changes only after a recent sign-in (ASVS
-	// V7.5.1, 0.29.113): the token's sign-in — its own mint, or the web
-	// session it was minted from — within web.session_idle_minutes.
+	// V7.5.1, 0.29.113): the sign-in of the web session the token was
+	// minted from, within web.session_idle_minutes (db.SignInIsRecent; a
+	// token whose session is gone has none that counts).
 	if s.sessionIdle > 0 && s.store != nil {
 		created, err := s.store.SessionTokenCreatedAt(r.Context(), bearerToken(r))
 		if err != nil && !errors.Is(err, db.ErrInvalidSessionToken) {
 			s.serverError(w, r, "handleMeEmail", err)
 			return
 		}
-		if err != nil || time.Since(created) > s.sessionIdle {
+		if err != nil || !db.SignInIsRecent(created, s.sessionIdle) {
 			setNoStoreHeaders(w.Header())
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)

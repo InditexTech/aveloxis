@@ -28,9 +28,9 @@ import (
 const csrfCookieName = "aveloxis_csrf"
 
 // hstsValue is the Strict-Transport-Security every answer of a production
-// web process carries: a year, subdomains included (OWASP ASVS 5.0
-// V3.4.1). The api process sends the same (internal/api).
-const hstsValue = "max-age=31536000; includeSubDomains"
+// web process carries (OWASP ASVS 5.0 V3.4.1): httpserver.HSTSValue, the
+// one value the api process sends too.
+const hstsValue = httpserver.HSTSValue
 
 // csrfExempt lists the POST routes that take no form token: the two
 // aveloxis-gui calls from its own origin with credentials (the origin
@@ -217,7 +217,10 @@ func (s *Server) isSPAOrigin(origin string) bool {
 // browser has none (a session from before this release, or the login
 // page's own sign-out form): the pages render it into their forms.
 func (s *Server) csrfToken(w http.ResponseWriter, r *http.Request) string {
-	if c, err := r.Cookie(csrfCookieName); err == nil && c.Value != "" {
+	// The guard's own spelling (readCookie: __Host- outside dev_mode). A
+	// bare r.Cookie here read a pre-0.29.113 aveloxis_csrf into every form
+	// while the guard compared the prefixed one (review round 1, High).
+	if c, err := s.readCookie(r, csrfCookieName); err == nil && c.Value != "" {
 		return c.Value
 	}
 	token := rand.Text()
@@ -243,5 +246,5 @@ const (
 	formLineTerminator         = "%0D%0A"
 	formFixedFieldsBytes       = len("repo_urls=&group_id=&csrf_token=") + maxInt64Digits + csrfTokenLen
 	maxInt64Digits             = 19 // len(strconv.FormatInt(math.MaxInt64, 10))
-	csrfTokenLen               = 26 // rand.Text(): 26 base32 characters (160 bits), pinned by the test
+	csrfTokenLen               = 26 // rand.Text(): 26 base32 characters (about 128 bits of randomness), pinned by the test
 )

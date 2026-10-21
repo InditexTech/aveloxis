@@ -23,9 +23,10 @@ import (
 // store: an account lists its sessions with the one presenting the request
 // marked current and ends them all (V7.5.2); an administrator ends another
 // account's (V7.4.5), a non-administrator is refused; the address change
-// asks for a sign-in within web.session_idle_minutes, measured on the
-// token's own mint or on the web session a proxy child was minted from
-// (V7.5.1).
+// asks for a sign-in within web.session_idle_minutes, measured on the web
+// session every production token is minted from (V7.5.1; review round 1
+// of 0.29.113: the SPA's /auth/token token is a child too, and a token
+// with no parent has no sign-in the rule can trust).
 func TestAPISessionsAreListedEndedAndTheEmailChangeNeedsARecentSignIn(t *testing.T) {
 	dsn := os.Getenv("AVELOXIS_TEST_DB")
 	if dsn == "" {
@@ -86,7 +87,7 @@ func TestAPISessionsAreListedEndedAndTheEmailChangeNeedsARecentSignIn(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	spa, err := store.CreateSessionToken(ctx, userID, time.Hour)
+	spa, err := store.MintTokenForWebSession(ctx, webRaw, time.Now().Add(db.DefaultSessionTokenLifetime)) // /auth/token's mint
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,8 +112,8 @@ func TestAPISessionsAreListedEndedAndTheEmailChangeNeedsARecentSignIn(t *testing
 	for _, u := range listed.Sessions {
 		if u.Current {
 			current++
-			if u.Kind != "api" || u.FromWebSession {
-				t.Errorf("the current session is %+v; want the SPA token", u)
+			if u.Kind != "api" || !u.FromWebSession {
+				t.Errorf("the current session is %+v; want the SPA token, a child of the web session", u)
 			}
 		}
 		if u.Kind == "web" {
@@ -125,8 +126,8 @@ func TestAPISessionsAreListedEndedAndTheEmailChangeNeedsARecentSignIn(t *testing
 			t.Errorf("session %+v carries no timestamps", u)
 		}
 	}
-	if current != 1 || web != 1 || fromWeb != 1 {
-		t.Errorf("current=%d web=%d from_web_session=%d; want 1/1/1", current, web, fromWeb)
+	if current != 1 || web != 1 || fromWeb != 2 {
+		t.Errorf("current=%d web=%d from_web_session=%d; want 1/1/2", current, web, fromWeb)
 	}
 
 	// The e-mail change: a fresh sign-in passes the gate (the mailer is not
@@ -136,26 +137,28 @@ func TestAPISessionsAreListedEndedAndTheEmailChangeNeedsARecentSignIn(t *testing
 	if w := call(http.MethodPost, "/api/v1/me/email", spa, emailBody); w.Code == http.StatusForbidden {
 		t.Fatalf("a fresh token was asked to re-authenticate: %s", w.Body.String())
 	}
-	// Backdate the SPA token's mint past the idle bound: refused with the
-	// typed reason, nothing changed.
-	if _, err := store.Pool().Exec(ctx, `UPDATE aveloxis_ops.user_session_tokens SET created_at = $2 WHERE token = $1`, db.HashToken(spa), time.Now().Add(-idle-time.Minute).Unix()); err != nil {
-		t.Fatal(err)
-	}
-	w = call(http.MethodPost, "/api/v1/me/email", spa, emailBody)
-	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"reauthentication_required"`) {
-		t.Fatalf("an old token's e-mail change = %d %s; want 403 reauthentication_required", w.Code, w.Body.String())
-	}
-	// The proxy child is judged by the web session it came from: a fresh
-	// web session passes, a backdated one is refused — the child's own
-	// created_at is not consulted.
+	// Both tokens are judged by the web session they came from: a fresh
+	// one passes; a backdated one refuses both with the typed reason —
+	// the tokens' own (fresh) created_at is not consulted.
 	if w := call(http.MethodPost, "/api/v1/me/email", child, emailBody); w.Code == http.StatusForbidden {
 		t.Fatalf("a child of a fresh web session was asked to re-authenticate: %s", w.Body.String())
 	}
 	if _, err := store.Pool().Exec(ctx, `UPDATE aveloxis_ops.user_session_tokens SET created_at = $2 WHERE token = $1`, db.HashToken(webRaw), time.Now().Add(-idle-time.Minute).Unix()); err != nil {
 		t.Fatal(err)
 	}
-	if w := call(http.MethodPost, "/api/v1/me/email", child, emailBody); w.Code != http.StatusForbidden {
-		t.Fatalf("a child of an old web session changed the address: %d %s", w.Code, w.Body.String())
+	for name, tok := range map[string]string{"spa": spa, "child": child} {
+		w := call(http.MethodPost, "/api/v1/me/email", tok, emailBody)
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"reauthentication_required"`) {
+			t.Fatalf("the %s token of an old sign-in changed the address: %d %s; want 403 reauthentication_required", name, w.Code, w.Body.String())
+		}
+	}
+	// A token with no parent (the expiry sweep took it) has no sign-in to vouch for.
+	loose, err := store.CreateSessionToken(ctx, userID, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := call(http.MethodPost, "/api/v1/me/email", loose, emailBody); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), `"reauthentication_required"`) {
+		t.Fatalf("a parentless token's address change = %d %s; want 403 reauthentication_required (its own fresh mint must not count)", w.Code, w.Body.String())
 	}
 
 	// A non-administrator cannot end another account's sessions; a bad id is 400.
@@ -172,8 +175,8 @@ func TestAPISessionsAreListedEndedAndTheEmailChangeNeedsARecentSignIn(t *testing
 
 	// The account ends its own: every token dies, this one included.
 	w = call(http.MethodPost, "/api/v1/me/sessions/revoke", spa, "")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"ended":3`) {
-		t.Fatalf("POST /me/sessions/revoke = %d %s; want 200 ended 3", w.Code, w.Body.String())
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"ended":4`) {
+		t.Fatalf("POST /me/sessions/revoke = %d %s; want 200 ended 4 (web, its two children, the loose token)", w.Code, w.Body.String())
 	}
 	for name, tok := range map[string]string{"spa": spa, "child": child} {
 		if w := call(http.MethodGet, "/api/v1/me/sessions", tok, ""); w.Code != http.StatusUnauthorized {

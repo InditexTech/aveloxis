@@ -3870,21 +3870,26 @@ reports the token’s own allowances.</p>
 <p><strong>Returns the caller’s live sessions.</strong></p>
 <p>Every live session of the account (0.29.113, OWASP ASVS V7.5.2): the
 browser sessions of the web GUI (<code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">web</span></code>), the tokens
-<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/auth/token</span></code> minted (<code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">api</span></code>) and the tokens the
-web process’s <code class="docutils literal notranslate"><span class="pre">/api/</span></code> proxy holds for a browser session (<code class="docutils literal notranslate"><span class="pre">kind</span></code>
-<code class="docutils literal notranslate"><span class="pre">api</span></code>, <code class="docutils literal notranslate"><span class="pre">from_web_session</span></code> <code class="docutils literal notranslate"><span class="pre">true</span></code>). The session presenting this
-request is <code class="docutils literal notranslate"><span class="pre">current</span></code>. Operator-issued API tokens are not sessions
-and are not listed. <code class="docutils literal notranslate"><span class="pre">last_used_at</span></code> moves at most once a minute.</p>
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/auth/token</span></code> minted and the tokens the web process’s
+<code class="docutils literal notranslate"><span class="pre">/api/</span></code> proxy holds (<code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">api</span></code>; both are minted from a browser
+session: <code class="docutils literal notranslate"><span class="pre">from_web_session</span></code> is <code class="docutils literal notranslate"><span class="pre">true</span></code> while that session lives and
+<code class="docutils literal notranslate"><span class="pre">false</span></code> once it has expired, which the SPA’s 30-day token outlives).
+The session presenting
+this request is <code class="docutils literal notranslate"><span class="pre">current</span></code>. Operator-issued API tokens are not
+sessions and are not listed. A browser session idle past
+<code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code> is not live and not listed.
+<code class="docutils literal notranslate"><span class="pre">last_used_at</span></code> moves, at most once a minute (every half bound when the bound is under two minutes), for <code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">web</span></code> only;
+a token’s is its mint time.</p>
 <p>Handler: <code class="docutils literal notranslate"><span class="pre">handleMeSessions</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Response JSON Object<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>sessions[]</strong> (<em>object</em>) – One live session of an account (0.29.113).</p></li>
 <li><p><strong>sessions[].kind</strong> (<em>string:enum, required</em>) – <code class="docutils literal notranslate"><span class="pre">web</span></code> is a browser session of the web GUI; <code class="docutils literal notranslate"><span class="pre">api</span></code> is a Bearer token.</p></li>
-<li><p><strong>sessions[].from_web_session</strong> (<em>boolean, required</em>) – The token was minted for a browser session (the web process’s proxy token).</p></li>
+<li><p><strong>sessions[].from_web_session</strong> (<em>boolean, required</em>) – The token’s browser session is still live (every <code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">api</span></code> session is minted from one; <code class="docutils literal notranslate"><span class="pre">false</span></code> once it has expired, and for <code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">web</span></code>).</p></li>
 <li><p><strong>sessions[].current</strong> (<em>boolean, required</em>) – This session presented the request.</p></li>
 <li><p><strong>sessions[].created_at</strong> (<em>string:date-time, required</em>) – When the session was signed in or the token minted.</p></li>
-<li><p><strong>sessions[].last_used_at</strong> (<em>string:date-time, required</em>) – The session’s last request, to the minute; equals <code class="docutils literal notranslate"><span class="pre">created_at</span></code> for one never used since.</p></li>
+<li><p><strong>sessions[].last_used_at</strong> (<em>string:date-time, required</em>) – A browser session’s last request, to the minute (<code class="docutils literal notranslate"><span class="pre">created_at</span></code> until its first); for <code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">api</span></code>, the mint time.</p></li>
 <li><p><strong>sessions[].expires_at</strong> (<em>string:date-time, required</em>)</p></li>
 </ul>
 </dd>
@@ -3977,13 +3982,14 @@ the web form shows. Bodies over 4 KiB are refused.</p>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/200">200 OK</a></span> – The confirmation link was mailed.</p></li>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/400">400 Bad Request</a></span> – The body is not the JSON object <code class="docutils literal notranslate"><span class="pre">{&quot;email&quot;:</span> <span class="pre">&quot;…&quot;}</span></code>.</p></li>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/401">401 Unauthorized</a></span> – No valid Bearer token: missing, unknown, expired or revoked. <a class="reference internal" href="#shared-response-unauthorized"><span class="std std-ref">Shared response Unauthorized</span></a>.</p></li>
-<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/403">403 Forbidden</a></span> – An API token (<code class="docutils literal notranslate"><span class="pre">error</span></code> <code class="docutils literal notranslate"><span class="pre">forbidden</span></code>; the account-settings rule), or
-a sign-in older than <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code> (<code class="docutils literal notranslate"><span class="pre">error</span></code>
-<code class="docutils literal notranslate"><span class="pre">reauthentication_required</span></code>, since 0.29.113, OWASP ASVS V7.5.1:
-the recovery address changes only after a recent sign-in — a
-<code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> token is judged by its own mint, the web process’s
-proxy token by the browser session it was minted for; sign in
-again and retry). <code class="docutils literal notranslate"><span class="pre">message</span></code> says which.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/403">403 Forbidden</a></span> – An operator-issued API token (<code class="docutils literal notranslate"><span class="pre">error</span></code> is a sentence saying an
+API token cannot change account settings), or a sign-in older
+than <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code> (since 0.29.113, OWASP ASVS
+V7.5.1: <code class="docutils literal notranslate"><span class="pre">error</span></code> is <code class="docutils literal notranslate"><span class="pre">reauthentication_required</span></code> and <code class="docutils literal notranslate"><span class="pre">message</span></code>
+says what to do — the recovery address changes only after a
+recent sign-in; every session token is judged by the sign-in of
+the browser session it was minted from, and a token whose
+browser session expired has none that counts).</p></li>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/422">422 Unprocessable Entity</a></span> – Nothing was mailed; <code class="docutils literal notranslate"><span class="pre">message</span></code> says why, in the words the web form uses.</p></li>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429">429 Too Many Requests</a></span> – Refused by a rate limit; retry after <code class="docutils literal notranslate"><span class="pre">Retry-After</span></code> seconds. <a class="reference internal" href="#shared-response-toomanyrequests"><span class="std std-ref">Shared response TooManyRequests</span></a>.</p></li>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/500">500 Internal Server Error</a></span> – A server-side failure. <a class="reference internal" href="#shared-response-servererror"><span class="std std-ref">Shared response ServerError</span></a>.</p></li>
@@ -8524,6 +8530,7 @@ network excepted). Never stored.</p>
 <p>Body, <code class="docutils literal notranslate"><span class="pre">application/json</span></code> (<code class="docutils literal notranslate"><span class="pre">Error</span></code>):</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">error</span></code> (string, required) — A machine-readable code or a sentence; see each operation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">message</span></code> (string) — A sentence for a person, present when <code class="docutils literal notranslate"><span class="pre">error</span></code> is a code (<code class="docutils literal notranslate"><span class="pre">reauthentication_required</span></code>).</p></li>
 </ul>
 </section>
 <section id="forbidden">
@@ -8534,6 +8541,7 @@ administrator’s. Never stored.</p>
 <p>Body, <code class="docutils literal notranslate"><span class="pre">application/json</span></code> (<code class="docutils literal notranslate"><span class="pre">Error</span></code>):</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">error</span></code> (string, required) — A machine-readable code or a sentence; see each operation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">message</span></code> (string) — A sentence for a person, present when <code class="docutils literal notranslate"><span class="pre">error</span></code> is a code (<code class="docutils literal notranslate"><span class="pre">reauthentication_required</span></code>).</p></li>
 </ul>
 </section>
 <section id="repooutofscope">
@@ -8704,6 +8712,7 @@ and was cut off (plain text, <code class="docutils literal notranslate"><span cl
 <p>Body, <code class="docutils literal notranslate"><span class="pre">application/json</span></code> (<code class="docutils literal notranslate"><span class="pre">Error</span></code>):</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">error</span></code> (string, required) — A machine-readable code or a sentence; see each operation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">message</span></code> (string) — A sentence for a person, present when <code class="docutils literal notranslate"><span class="pre">error</span></code> is a code (<code class="docutils literal notranslate"><span class="pre">reauthentication_required</span></code>).</p></li>
 </ul>
 <p>Body, <code class="docutils literal notranslate"><span class="pre">text/plain</span></code>: <code class="docutils literal notranslate"><span class="pre">request</span> <span class="pre">exceeded</span> <span class="pre">http_timeout_seconds</span></code> and a newline.</p>
 </section>
