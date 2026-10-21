@@ -1,0 +1,18 @@
+docs/_build/html/_sources/guide/collection-pipeline.md.txt
+  h_e3804906c674bd 50,52
+docs/_build/html/guide/collection-pipeline.html
+  h_e3804906c674bd 1819,1821
+docs/_build/html/searchindex.js
+  h_e3804906c674bd 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0fe4c958d702c95eafe52d89608d015ea94d45aa",
+  "prompts": {},
+  "humans": {
+    "h_e3804906c674bd": {
+      "author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
