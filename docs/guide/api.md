@@ -56,6 +56,65 @@ gives the new answer and the reason.
   `/api/v1/compare`, raw counts or z-scores); the API's comparison is
   unchanged.
 
+## Changes for API clients in 0.29.100
+
+Stage 1 of the admin-console program (release notes 0.29.100; the 58 §7
+handler fixes): the administrative rules moved into one service, and
+several answers changed with them. Each line gives the new answer and the
+reason; the per-route notes below carry the detail.
+
+- **A group that is not the caller's is a `404` on every group route**
+  (`/groups/{id}/repos`, `/orgs`, `/pending-adds`, the add, the removal),
+  the same answer as for a group that does not exist: a group's existence
+  is not disclosed. An administrator's session reads any group; an API
+  token only its owner's.
+- **A rejected group refuses an add with `409`**; before, the add went
+  through and the scan skipped it.
+- **Every refusal body on the group, decision, role, removal and forge-ID
+  adopt routes is JSON `{"error": "…"}`**; some were plain text. (The
+  supply-chain routes' `?group=` refusals — `400` for a group id that is not
+  one, `404` for a group that is not the caller's — stay plain text, as the
+  reference says.)
+- **A paste's lines are each parsed as a repository URL first**: a missing
+  scheme is supplied, GitHub, GitLab and any git host are accepted, a line
+  that is not a repository URL comes back in `invalid` (`url: why`,
+  credentials redacted) and is skipped while the rest go through; a paste
+  with no usable line is a `400`. A GitHub deep link into a repository
+  (`github.com/o/r/tree/main`, `/issues/…`) is not a repository URL; a GitLab
+  path is taken as given, since a GitLab repository may sit at any depth.
+- **Collections answer what they hold**: an id that does not exist is a `404`
+  on the detail, the copy (which answered `200` and linked nothing), the
+  update, the delete and the member-group routes (which answered `200` or
+  `500`); a duplicate name is a `409` (it was a `500`).
+- **The legacy pending-group approval is gone**: `GET /api/v1/admin/groups/pending`
+  and the group decision route `POST /api/v1/admin/groups/{id}/{decision}`
+  with its `approve` arm are removed — groups have been born approved
+  since v0.27.20 and the migrate converted every pending one; the
+  add-requests queue is the approval unit, and its own `approve`/`reject`
+  decisions (`POST /api/v1/admin/add-requests/{id}/{decision}`) are
+  unchanged. `POST /api/v1/admin/groups/{id}/reject` remains.
+- **`POST /api/v1/admin/users/{id}/admin` requires the `admin` field** (`{}`
+  used to demote the account); self-demotion is a `400`, no such user a `404`.
+- **`POST /api/v1/admin/capacity/contact` requires `contact_email`** (`{}`
+  used to clear the address; send `""` to clear).
+- **An API token never administers**, whoever owns it (`403` on every
+  `/admin/*` route), and never reads as an administrator. A demoted
+  administrator's open session is refused by every operation of the service
+  at once (privilege is read per operation); the administrative listing
+  routes follow within a minute (the API's authorization cache).
+- **GitLab groups are enumerated**, by `serve`, by full group path on the
+  configured `gitlab.base_url` instance when GitLab API keys exist; an
+  organization URL on that instance is registered as a GitLab group and a
+  repository URL on it is collected as a GitLab repository, whatever its
+  host name says. A GitLab group on another instance (or on any instance
+  while `gitlab.base_url` is empty) is refused at the add (`400`) and at the
+  decision (`409`), as a GitHub organization off `github.base_url` is.
+- **A forge ID is a positive decimal integer**: `POST /api/v1/admin/forge-id-changes/{repoID}/adopt`
+  refuses anything else with `400` instead of recording it.
+- **A collection copy's `group_name` is bounded** like any group name (at
+  most 200 characters, `400` JSON past it; the copy created the group
+  unbounded before).
+
 ## Changes for API clients in 0.29.102
 
 Stage 2 of the admin-console program (release notes 0.29.102) makes the web
@@ -1693,7 +1752,7 @@ Reads (any authenticated user):
   EFFECTIVE sort/dir.
 - `POST /api/v1/collections/{collectionID}/copy` with `{group_id}`
   (must be the caller's) or `{group_name}` (find-or-create for the
-  caller) — links every repo of the collection into that group and
+  caller; at most 200 characters, a `400` past it since 0.29.100) — links every repo of the collection into that group and
   returns `{added, group_id}` (repos already in the group no-op); a
   collection that does not exist is a `404` (0.29.100; it answered 200
   and linked nothing).

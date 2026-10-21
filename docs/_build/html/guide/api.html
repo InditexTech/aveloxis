@@ -335,6 +335,7 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">REST API</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-100">Changes for API clients in 0.29.100</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#endpoints">Endpoints</a><ul>
@@ -1823,6 +1824,66 @@ as it was before the rules moved into the service.</p></li>
 <li><p><strong>The comparison page’s “100%” mode is gone</strong> (the built-in GUI draws
 <code class="docutils literal notranslate"><span class="pre">/api/v1/compare</span></code>, raw counts or z-scores); the API’s comparison is
 unchanged.</p></li>
+</ul>
+</section>
+<section id="changes-for-api-clients-in-0-29-100">
+<h2>Changes for API clients in 0.29.100<a class="headerlink" href="#changes-for-api-clients-in-0-29-100" title="Link to this heading"></a></h2>
+<p>Stage 1 of the admin-console program (release notes 0.29.100; the 58 §7
+handler fixes): the administrative rules moved into one service, and
+several answers changed with them. Each line gives the new answer and the
+reason; the per-route notes below carry the detail.</p>
+<ul class="simple">
+<li><p><strong>A group that is not the caller’s is a <code class="docutils literal notranslate"><span class="pre">404</span></code> on every group route</strong>
+(<code class="docutils literal notranslate"><span class="pre">/groups/{id}/repos</span></code>, <code class="docutils literal notranslate"><span class="pre">/orgs</span></code>, <code class="docutils literal notranslate"><span class="pre">/pending-adds</span></code>, the add, the removal),
+the same answer as for a group that does not exist: a group’s existence
+is not disclosed. An administrator’s session reads any group; an API
+token only its owner’s.</p></li>
+<li><p><strong>A rejected group refuses an add with <code class="docutils literal notranslate"><span class="pre">409</span></code></strong>; before, the add went
+through and the scan skipped it.</p></li>
+<li><p><strong>Every refusal body on the group, decision, role, removal and forge-ID
+adopt routes is JSON <code class="docutils literal notranslate"><span class="pre">{&quot;error&quot;:</span> <span class="pre">&quot;…&quot;}</span></code></strong>; some were plain text. (The
+supply-chain routes’ <code class="docutils literal notranslate"><span class="pre">?group=</span></code> refusals — <code class="docutils literal notranslate"><span class="pre">400</span></code> for a group id that is not
+one, <code class="docutils literal notranslate"><span class="pre">404</span></code> for a group that is not the caller’s — stay plain text, as the
+reference says.)</p></li>
+<li><p><strong>A paste’s lines are each parsed as a repository URL first</strong>: a missing
+scheme is supplied, GitHub, GitLab and any git host are accepted, a line
+that is not a repository URL comes back in <code class="docutils literal notranslate"><span class="pre">invalid</span></code> (<code class="docutils literal notranslate"><span class="pre">url:</span> <span class="pre">why</span></code>,
+credentials redacted) and is skipped while the rest go through; a paste
+with no usable line is a <code class="docutils literal notranslate"><span class="pre">400</span></code>. A GitHub deep link into a repository
+(<code class="docutils literal notranslate"><span class="pre">github.com/o/r/tree/main</span></code>, <code class="docutils literal notranslate"><span class="pre">/issues/…</span></code>) is not a repository URL; a GitLab
+path is taken as given, since a GitLab repository may sit at any depth.</p></li>
+<li><p><strong>Collections answer what they hold</strong>: an id that does not exist is a <code class="docutils literal notranslate"><span class="pre">404</span></code>
+on the detail, the copy (which answered <code class="docutils literal notranslate"><span class="pre">200</span></code> and linked nothing), the
+update, the delete and the member-group routes (which answered <code class="docutils literal notranslate"><span class="pre">200</span></code> or
+<code class="docutils literal notranslate"><span class="pre">500</span></code>); a duplicate name is a <code class="docutils literal notranslate"><span class="pre">409</span></code> (it was a <code class="docutils literal notranslate"><span class="pre">500</span></code>).</p></li>
+<li><p><strong>The legacy pending-group approval is gone</strong>: <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/groups/pending</span></code>
+and the group decision route <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/groups/{id}/{decision}</span></code>
+with its <code class="docutils literal notranslate"><span class="pre">approve</span></code> arm are removed — groups have been born approved
+since v0.27.20 and the migrate converted every pending one; the
+add-requests queue is the approval unit, and its own <code class="docutils literal notranslate"><span class="pre">approve</span></code>/<code class="docutils literal notranslate"><span class="pre">reject</span></code>
+decisions (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/add-requests/{id}/{decision}</span></code>) are
+unchanged. <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/groups/{id}/reject</span></code> remains.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/users/{id}/admin</span></code> requires the <code class="docutils literal notranslate"><span class="pre">admin</span></code> field</strong> (<code class="docutils literal notranslate"><span class="pre">{}</span></code>
+used to demote the account); self-demotion is a <code class="docutils literal notranslate"><span class="pre">400</span></code>, no such user a <code class="docutils literal notranslate"><span class="pre">404</span></code>.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/capacity/contact</span></code> requires <code class="docutils literal notranslate"><span class="pre">contact_email</span></code></strong> (<code class="docutils literal notranslate"><span class="pre">{}</span></code>
+used to clear the address; send <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> to clear).</p></li>
+<li><p><strong>An API token never administers</strong>, whoever owns it (<code class="docutils literal notranslate"><span class="pre">403</span></code> on every
+<code class="docutils literal notranslate"><span class="pre">/admin/*</span></code> route), and never reads as an administrator. A demoted
+administrator’s open session is refused by every operation of the service
+at once (privilege is read per operation); the administrative listing
+routes follow within a minute (the API’s authorization cache).</p></li>
+<li><p><strong>GitLab groups are enumerated</strong>, by <code class="docutils literal notranslate"><span class="pre">serve</span></code>, by full group path on the
+configured <code class="docutils literal notranslate"><span class="pre">gitlab.base_url</span></code> instance when GitLab API keys exist; an
+organization URL on that instance is registered as a GitLab group and a
+repository URL on it is collected as a GitLab repository, whatever its
+host name says. A GitLab group on another instance (or on any instance
+while <code class="docutils literal notranslate"><span class="pre">gitlab.base_url</span></code> is empty) is refused at the add (<code class="docutils literal notranslate"><span class="pre">400</span></code>) and at the
+decision (<code class="docutils literal notranslate"><span class="pre">409</span></code>), as a GitHub organization off <code class="docutils literal notranslate"><span class="pre">github.base_url</span></code> is.</p></li>
+<li><p><strong>A forge ID is a positive decimal integer</strong>: <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/forge-id-changes/{repoID}/adopt</span></code>
+refuses anything else with <code class="docutils literal notranslate"><span class="pre">400</span></code> instead of recording it.</p></li>
+<li><p><strong>A collection copy’s <code class="docutils literal notranslate"><span class="pre">group_name</span></code> is bounded</strong> like any group name (at
+most 200 characters, <code class="docutils literal notranslate"><span class="pre">400</span></code> JSON past it; the copy created the group
+unbounded before).</p></li>
 </ul>
 </section>
 <section id="changes-for-api-clients-in-0-29-102">
@@ -3570,7 +3631,7 @@ repo_id is always the stable tiebreaker. The envelope echoes the
 EFFECTIVE sort/dir.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/collections/{collectionID}/copy</span></code> with <code class="docutils literal notranslate"><span class="pre">{group_id}</span></code>
 (must be the caller’s) or <code class="docutils literal notranslate"><span class="pre">{group_name}</span></code> (find-or-create for the
-caller) — links every repo of the collection into that group and
+caller; at most 200 characters, a <code class="docutils literal notranslate"><span class="pre">400</span></code> past it since 0.29.100) — links every repo of the collection into that group and
 returns <code class="docutils literal notranslate"><span class="pre">{added,</span> <span class="pre">group_id}</span></code> (repos already in the group no-op); a
 collection that does not exist is a <code class="docutils literal notranslate"><span class="pre">404</span></code> (0.29.100; it answered 200
 and linked nothing).
