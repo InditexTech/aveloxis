@@ -683,6 +683,10 @@ var deployChecklists = map[string][]deployStep{
 	// user_session_tokens (migrate --skip-views adds it) and the session
 	// rules — 0.29.112's ladder with a note on the start step.
 	"0.29.113": v029113DeployChecklist,
+	// v0.29.114 (Copilot on PR #241): sign out everywhere exempt from the
+	// request quotas, the nav's account link wraps; no schema change —
+	// 0.29.113's ladder with a note on the start step.
+	"0.29.114": v029114DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,
@@ -1816,3 +1820,7 @@ var v029112DeployChecklist = withStartNote(v029111DeployChecklist, "0.29.112 (th
 // session termination, __Host- cookies, HSTS, the re-authentication rule,
 // the security guide. 0.29.112's ladder; the notes accumulate.
 var v029113DeployChecklist = withStartNote(v029112DeployChecklist, "0.29.113 (the ASVS session rules): migrate --skip-views adds user_session_tokens.last_used_at (one nullable column, instant). From this release a web session is signed out after web.session_idle_minutes without a request (default 30; up to 1440; the front end's /auth/token tokens are exempt), the cookies are __Host- prefixed outside dev_mode so every browser signs in again once after the deploy, a sign-in replaces the browser's earlier session, the account e-mail change needs a sign-in within the bound, the account page and the Users page list and end sessions, and both processes send Strict-Transport-Security (remove any add_header Strict-Transport-Security from nginx, or the value is sent twice). Nothing to change in aveloxis.json unless the 30-minute default is wrong for this deployment. ")
+
+// v0.29.114 (2026-10-21): Copilot's review of PR #241 on 0.29.113.
+// 0.29.113's ladder; the notes accumulate.
+var v029114DeployChecklist = withStartNote(v029113DeployChecklist, "0.29.114 (Copilot on PR #241): no schema change. Sign out everywhere (POST /api/v1/me/sessions/revoke) is never refused by a spent request quota and is not counted, like sign-out, and a long login in the web GUI's navigation bar wraps instead of widening the page. Nothing to change in aveloxis.json. ")

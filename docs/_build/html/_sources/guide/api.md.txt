@@ -8,6 +8,12 @@ aveloxis api            # listens on api.addr, 127.0.0.1:8383 by default; --addr
 
 The API runs as a separate process alongside `aveloxis serve` (collection) and `aveloxis web` (GUI). All three share the same PostgreSQL database. It refuses to start until `aveloxis migrate` has brought the schema to its own version.
 
+## Changes for API clients in 0.29.114
+
+`POST /api/v1/me/sessions/revoke` is never refused by a spent request quota
+and is not counted, like `POST /api/v1/auth/logout`: an account at its hourly
+or daily limit could not sign out everywhere (it got `429`).
+
 ## Changes for API clients in 0.29.113
 
 Sessions (OWASP ASVS 5.0 review, release notes 0.29.113). Three routes:
@@ -1562,7 +1568,8 @@ Per-user:
   mint time. Operator-issued API tokens are not sessions.
 - `POST /api/v1/me/sessions/revoke` (0.29.113) — ends every session of the
   account, this one included: `200 {"ok": true, "ended": N}`, then `401`
-  for each of them.
+  for each of them. Like sign-out, it is never refused by a spent request
+  quota and is not counted (0.29.114).
 - `POST /api/v1/me/email/confirm` — body `{"token": "…"}` from that link,
   for the signed-in account: `200 {"status": "confirmed"}`; `200 {"status":
   "invalid"}` for a token that is not live for this account (unknown,

@@ -478,10 +478,15 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 
 // neverRefusedRoutes are the routes a SESSION's quotas never refuse, and
 // that are not counted (v0.29.91, GUI review): sign-out, which reads no data
-// and ends the session token. Not for an API token (round 2 R2-2: logout
-// answers it 400). Exact method and path, like publicPaths.
+// and ends the session token, and (0.29.114, Copilot on PR #241) "sign out
+// everywhere", which ends every session of the account — a spent quota
+// must not keep a stolen session alive. An administrator's sessions are
+// never refused (sessionQuotas shadows them), so the admin route needs no
+// entry. Not for an API token (round 2 R2-2: logout answers it 400; the
+// revoke refuses it 403). Exact method and path, like publicPaths.
 var neverRefusedRoutes = map[string]bool{
-	http.MethodPost + " /api/v1/auth/logout": true,
+	http.MethodPost + " /api/v1/auth/logout":        true,
+	http.MethodPost + " /api/v1/me/sessions/revoke": true,
 }
 
 func neverRefused(r *http.Request) bool { return neverRefusedRoutes[r.Method+" "+r.URL.Path] }

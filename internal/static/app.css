@@ -120,4 +120,4 @@ th a{color:inherit}
 /* The widest legal row (round-1 review of 0.29.109): a 39-character login in
    the nav, a 255-character one in an account list, a 120-character name in
    a breadcrumb or heading must wrap, never scroll the page sideways. */
-.nav-user{min-width:0}.nav-user span,.breadcrumb .current,.group-list li,h2,h3,p{overflow-wrap:anywhere;min-width:0}
+.nav-user{min-width:0}.nav-login,.breadcrumb .current,.group-list li,h2,h3,p{overflow-wrap:anywhere;min-width:0}

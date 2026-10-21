@@ -3128,7 +3128,8 @@ paths:
         tokens (0.29.113, OWASP ASVS V7.5.2): every other browser and client
         of the account is signed out at its next request, and this token's
         next request is `401` too — the answer is the last one it gets. No
-        body.
+        body. Never refused by a spent request quota, and not counted
+        (0.29.114), like sign-out.
 
         Handler: `handleMeSessionsRevoke`.
       tags: [Account]

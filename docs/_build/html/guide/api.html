@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>REST API &mdash; Aveloxis 0.29.113 documentation</title>
+  <title>REST API &mdash; Aveloxis 0.29.114 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=ddae6651"></script>
+      <script src="../_static/documentation_options.js?v=1627f69c"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -343,6 +343,7 @@
 </ul>
 </li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-114">Changes for API clients in 0.29.114</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-113">Changes for API clients in 0.29.113</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
@@ -1790,6 +1791,12 @@
 </pre></div>
 </div>
 <p>The API runs as a separate process alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code> (collection) and <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> (GUI). All three share the same PostgreSQL database. It refuses to start until <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">migrate</span></code> has brought the schema to its own version.</p>
+<section id="changes-for-api-clients-in-0-29-114">
+<h2>Changes for API clients in 0.29.114<a class="headerlink" href="#changes-for-api-clients-in-0-29-114" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/sessions/revoke</span></code> is never refused by a spent request quota
+and is not counted, like <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/auth/logout</span></code>: an account at its hourly
+or daily limit could not sign out everywhere (it got <code class="docutils literal notranslate"><span class="pre">429</span></code>).</p>
+</section>
 <section id="changes-for-api-clients-in-0-29-113">
 <h2>Changes for API clients in 0.29.113<a class="headerlink" href="#changes-for-api-clients-in-0-29-113" title="Link to this heading"></a></h2>
 <p>Sessions (OWASP ASVS 5.0 review, release notes 0.29.113). Three routes:
@@ -3459,7 +3466,8 @@ outlives it by up to 29 days);
 mint time. Operator-issued API tokens are not sessions.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/sessions/revoke</span></code> (0.29.113) — ends every session of the
 account, this one included: <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;ok&quot;:</span> <span class="pre">true,</span> <span class="pre">&quot;ended&quot;:</span> <span class="pre">N}</span></code>, then <code class="docutils literal notranslate"><span class="pre">401</span></code>
-for each of them.</p></li>
+for each of them. Like sign-out, it is never refused by a spent request
+quota and is not counted (0.29.114).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/email/confirm</span></code> — body <code class="docutils literal notranslate"><span class="pre">{&quot;token&quot;:</span> <span class="pre">&quot;…&quot;}</span></code> from that link,
 for the signed-in account: <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;status&quot;:</span> <span class="pre">&quot;confirmed&quot;}</span></code>; <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;status&quot;:</span> <span class="pre">&quot;invalid&quot;}</span></code> for a token that is not live for this account (unknown,
 expired, already used, another account’s — nothing changes); <code class="docutils literal notranslate"><span class="pre">500</span> <span class="pre">{&quot;status&quot;:</span> <span class="pre">&quot;error&quot;}</span></code> when the database failed (the link still works).</p></li>
