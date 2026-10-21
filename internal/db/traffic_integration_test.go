@@ -274,8 +274,8 @@ func TestTrafficLatestWindowReadWins(t *testing.T) {
 	fresh := "fresh " + ToolVersion
 	assertTrafficStored(t, "window rows",
 		trafficRows(ctx, t, store, `
-			SELECT traffic_kind || ' ' || window_start::text || '..' || window_end::text || ' ' || uniques
-				|| ' ' || `+refreshedProvenance+`
+			SELECT (traffic_kind || ' ' || window_start::text || '..' || window_end::text || ' ' || uniques
+				|| ' ' || `+refreshedProvenance+`) COLLATE "C"
 			FROM aveloxis_data.repo_traffic_windows WHERE repo_id = $1 ORDER BY 1`, repoID),
 		[]string{
 			"clones 2026-10-04..2026-10-17 8 aged aged",
@@ -310,7 +310,7 @@ func TestTrafficWeekSeenTwiceKeepsTheLaterUniques(t *testing.T) {
 	fresh := "fresh " + ToolVersion
 	assertTrafficStored(t, "weekly rows",
 		trafficRows(ctx, t, store, `
-			SELECT traffic_kind || ' ' || week_start::text || ' ' || uniques || ' ' || `+refreshedProvenance+`
+			SELECT (traffic_kind || ' ' || week_start::text || ' ' || uniques || ' ' || `+refreshedProvenance+`) COLLATE "C"
 			FROM aveloxis_data.repo_traffic_weeks WHERE repo_id = $1 ORDER BY 1`, repoID),
 		[]string{"clones 2026-10-05 0 " + fresh, "views 2026-10-05 12 " + fresh})
 }
@@ -361,7 +361,7 @@ func TestTrafficSnapshotIsReplacedPerDate(t *testing.T) {
 
 	assertTrafficStored(t, "path snapshots",
 		trafficRows(ctx, t, store, `
-			SELECT snapshot_date::text || ' ' || path || ' [' || title || '] ' || total_views || '/' || unique_views
+			SELECT (snapshot_date::text || ' ' || path || ' [' || title || '] ' || total_views || '/' || unique_views) COLLATE "C"
 			FROM aveloxis_data.repo_traffic_paths WHERE repo_id = $1 ORDER BY 1`, repoID),
 		[]string{
 			"2026-10-18 /o/r [o/r] 50/10",
@@ -371,7 +371,7 @@ func TestTrafficSnapshotIsReplacedPerDate(t *testing.T) {
 		})
 	assertTrafficStored(t, "referrer snapshots",
 		trafficRows(ctx, t, store, `
-			SELECT snapshot_date::text || ' ' || referrer || ' ' || total_views || '/' || unique_views
+			SELECT (snapshot_date::text || ' ' || referrer || ' ' || total_views || '/' || unique_views) COLLATE "C"
 			FROM aveloxis_data.repo_traffic_referrers WHERE repo_id = $1 ORDER BY 1`, repoID),
 		[]string{"2026-10-18 github.com 30/9", "2026-10-19 news.example 6/5"})
 }
@@ -476,7 +476,7 @@ func TestTrafficReadIsWrittenInOneTransaction(t *testing.T) {
 	}
 	assertTrafficStored(t, "path snapshot after a failed read of the same date",
 		trafficRows(ctx, t, store, `
-			SELECT snapshot_date::text || ' ' || path FROM aveloxis_data.repo_traffic_paths
+			SELECT (snapshot_date::text || ' ' || path) COLLATE "C" FROM aveloxis_data.repo_traffic_paths
 			WHERE repo_id = $1 ORDER BY 1`, repoID),
 		[]string{"2026-10-19 /o/r"})
 	var stamped bool
