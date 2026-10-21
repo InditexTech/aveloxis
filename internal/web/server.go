@@ -170,10 +170,12 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 	// Build the internal API reverse proxy. The web server forwards /api/*
 	// to cfg.APIInternalURL so the browser can fetch data using relative
 	// URLs (same-origin, no CORS). This works transparently behind an nginx
-	// front proxy: nginx → web(:8082) → reverse proxy → api(:8383). If an
-	// operator prefers to handle /api/* in nginx directly, adding a
-	// `location /api/` block pointing at the api port takes precedence and
-	// the web server's built-in proxy becomes unused — no code change needed.
+	// front proxy: nginx → web(:8082) → reverse proxy → api(:8383). Keep it
+	// that way on this GUI's host: the proxy attaches the signed-in
+	// session's Bearer (0.29.110), so an nginx `location /api/` sent
+	// straight to the api port answers 401 to the pages under
+	// api.require_auth (0.29.115, Copilot on PR #241; the deployment guide's
+	// recipe and TestDeploymentRecipeRoutesTheGUIsAPIThroughTheWeb).
 	apiURL := strings.TrimSpace(cfg.APIInternalURL)
 	if apiURL == "" {
 		apiURL = "http://127.0.0.1:8383"

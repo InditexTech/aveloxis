@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Production Deployment &mdash; Aveloxis 0.29.114 documentation</title>
+  <title>Production Deployment &mdash; Aveloxis 0.29.115 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=1627f69c"></script>
+      <script src="../_static/documentation_options.js?v=b25f7285"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -1932,7 +1932,8 @@ on one host, set both <code class="docutils literal notranslate"><span class="pr
 API token is still counted against its own quotas, v0.29.89) <em>and</em> <code class="docutils literal notranslate"><span class="pre">require_auth</span></code>. The
 defaults include the RFC1918 ranges; on a host whose private network is
 shared with others, narrow them to loopback as shown.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">api.require_auth</span></code></strong> can be <code class="docutils literal notranslate"><span class="pre">true</span></code> with this GUI since 0.29.110: the web
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">api.require_auth</span></code></strong> can be <code class="docutils literal notranslate"><span class="pre">true</span></code> with this GUI since 0.29.110, as long
+as the GUI host’s <code class="docutils literal notranslate"><span class="pre">/api/</span></code> reaches the web process (section 9): the web
 process mints a token for each signed-in session (revoked by sign-out) and
 attaches it to every <code class="docutils literal notranslate"><span class="pre">/api/</span></code> request it forwards, so the pages are scoped
 to the account like the SPA’s — and counted, like the SPA’s, against the
@@ -2016,14 +2017,25 @@ aveloxis<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot
 </section>
 <section id="reverse-proxy">
 <h2>9. Reverse proxy<a class="headerlink" href="#reverse-proxy" title="Link to this heading"></a></h2>
-<p>Terminate TLS in nginx on the same host and forward two paths: <code class="docutils literal notranslate"><span class="pre">/api/</span></code> to
-the API directly, everything else (the pages and <code class="docutils literal notranslate"><span class="pre">/auth/</span></code>) to the web
-process. Sending <code class="docutils literal notranslate"><span class="pre">/api/</span></code> straight to the API spares a hop. Traffic that goes
-through the web process’s own <code class="docutils literal notranslate"><span class="pre">/api/</span></code> proxy instead keeps the per-visitor
-limits only when <code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code> is set: the web then forwards each
+<p>Terminate TLS in nginx on the same host and forward everything on the
+GUI’s host — the pages, <code class="docutils literal notranslate"><span class="pre">/auth/</span></code> and <code class="docutils literal notranslate"><span class="pre">/api/</span></code> — to the web process. The
+pages fetch <code class="docutils literal notranslate"><span class="pre">/api/</span></code> on their own origin without a token; the web process’s
+<code class="docutils literal notranslate"><span class="pre">/api/</span></code> proxy attaches the signed-in session’s Bearer (since 0.29.110), so
+with <code class="docutils literal notranslate"><span class="pre">api.require_auth</span></code> on (as above) a <code class="docutils literal notranslate"><span class="pre">/api/</span></code> sent straight to the API
+answers <code class="docutils literal notranslate"><span class="pre">401</span></code> to every browser outside <code class="docutils literal notranslate"><span class="pre">exempt_cidrs</span></code> (0.29.115 corrected
+this recipe, which used to do that). The per-visitor limits still see each
+visitor on this path when <code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code> is set: the web forwards each
 browser’s address, and the API (with <code class="docutils literal notranslate"><span class="pre">api.trusted_proxy</span></code> set to the web’s
 address, <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> on one host) counts it. With <code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code> empty,
-every visitor on that path reaches the API as loopback and counts as exempt.</p>
+every visitor reaches the API as loopback and counts as exempt.</p>
+<p>The web’s <code class="docutils literal notranslate"><span class="pre">/api/</span></code> serves signed-in browser sessions only (anything else is
+sent to sign in). A client that calls the API with its own Bearer token — a
+script with an operator-issued API token, or a browser front end on another
+origin — needs a host that forwards to the API: the second block below
+(<code class="docutils literal notranslate"><span class="pre">api.aveloxis.example.org</span></code>; list a browser front end’s origin in
+<code class="docutils literal notranslate"><span class="pre">api.cors_origins</span></code>). Leave it out if nothing calls the API that way.
+aveloxis-gui does not need it: its own host forwards <code class="docutils literal notranslate"><span class="pre">/api/</span></code> to the API
+itself, on the GUI’s origin (its deployment guide’s nginx snippets).</p>
 <p>Remove Ubuntu’s stock site first: it is <code class="docutils literal notranslate"><span class="pre">default_server</span></code> on port 80 with
 <code class="docutils literal notranslate"><span class="pre">root</span> <span class="pre">/var/www/html</span></code>, so any request whose Host is not yours (the bare
 IP, a scanner) is served that directory — with none of the rules of the
@@ -2032,20 +2044,27 @@ block below. <code class="docutils literal notranslate"><span class="pre">sudo</
 <span class="w">    </span><span class="kn">server_name</span><span class="w"> </span><span class="s">aveloxis.example.org</span><span class="p">;</span>
 <span class="w">    </span><span class="c1"># TLS: certbot --nginx -d aveloxis.example.org</span>
 
-<span class="w">    </span><span class="kn">location</span><span class="w"> </span><span class="s">^~</span><span class="w"> </span><span class="s">/api/</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kn">location</span><span class="w"> </span><span class="s">/</span><span class="w"> </span><span class="p">{</span><span class="w">                      </span><span class="c1"># the pages, /auth/ and /api/ (the web attaches the session&#39;s Bearer on /api/)</span>
+<span class="w">        </span><span class="kn">proxy_pass</span><span class="w"> </span><span class="s">http://127.0.0.1:8082</span><span class="p">;</span>
+<span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">Host</span><span class="w"> </span><span class="nv">$host</span><span class="p">;</span><span class="w">                      </span><span class="c1"># OAuth callbacks, cookies and the cross-site guard need the public host; on a non-default public port use $http_host (the guard compares the browser&#39;s Origin, port included)</span>
+<span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Forwarded-For</span><span class="w"> </span><span class="nv">$proxy_add_x_forwarded_for</span><span class="p">;</span><span class="w">   </span><span class="c1"># appended: web and api read the rightmost entry, from trusted_proxy only</span>
+<span class="w">        </span><span class="kn">proxy_connect_timeout</span><span class="w"> </span><span class="s">5s</span><span class="p">;</span>
+<span class="w">        </span><span class="kn">proxy_read_timeout</span><span class="w"> </span><span class="s">120s</span><span class="p">;</span><span class="w">      </span><span class="c1"># below http_timeout_seconds (180): nginx answers 504 before the processes&#39; own bound</span>
+<span class="w">        </span><span class="kn">proxy_send_timeout</span><span class="w"> </span><span class="s">120s</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">server</span><span class="w"> </span><span class="p">{</span><span class="w">                              </span><span class="c1"># optional: the API for Bearer clients (aveloxis-gui, scripts)</span>
+<span class="w">    </span><span class="kn">server_name</span><span class="w"> </span><span class="s">api.aveloxis.example.org</span><span class="p">;</span>
+<span class="w">    </span><span class="c1"># TLS: certbot --nginx -d api.aveloxis.example.org</span>
+
+<span class="w">    </span><span class="kn">location</span><span class="w"> </span><span class="s">/</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="kn">proxy_pass</span><span class="w"> </span><span class="s">http://127.0.0.1:8383</span><span class="p">;</span>
 <span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">Host</span><span class="w"> </span><span class="nv">$host</span><span class="p">;</span>
 <span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Forwarded-For</span><span class="w"> </span><span class="nv">$proxy_add_x_forwarded_for</span><span class="p">;</span><span class="w">   </span><span class="c1"># appended: the API reads the rightmost entry, from trusted_proxy only</span>
 <span class="w">        </span><span class="kn">proxy_connect_timeout</span><span class="w"> </span><span class="s">5s</span><span class="p">;</span>
-<span class="w">        </span><span class="kn">proxy_read_timeout</span><span class="w"> </span><span class="s">120s</span><span class="p">;</span><span class="w">      </span><span class="c1"># below http_timeout_seconds (180): nginx answers 504 before the API&#39;s own bound</span>
-<span class="w">        </span><span class="kn">proxy_send_timeout</span><span class="w"> </span><span class="s">120s</span><span class="p">;</span>
-<span class="w">    </span><span class="p">}</span>
-
-<span class="w">    </span><span class="kn">location</span><span class="w"> </span><span class="s">/</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="kn">proxy_pass</span><span class="w"> </span><span class="s">http://127.0.0.1:8082</span><span class="p">;</span>
-<span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">Host</span><span class="w"> </span><span class="nv">$host</span><span class="p">;</span><span class="w">                      </span><span class="c1"># OAuth callbacks, cookies and the cross-site guard need the public host; on a non-default public port use $http_host (the guard compares the browser&#39;s Origin, port included)</span>
-<span class="w">        </span><span class="kn">proxy_set_header</span><span class="w"> </span><span class="s">X-Forwarded-For</span><span class="w"> </span><span class="nv">$proxy_add_x_forwarded_for</span><span class="p">;</span>
 <span class="w">        </span><span class="kn">proxy_read_timeout</span><span class="w"> </span><span class="s">120s</span><span class="p">;</span>
+<span class="w">        </span><span class="kn">proxy_send_timeout</span><span class="w"> </span><span class="s">120s</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
@@ -2053,7 +2072,7 @@ block below. <code class="docutils literal notranslate"><span class="pre">sudo</
 <p>Do not expose the monitor (<code class="docutils literal notranslate"><span class="pre">127.0.0.1:5555</span></code>); reach it over SSH port
 forwarding. <code class="docutils literal notranslate"><span class="pre">nginx</span> <span class="pre">-t</span> <span class="pre">&amp;&amp;</span> <span class="pre">systemctl</span> <span class="pre">reload</span> <span class="pre">nginx</span></code>.</p>
 <p>Both processes send <code class="docutils literal notranslate"><span class="pre">Strict-Transport-Security</span></code> and <code class="docutils literal notranslate"><span class="pre">X-Content-Type-Options</span></code>
-themselves (0.29.113; the web outside <code class="docutils literal notranslate"><span class="pre">dev_mode</span></code>), so the block above adds
+themselves (0.29.113; the web outside <code class="docutils literal notranslate"><span class="pre">dev_mode</span></code>), so the blocks above add
 neither — nginx passes upstream headers through, and an <code class="docutils literal notranslate"><span class="pre">add_header</span> <span class="pre">Strict-Transport-Security</span></code> here would send the value twice. A proxy that
 hides upstream headers (<code class="docutils literal notranslate"><span class="pre">proxy_hide_header</span></code>) must add its own.</p>
 </section>

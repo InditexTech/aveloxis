@@ -1417,8 +1417,9 @@ in front of the query has a timeout, and the shortest one answers:
    `send_timeout`, `client_header_timeout`, `client_body_timeout`) default
    to **60 s**. A cut here is a **504** logged in nginx's error log
    ("upstream timed out").
-2. **The web GUI's `/api` proxy** (when nginx sends `/api/` to the web
-   rather than straight to the api) has no wait of its own: the web's
+2. **The web GUI's `/api` proxy** (the built-in GUI's host sends `/api/` to
+   the web, which attaches the session's token; see Production Deployment,
+   "Reverse proxy") has no wait of its own: the web's
    request bound (item 3) governs it, so a slow chart behind the web is
    a **503** with the WARN in `web.log` (its path is the `/api/…` URL); the
    api's query is cancelled with it, and `api.log` has no line for it. A **502** "API

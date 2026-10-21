@@ -687,6 +687,10 @@ var deployChecklists = map[string][]deployStep{
 	// request quotas, the nav's account link wraps; no schema change —
 	// 0.29.113's ladder with a note on the start step.
 	"0.29.114": v029114DeployChecklist,
+	// v0.29.115 (Copilot on PR #241): the deployment guide's nginx recipe
+	// keeps the GUI host's /api/ on the web process; documentation only —
+	// 0.29.114's ladder with a note on the start step.
+	"0.29.115": v029115DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,
@@ -1824,3 +1828,7 @@ var v029113DeployChecklist = withStartNote(v029112DeployChecklist, "0.29.113 (th
 // v0.29.114 (2026-10-21): Copilot's review of PR #241 on 0.29.113.
 // 0.29.113's ladder; the notes accumulate.
 var v029114DeployChecklist = withStartNote(v029113DeployChecklist, "0.29.114 (Copilot on PR #241): no schema change. Sign out everywhere (POST /api/v1/me/sessions/revoke) is never refused by a spent request quota and is not counted, like sign-out, and a long login in the web GUI's navigation bar wraps instead of widening the page. Nothing to change in aveloxis.json. ")
+
+// v0.29.115 (2026-10-21): Copilot's second review of PR #241.
+// 0.29.114's ladder; the notes accumulate.
+var v029115DeployChecklist = withStartNote(v029114DeployChecklist, "0.29.115 (Copilot on PR #241): documentation only. With api.require_auth true, the GUI host's /api/ must reach the web process, which attaches the signed-in session's Bearer: an nginx location that sends the GUI host's /api/ straight to the api port (the deployment guide's earlier recipe) answers 401 to every browser outside exempt_cidrs. Check the site before start all: remove such a location so /api/ falls to the web's location, and give scripts that call the api with their own token a host of their own (the guide's second server block); aveloxis-gui's own host forwards /api/ to the api itself and needs no change. ")

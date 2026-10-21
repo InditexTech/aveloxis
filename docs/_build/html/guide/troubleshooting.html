@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Troubleshooting &mdash; Aveloxis 0.29.114 documentation</title>
+  <title>Troubleshooting &mdash; Aveloxis 0.29.115 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=1627f69c"></script>
+      <script src="../_static/documentation_options.js?v=b25f7285"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -3023,8 +3023,9 @@ in front of the query has a timeout, and the shortest one answers:</p>
 <code class="docutils literal notranslate"><span class="pre">send_timeout</span></code>, <code class="docutils literal notranslate"><span class="pre">client_header_timeout</span></code>, <code class="docutils literal notranslate"><span class="pre">client_body_timeout</span></code>) default
 to <strong>60 s</strong>. A cut here is a <strong>504</strong> logged in nginx’s error log
 (“upstream timed out”).</p></li>
-<li><p><strong>The web GUI’s <code class="docutils literal notranslate"><span class="pre">/api</span></code> proxy</strong> (when nginx sends <code class="docutils literal notranslate"><span class="pre">/api/</span></code> to the web
-rather than straight to the api) has no wait of its own: the web’s
+<li><p><strong>The web GUI’s <code class="docutils literal notranslate"><span class="pre">/api</span></code> proxy</strong> (the built-in GUI’s host sends <code class="docutils literal notranslate"><span class="pre">/api/</span></code> to
+the web, which attaches the session’s token; see Production Deployment,
+“Reverse proxy”) has no wait of its own: the web’s
 request bound (item 3) governs it, so a slow chart behind the web is
 a <strong>503</strong> with the WARN in <code class="docutils literal notranslate"><span class="pre">web.log</span></code> (its path is the <code class="docutils literal notranslate"><span class="pre">/api/…</span></code> URL); the
 api’s query is cancelled with it, and <code class="docutils literal notranslate"><span class="pre">api.log</span></code> has no line for it. A <strong>502</strong> “API

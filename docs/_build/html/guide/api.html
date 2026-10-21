@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>REST API &mdash; Aveloxis 0.29.114 documentation</title>
+  <title>REST API &mdash; Aveloxis 0.29.115 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=1627f69c"></script>
+      <script src="../_static/documentation_options.js?v=b25f7285"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -2811,8 +2811,13 @@ and hold their own answers, and the per-IP limits and hour windows are per
 instance; run one per host unless that is what you want.</p>
 <p>The web GUI’s charts fetch the API through the web process, which proxies
 <code class="docutils literal notranslate"><span class="pre">/api/*</span></code> to <code class="docutils literal notranslate"><span class="pre">web.api_internal_url</span></code> (<code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8383</span></code> by default);
-when the API moves, that URL must follow. Behind a reverse proxy, send
-<code class="docutils literal notranslate"><span class="pre">/api/</span></code> to the API directly so its per-visitor limits see the visitor.</p>
+when the API moves, that URL must follow. Behind a reverse proxy, keep the
+GUI host’s <code class="docutils literal notranslate"><span class="pre">/api/</span></code> on the web process — it attaches the signed-in session’s
+Bearer, so a direct route answers <code class="docutils literal notranslate"><span class="pre">401</span></code> under <code class="docutils literal notranslate"><span class="pre">api.require_auth</span></code> — and set
+<code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code> and <code class="docutils literal notranslate"><span class="pre">api.trusted_proxy</span></code> so the per-visitor limits see
+each visitor (since 0.29.91). A script with its own token reaches the API on
+a host of its own (aveloxis-gui’s host forwards <code class="docutils literal notranslate"><span class="pre">/api/</span></code> to the API itself);
+see “Reverse proxy” in Production Deployment.</p>
 </section>
 <section id="comparison-analytics-v0-27-2">
 <h2>Comparison analytics (v0.27.2)<a class="headerlink" href="#comparison-analytics-v0-27-2" title="Link to this heading"></a></h2>

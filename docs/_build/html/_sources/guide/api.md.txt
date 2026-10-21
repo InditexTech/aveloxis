@@ -904,8 +904,13 @@ instance; run one per host unless that is what you want.
 
 The web GUI's charts fetch the API through the web process, which proxies
 `/api/*` to `web.api_internal_url` (`http://127.0.0.1:8383` by default);
-when the API moves, that URL must follow. Behind a reverse proxy, send
-`/api/` to the API directly so its per-visitor limits see the visitor.
+when the API moves, that URL must follow. Behind a reverse proxy, keep the
+GUI host's `/api/` on the web process — it attaches the signed-in session's
+Bearer, so a direct route answers `401` under `api.require_auth` — and set
+`web.trusted_proxy` and `api.trusted_proxy` so the per-visitor limits see
+each visitor (since 0.29.91). A script with its own token reaches the API on
+a host of its own (aveloxis-gui's host forwards `/api/` to the API itself);
+see "Reverse proxy" in Production Deployment.
 
 ## Comparison analytics (v0.27.2)
 
