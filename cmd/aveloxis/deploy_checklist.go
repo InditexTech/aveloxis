@@ -25,6 +25,34 @@ type deployStep struct {
 	desc string
 }
 
+// withStartNote is the previous version's ladder with note prepended to
+// its `aveloxis start all` step's description — the one builder of every
+// ladder since 0.29.78 that changes nothing an operator runs (0.29.108,
+// CMD-7 of summary/59 §5c; before it, 25 copies of the same closure). The
+// previous ladder is copied, never edited: an older version keeps the text
+// its operators saw. A ladder without a start step cannot carry a note, so
+// the helper panics at package initialisation and every build and test
+// fails, instead of a wrong predecessor shipping without its note.
+func withStartNote(prev []deployStep, note string) []deployStep {
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	noted := 0
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = note + out[i].desc
+			noted++
+		}
+	}
+	if noted != 1 {
+		version := note // the note's version is its first word ("0.29.NN:" or "0.29.NN (…):")
+		if i := strings.IndexAny(note, " :"); i >= 0 {
+			version = note[:i]
+		}
+		panic(fmt.Sprintf("deploy checklist %s: the previous ladder has %d `aveloxis start all` steps, want exactly one to carry the note", version, noted))
+	}
+	return out
+}
+
 // deployChecklists maps a binary version to the manual deploy/heal
 // steps that must run on an EXISTING fleet before serve starts. Only
 // versions with data-side healing appear here; a version absent from
@@ -631,6 +659,22 @@ var deployChecklists = map[string][]deployStep{
 	// jobs in integration.yml and the nightly race stress + golden
 	// collection. No code a host runs changed — same ladder as 0.29.102.
 	"0.29.107": v029102DeployChecklist,
+	// v0.29.108 (2026-10-20 UTC): code only — every "previous ladder plus a
+	// note" checklist is built by withStartNote (CMD-7, summary/59 §5c) and
+	// the ladders are frozen by a per-version digest golden; nothing an
+	// operator runs changed — same ladder as 0.29.102.
+	"0.29.108": v029102DeployChecklist,
+	// v0.29.109 (stage 3 of summary/59, the admin console in the built-in web
+	// GUI): pages, templates and the service operations behind them; no
+	// schema change — 0.29.102's ladder with a note on the start step.
+	"0.29.109": v029109DeployChecklist,
+	// v0.29.110 (stage 4 of summary/59): the web process attaches the
+	// session's own Bearer on /api/; no schema change — 0.29.102's ladder
+	// with a note on the start step.
+	"0.29.110": v029110DeployChecklist,
+	// v0.29.111 (stage 5 of summary/59): documentation only — 0.29.110's
+	// ladder with a note on the start step.
+	"0.29.111": v029111DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,
@@ -675,342 +719,95 @@ var v02974DeployChecklist = v02974Checklist()
 // v029102DeployChecklist is 0.29.101's ladder with a note on the start
 // step: stage 2 of summary/59 (the web GUI made safe). The note is
 // completed as the stage lands; aveloxis-gui must be deployed with it.
-var v029102DeployChecklist = func() []deployStep {
-	prev := v029101DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.102 (stage 2 of the admin-console program): two columns and one CONCURRENTLY index on aveloxis_ops.user_session_tokens (migrate --skip-views is enough). Web sessions are database rows from this release (a restart no longer signs everyone out; a demotion takes effect at the next request; signing out of the web GUI ends the API tokens that sign-in minted); e-mail confirmation links outstanding at the deploy stop working (stored hashed now — the owner requests a new one). Deploy aveloxis-gui's matching release WITH this one — its login page and sign-out send POST to /auth/token and /logout, which answer 405 to a GET from this release on (check-setup.sh requires 0.29.102). web.session_secret is removed (a file that still carries it loads, and from 0.29.106 logs a warning at start). Every POST to the web process is origin-checked: if aveloxis-gui runs on another origin, web.spa_url must name it. The pages serve their scripts and Chart.js from /static/ (no CDN) with a Content-Security-Policy and a framing refusal — a proxy that adds its own CSP must let the web process's through. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v029102DeployChecklist = withStartNote(v029101DeployChecklist, "0.29.102 (stage 2 of the admin-console program): two columns and one CONCURRENTLY index on aveloxis_ops.user_session_tokens (migrate --skip-views is enough). Web sessions are database rows from this release (a restart no longer signs everyone out; a demotion takes effect at the next request; signing out of the web GUI ends the API tokens that sign-in minted); e-mail confirmation links outstanding at the deploy stop working (stored hashed now — the owner requests a new one). Deploy aveloxis-gui's matching release WITH this one — its login page and sign-out send POST to /auth/token and /logout, which answer 405 to a GET from this release on (check-setup.sh requires 0.29.102). web.session_secret is removed (a file that still carries it loads, and from 0.29.106 logs a warning at start). Every POST to the web process is origin-checked: if aveloxis-gui runs on another origin, web.spa_url must name it. The pages serve their scripts and Chart.js from /static/ (no CDN) with a Content-Security-Policy and a framing refusal — a proxy that adds its own CSP must let the web process's through. ")
 
 // v029101DeployChecklist is 0.29.100's ladder with a note on the start
 // step: the two GitLab URL rules tightened (gitlab.base_url must end in
 // /api/v4; web.gitlab_base_url must be the instance's web URL), no
 // schema change.
-var v029101DeployChecklist = func() []deployStep {
-	prev := v029100DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.101: no schema change. BEFORE the start, check the two GitLab URLs in aveloxis.json: gitlab.base_url must end in /api/v4 (the REST client appends paths to it as given), and web.gitlab_base_url must be the instance's web URL (https://gitlab.example.org, not its /api/v4 URL; no query, fragment or user name) — either refuses every process at start, naming the field; the defaults and any working value pass. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v029101DeployChecklist = withStartNote(v029100DeployChecklist, "0.29.101: no schema change. BEFORE the start, check the two GitLab URLs in aveloxis.json: gitlab.base_url must end in /api/v4 (the REST client appends paths to it as given), and web.gitlab_base_url must be the instance's web URL (https://gitlab.example.org, not its /api/v4 URL; no query, fragment or user name) — either refuses every process at start, naming the field; the defaults and any working value pass. ")
 
 // v029100DeployChecklist is 0.29.99's ladder with a note on the start
 // step: stage 1 of summary/59 (the admin service, forge access, the URL
 // classifier), no schema change; two load-time rules changed (an invalid
 // mail block, and a gitlab.base_url that is not an absolute http(s) URL of
 // the instance's API, are refused at load).
-var v029100DeployChecklist = func() []deployStep {
-	prev := v02999DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.100: no schema change. BEFORE the start, check aveloxis.json's mail block: a half-filled one (gmail_user without gmail_app_password or the reverse, a user that is not an address, a password that is not a 16-letter App Password, a site_url that is not a URL) now refuses to start every process (it used to run with mail off and a WARN); fix it or empty it. gitlab.base_url must be an absolute http(s) URL of the instance's API (the default and any working value pass). The API's answers change (stage 1 of the admin-console program, listed under \"Changes for API clients\" in docs/guide/api.md): a group that is not the caller's answers 404 on every group route, as a group that does not exist does; a rejected group refuses an add with 409; every refusal body on the group, decision, role and forge-ID routes is JSON {\"error\"}; a paste's lines that are not repository URLs come back in \"invalid\" and the rest go through; a collection that does not exist is a 404 and a duplicate collection name a 409. Administrator privilege is decided from the users row at every operation: an API token never administers, and an administrator's open session loses its power the moment the row is demoted. GitLab groups registered in user groups are now enumerated by serve (full group path; a subgroup registration lists the subgroup only) — on the configured gitlab.base_url instance, when GitLab API keys exist. The web GUI and the CLI loaders hold no forge keys for organisation listing any more (aveloxis web no longer loads API keys; add-repo <org> registers and serve lists). aveloxis-gui's check-setup.sh requires this version (MIN_API_VERSION). " + out[i].desc
-		}
-	}
-	return out
-}()
+var v029100DeployChecklist = withStartNote(v02999DeployChecklist, "0.29.100: no schema change. BEFORE the start, check aveloxis.json's mail block: a half-filled one (gmail_user without gmail_app_password or the reverse, a user that is not an address, a password that is not a 16-letter App Password, a site_url that is not a URL) now refuses to start every process (it used to run with mail off and a WARN); fix it or empty it. gitlab.base_url must be an absolute http(s) URL of the instance's API (the default and any working value pass). The API's answers change (stage 1 of the admin-console program, listed under \"Changes for API clients\" in docs/guide/api.md): a group that is not the caller's answers 404 on every group route, as a group that does not exist does; a rejected group refuses an add with 409; every refusal body on the group, decision, role and forge-ID routes is JSON {\"error\"}; a paste's lines that are not repository URLs come back in \"invalid\" and the rest go through; a collection that does not exist is a 404 and a duplicate collection name a 409. Administrator privilege is decided from the users row at every operation: an API token never administers, and an administrator's open session loses its power the moment the row is demoted. GitLab groups registered in user groups are now enumerated by serve (full group path; a subgroup registration lists the subgroup only) — on the configured gitlab.base_url instance, when GitLab API keys exist. The web GUI and the CLI loaders hold no forge keys for organisation listing any more (aveloxis web no longer loads API keys; add-repo <org> registers and serve lists). aveloxis-gui's check-setup.sh requires this version (MIN_API_VERSION). ")
 
 // v02999DeployChecklist is 0.29.98's ladder with a note on the start step:
 // stage 1b of summary/59 changes API answers (the contract changes are
 // listed for clients in docs/guide/api.md), no schema change.
-var v02999DeployChecklist = func() []deployStep {
-	prev := v02998DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.99: no schema change; the API's answers change (stage 1b of the admin-console program, listed under \"Changes for API clients\" in docs/guide/api.md): an unknown repository id is a 404 on every repository route and an id of 0 or less a 400; a date that does not parse is a 400; Augur's end_date includes its day and the commit metrics count by the UTC day of the author timestamp; empty lists are []; the Augur catalog is scoped for API tokens; /watchers carries the snapshot history; /repos/stats?ids= refuses an entry that is not an id and its rows carry archived, forked_from and last_activity_at; the searches match % and _ literally. The repository-page cache keys on the version, so every stored answer and ETag is replaced by the restart. aveloxis-gui's check-setup.sh requires this version (MIN_API_VERSION). " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02999DeployChecklist = withStartNote(v02998DeployChecklist, "0.29.99: no schema change; the API's answers change (stage 1b of the admin-console program, listed under \"Changes for API clients\" in docs/guide/api.md): an unknown repository id is a 404 on every repository route and an id of 0 or less a 400; a date that does not parse is a 400; Augur's end_date includes its day and the commit metrics count by the UTC day of the author timestamp; empty lists are []; the Augur catalog is scoped for API tokens; /watchers carries the snapshot history; /repos/stats?ids= refuses an entry that is not an id and its rows carry archived, forked_from and last_activity_at; the searches match % and _ literally. The repository-page cache keys on the version, so every stored answer and ETag is replaced by the restart. aveloxis-gui's check-setup.sh requires this version (MIN_API_VERSION). ")
 
 // v02998DeployChecklist is 0.29.97's ladder with a note on the start step.
-var v02998DeployChecklist = func() []deployStep {
-	prev := v02997DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.98: no schema change and nothing new for the running services — a maintenance release (stage 0.5 of the admin-console program): the web GUI's handlers moved into files by concern and its page templates are embedded files, the :5555 monitor's unused POST /api/repos route is gone, and dead store/collector functions were removed. The migrate's step order is unchanged (the step-order golden pins it). A fleet already running 0.29.97 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.97's notes below in the same one migrate. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02998DeployChecklist = withStartNote(v02997DeployChecklist, "0.29.98: no schema change and nothing new for the running services — a maintenance release (stage 0.5 of the admin-console program): the web GUI's handlers moved into files by concern and its page templates are embedded files, the :5555 monitor's unused POST /api/repos route is gone, and dead store/collector functions were removed. The migrate's step order is unchanged (the step-order golden pins it). A fleet already running 0.29.97 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.97's notes below in the same one migrate. ")
 
 // v02997DeployChecklist is 0.29.96's ladder with a note on the start step
 // (the ladder's migrate step is shared; the note tells a fleet whose
 // migrate logged the error to rerun it before starting).
-var v02997DeployChecklist = func() []deployStep {
-	prev := v02996DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.97: no new schema object. The migrate's 'v0.29.82 seed api_token_settings' step failed with SQLSTATE 23502 (null value in column default_rate_limit_per_hour) on a database whose api_token_settings table was born on 0.29.82–0.29.88 and had no row 1 yet; the step now supplies the rollback mirror and the column gets the DEFAULT 1000 schema.sql declares. A fleet whose 0.29.96 migrate logged that ERROR reruns the migrate on this version before starting; nothing else changed for the running services. A fleet already running 0.29.96 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.96's notes below in the same one migrate. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02997DeployChecklist = withStartNote(v02996DeployChecklist, "0.29.97: no new schema object. The migrate's 'v0.29.82 seed api_token_settings' step failed with SQLSTATE 23502 (null value in column default_rate_limit_per_hour) on a database whose api_token_settings table was born on 0.29.82–0.29.88 and had no row 1 yet; the step now supplies the rollback mirror and the column gets the DEFAULT 1000 schema.sql declares. A fleet whose 0.29.96 migrate logged that ERROR reruns the migrate on this version before starting; nothing else changed for the running services. A fleet already running 0.29.96 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.96's notes below in the same one migrate. ")
+
+// v029109DeployChecklist is 0.29.102's ladder with a note on the start step.
+var v029109DeployChecklist = withStartNote(v029102DeployChecklist, "0.29.109 (stage 3 of the admin-console program): no schema change. The built-in web GUI gains the administrator console — Approvals (now also adopting a forge-ID change), Users (with join and last-seen dates), Capacity, API tokens and Collections pages — linked from every page's breadcrumb for administrators; an administrator can open any account's group read-only (each read is logged). The /monitor page sorts by column and shows its counts with the time they were read. The compare page draws the API's /compare (the 100% mode is gone; raw and z-score remain). For API clients: GET /api/v1/admin/monitor/queue accepts page_size (at most 100; earlier releases always answered 100). serve's :5555 dashboard answers a row with its id and zero counts, logging a warning, when repository names or counts cannot be read, where it answered 500 before. aveloxis-gui needs no change. ")
 
 // v02996DeployChecklist is 0.29.95's ladder with a note on the start step.
-var v02996DeployChecklist = func() []deployStep {
-	prev := v02995DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.96: no schema change. Every log line about a refused quota (the WARN 'organization repositories not linked', the once-a-day 'repository quota' / 'daily additions quota' / 'sign-up quota' lines and the API's two 'request refused' lines) now carries quota=, used=, allowed= and wanted=; the organization line names the quota that refused instead of calling every refusal the repository quota. A log filter on the old text ('the account's repository quota is reached') or on reach=, added_today=, adding= or signups_today= must follow. Unchanged: the API's per-request rate quotas refuse on the once-per-window 'quota reached — refused until its window ends' line, which carries window_ends= instead of wanted=. A fleet already running 0.29.95 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.95's notes below in the same one migrate. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02996DeployChecklist = withStartNote(v02995DeployChecklist, "0.29.96: no schema change. Every log line about a refused quota (the WARN 'organization repositories not linked', the once-a-day 'repository quota' / 'daily additions quota' / 'sign-up quota' lines and the API's two 'request refused' lines) now carries quota=, used=, allowed= and wanted=; the organization line names the quota that refused instead of calling every refusal the repository quota. A log filter on the old text ('the account's repository quota is reached') or on reach=, added_today=, adding= or signups_today= must follow. Unchanged: the API's per-request rate quotas refuse on the once-per-window 'quota reached — refused until its window ends' line, which carries window_ends= instead of wanted=. A fleet already running 0.29.95 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.95's notes below in the same one migrate. ")
 
 // v02995DeployChecklist is 0.29.94's ladder with a note on the start step.
-var v02995DeployChecklist = func() []deployStep {
-	prev := v02994DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.95: no schema change and nothing new for the running services. `aveloxis data-test` now clones each side's repositories under its own work dir (<work-dir>/clones-released and clones-new) instead of the deployment's repo_clone_dir, where a scratch run overwrote the local deployment's repo_<id> folders. A fleet already running 0.29.94 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.94's notes below in the same one migrate. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02995DeployChecklist = withStartNote(v02994DeployChecklist, "0.29.95: no schema change and nothing new for the running services. `aveloxis data-test` now clones each side's repositories under its own work dir (<work-dir>/clones-released and clones-new) instead of the deployment's repo_clone_dir, where a scratch run overwrote the local deployment's repo_<id> folders. A fleet already running 0.29.94 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.94's notes below in the same one migrate. ")
 
 // v02994DeployChecklist is 0.29.93's ladder with a note on the start step.
-var v02994DeployChecklist = func() []deployStep {
-	prev := v02993DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.94: no schema change. Saving the API-token defaults on the admin page (the hourly and daily allowances and the lifetime) is now one transaction: before, each allowance was committed on its own, so a failure part-way left a mix the administrator never submitted. A fleet already running 0.29.93 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.93's notes below in the same one migrate. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02994DeployChecklist = withStartNote(v02993DeployChecklist, "0.29.94: no schema change. Saving the API-token defaults on the admin page (the hourly and daily allowances and the lifetime) is now one transaction: before, each allowance was committed on its own, so a failure part-way left a mix the administrator never submitted. A fleet already running 0.29.93 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.93's notes below in the same one migrate. ")
 
 // v02993DeployChecklist is 0.29.92's ladder with a note on the start step.
-var v02993DeployChecklist = func() []deployStep {
-	prev := v02992DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.93: no schema change. The migrate now rebuilds the commits table's duplicate guard (idx_commits_repo_hash_file) and the repo_labor one when an earlier, interrupted index build left either INVALID — before, it took them as done. Check BEFORE the migrate: SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname IN ('idx_commits_repo_hash_file', 'uq_repo_labor_natural_key'); — if either row says false, this migrate rebuilds it: for commits that is a full duplicate scan of the table plus a CONCURRENTLY build, hours on a large fleet, so plan the window (a WARN 'dropping invalid index from prior interrupted CONCURRENT build' in the migrate log means it ran). The scancode worker refuses a repository URL git should not be handed (file://, option-shaped). A dependency scan whose clear of the previous snapshot fails now stops for that cycle (ERROR 'failed to clear old dependencies') instead of duplicating rows. `aveloxis prioritize` and `aveloxis recollect` refuse a URL that is not tracked instead of creating it. New users' welcome email describes per-addition approval. A fleet already running 0.29.92 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.92's notes below in the same one migrate. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02993DeployChecklist = withStartNote(v02992DeployChecklist, "0.29.93: no schema change. The migrate now rebuilds the commits table's duplicate guard (idx_commits_repo_hash_file) and the repo_labor one when an earlier, interrupted index build left either INVALID — before, it took them as done. Check BEFORE the migrate: SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname IN ('idx_commits_repo_hash_file', 'uq_repo_labor_natural_key'); — if either row says false, this migrate rebuilds it: for commits that is a full duplicate scan of the table plus a CONCURRENTLY build, hours on a large fleet, so plan the window (a WARN 'dropping invalid index from prior interrupted CONCURRENT build' in the migrate log means it ran). The scancode worker refuses a repository URL git should not be handed (file://, option-shaped). A dependency scan whose clear of the previous snapshot fails now stops for that cycle (ERROR 'failed to clear old dependencies') instead of duplicating rows. `aveloxis prioritize` and `aveloxis recollect` refuse a URL that is not tracked instead of creating it. New users' welcome email describes per-addition approval. A fleet already running 0.29.92 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.92's notes below in the same one migrate. ")
 
 // v02992DeployChecklist is 0.29.91's ladder with a note on the start step.
-var v02992DeployChecklist = func() []deployStep {
-	prev := v02991DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.92: no schema change; a security fix in the built-in web GUI. Its repository page, compare page and the repository search on the dashboard and group pages wrote license names, ScanCode file paths and copyright lines, and repository names from the API into the page as markup, so a tracked repository or a package's license text could run script in a signed-in viewer's browser; they now render that text as text. A fleet already running 0.29.91 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.91's notes below in the same one migrate. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02992DeployChecklist = withStartNote(v02991DeployChecklist, "0.29.92: no schema change; a security fix in the built-in web GUI. Its repository page, compare page and the repository search on the dashboard and group pages wrote license names, ScanCode file paths and copyright lines, and repository names from the API into the page as markup, so a tracked repository or a package's license text could run script in a signed-in viewer's browser; they now render that text as text. A fleet already running 0.29.91 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.91's notes below in the same one migrate. ")
 
 // v02991DeployChecklist is 0.29.90's ladder with a note on the start step.
-var v02991DeployChecklist = func() []deployStep {
-	prev := v02990DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.91: no schema change. Repositories an organization scan links into an account's group now count toward repo_links_per_day unless an administrator approved that organization for that group (an organization a user adds that is already tracked elsewhere is approved automatically, and its links now count; organizations you approved on the approvals page do not), and so do the repositories of a paste approved automatically under web.auto_approve_add_limit. Signing out of a session is never refused by a spent request quota. The api logs a WARN naming api.trusted_proxy when a request from a loopback or exempt address carries X-Forwarded-For and api.trusted_proxy is empty — behind nginx that means every client looks like nginx, which the default exempt_cidrs exempts from the per-IP limits and require_auth: set api.trusted_proxy to nginx's address (127.0.0.1 on the same host) if you see it. The web's own /api proxy now forwards the browser's address it resolved under web.trusted_proxy (no longer its whole X-Forwarded-For chain), so with nginx, web and api on one host set both web.trusted_proxy and api.trusted_proxy to 127.0.0.1. The escrow export's audit line is printed to standard error whatever log_level says. Removing a repository that is not in the group answers 404. The web GUI's Monitor page and its boost button are now for administrators only (an ordinary account gets 403, and its pages no longer show the Monitor link). A fleet already running 0.29.90 needs only the stop, the migrate and this start; a fleet on an older release takes the notes below in the same one migrate. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02991DeployChecklist = withStartNote(v02990DeployChecklist, "0.29.91: no schema change. Repositories an organization scan links into an account's group now count toward repo_links_per_day unless an administrator approved that organization for that group (an organization a user adds that is already tracked elsewhere is approved automatically, and its links now count; organizations you approved on the approvals page do not), and so do the repositories of a paste approved automatically under web.auto_approve_add_limit. Signing out of a session is never refused by a spent request quota. The api logs a WARN naming api.trusted_proxy when a request from a loopback or exempt address carries X-Forwarded-For and api.trusted_proxy is empty — behind nginx that means every client looks like nginx, which the default exempt_cidrs exempts from the per-IP limits and require_auth: set api.trusted_proxy to nginx's address (127.0.0.1 on the same host) if you see it. The web's own /api proxy now forwards the browser's address it resolved under web.trusted_proxy (no longer its whole X-Forwarded-For chain), so with nginx, web and api on one host set both web.trusted_proxy and api.trusted_proxy to 127.0.0.1. The escrow export's audit line is printed to standard error whatever log_level says. Removing a repository that is not in the group answers 404. The web GUI's Monitor page and its boost button are now for administrators only (an ordinary account gets 403, and its pages no longer show the Monitor link). A fleet already running 0.29.90 needs only the stop, the migrate and this start; a fleet on an older release takes the notes below in the same one migrate. ")
 
 // v02990DeployChecklist is 0.29.89's ladder with a note on the start step.
-var v02990DeployChecklist = func() []deployStep {
-	prev := v02989DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.90: no schema change; a paste of repositories by an account that is not an administrator is now added whole or refused whole even when the same account adds from two places at once (the repositories already tracked are linked and the new ones recorded for approval in one step). A fleet already running 0.29.89 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.89's notes below in the same one migrate. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02990DeployChecklist = withStartNote(v02989DeployChecklist, "0.29.90: no schema change; a paste of repositories by an account that is not an administrator is now added whole or refused whole even when the same account adds from two places at once (the repositories already tracked are linked and the new ones recorded for approval in one step). A fleet already running 0.29.89 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.89's notes below in the same one migrate. ")
 
 // v02989DeployChecklist is 0.29.88's ladder with a note on the start step.
-var v02989DeployChecklist = func() []deployStep {
-	prev := v02988DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.89: fair-use quotas, set on the GUI's new Capacity page (administrators) or per quota in aveloxis.json's optional \"capacity\" section (WEB, DEFAULT, SHADOW or OFF; a missing line is WEB). The migrate adds seven tables to aveloxis_ops (capacity_settings, capacity_quotas, user_capacity, request_counts, account_signups, signup_key_secrets, signup_allowlist), seeds one row per quota, adds api_tokens.rate_limit_per_day (10,000 for existing tokens) and moves the API-token default allowance into the token_requests_per_hour quota (a value an administrator saved is kept, except the old default 5,000, which becomes the new 1,000 — if you chose 5,000 on purpose, set it again on the Capacity page; the old api_token_settings column stays as a mirror for a rollback). Each process logs 'capacity quota in force' per quota at start: check them. Shipped: requests per signed-in account 5,000 an hour and 10,000 a UTC day, repositories per account 1,000 held at once (pending additions included) and 1,000 newly added per UTC day (repo_links_per_day; organization scans an administrator approved are not counted), new accounts 3 per address per day, API-token days 10,000 — all in SHADOW (counted and logged, never refused: grep api.log for 'quota reached (shadow)', and every log for 'repository quota (shadow)', 'daily additions quota (shadow)' and 'sign-up quota (shadow)'); the API-token hour stays enforced, and a NEW token's default is now 1,000 an hour (existing tokens keep theirs). The 0.29.88 session ceiling (20,000 an hour) is gone: no signed-in session is refused until you set requests_per_hour or requests_per_day to enforce. Plan: read a week of shadow lines, then turn each quota on in the Capacity page. The migrate seeds the refusal contact as aveloxis.io@gmail.com, so set your own address on the Capacity page (or with POST /api/v1/admin/capacity/contact) before enforcing any quota. Approving an organization for an account collects all of its repositories, but the account links only up to its repository value: raise that account's value on the Capacity page when you approve a large organization. Set web.trusted_proxy to nginx's address (127.0.0.1 on the same host) in aveloxis.json before start, or every sign-up counts as nginx's one address (the web logs a WARN naming web.trusted_proxy when it sees this); sign-up addresses are kept only as a hash that changes every UTC day — to keep each new account's address sealed for a year for a lawful request, make an offline key pair with aveloxis signup-escrow keygen and set web.signup_escrow_recipient (docs/guide/signup-escrow.md; off unless set); and on a public host whose front end holds the token (aveloxis-gui) set api.require_auth true — keep it false with the built-in web GUI, whose charts call the API without a token (check with: grep -n require_auth ~/aveloxis.json). The GUI's Capacity page and capacity messages need this API. ROLLBACK to any of 0.29.82-0.29.88: older binaries never prune the sign-up secrets, so after rolling back run, once per database, psql -h \"${PGHOST:?}\" -p \"${PGPORT:?}\" -U \"${PGUSER:?}\" -d \"${PGDATABASE:?}\" -c 'DELETE FROM aveloxis_ops.signup_key_secrets; UPDATE aveloxis_ops.account_signups SET address_key = NULL' (the sign-up counts restart; sealed addresses are untouched); otherwise no extra step: the old API-token default column is kept and kept current (the older binary reads it); a change to the hourly default made on the older binary's API tokens page while rolled back is not carried forward — set it again on the Capacity page after re-upgrading; on 0.29.88 the session ceiling is four times that default, so it becomes 4,000 an hour, not 20,000, and on 0.29.85-0.29.87 the session observation logs from 1,000 an hour (0.29.82-0.29.84, kate's 0.29.83 among them, have neither). A fleet already running 0.29.88 needs only the stop, the migrate and this start; a fleet on an older 0.29.8x (kate ran 0.29.83 on 2026-10-10) takes every note below in the same one migrate — including 0.29.88's one-time sign-out of every API session, since its last migrate was by 0.29.82-0.29.86. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02989DeployChecklist = withStartNote(v02988DeployChecklist, "0.29.89: fair-use quotas, set on the GUI's new Capacity page (administrators) or per quota in aveloxis.json's optional \"capacity\" section (WEB, DEFAULT, SHADOW or OFF; a missing line is WEB). The migrate adds seven tables to aveloxis_ops (capacity_settings, capacity_quotas, user_capacity, request_counts, account_signups, signup_key_secrets, signup_allowlist), seeds one row per quota, adds api_tokens.rate_limit_per_day (10,000 for existing tokens) and moves the API-token default allowance into the token_requests_per_hour quota (a value an administrator saved is kept, except the old default 5,000, which becomes the new 1,000 — if you chose 5,000 on purpose, set it again on the Capacity page; the old api_token_settings column stays as a mirror for a rollback). Each process logs 'capacity quota in force' per quota at start: check them. Shipped: requests per signed-in account 5,000 an hour and 10,000 a UTC day, repositories per account 1,000 held at once (pending additions included) and 1,000 newly added per UTC day (repo_links_per_day; organization scans an administrator approved are not counted), new accounts 3 per address per day, API-token days 10,000 — all in SHADOW (counted and logged, never refused: grep api.log for 'quota reached (shadow)', and every log for 'repository quota (shadow)', 'daily additions quota (shadow)' and 'sign-up quota (shadow)'); the API-token hour stays enforced, and a NEW token's default is now 1,000 an hour (existing tokens keep theirs). The 0.29.88 session ceiling (20,000 an hour) is gone: no signed-in session is refused until you set requests_per_hour or requests_per_day to enforce. Plan: read a week of shadow lines, then turn each quota on in the Capacity page. The migrate seeds the refusal contact as aveloxis.io@gmail.com, so set your own address on the Capacity page (or with POST /api/v1/admin/capacity/contact) before enforcing any quota. Approving an organization for an account collects all of its repositories, but the account links only up to its repository value: raise that account's value on the Capacity page when you approve a large organization. Set web.trusted_proxy to nginx's address (127.0.0.1 on the same host) in aveloxis.json before start, or every sign-up counts as nginx's one address (the web logs a WARN naming web.trusted_proxy when it sees this); sign-up addresses are kept only as a hash that changes every UTC day — to keep each new account's address sealed for a year for a lawful request, make an offline key pair with aveloxis signup-escrow keygen and set web.signup_escrow_recipient (docs/guide/signup-escrow.md; off unless set); and on a public host whose front end holds the token (aveloxis-gui) set api.require_auth true — keep it false with the built-in web GUI, whose charts call the API without a token (check with: grep -n require_auth ~/aveloxis.json). The GUI's Capacity page and capacity messages need this API. ROLLBACK to any of 0.29.82-0.29.88: older binaries never prune the sign-up secrets, so after rolling back run, once per database, psql -h \"${PGHOST:?}\" -p \"${PGPORT:?}\" -U \"${PGUSER:?}\" -d \"${PGDATABASE:?}\" -c 'DELETE FROM aveloxis_ops.signup_key_secrets; UPDATE aveloxis_ops.account_signups SET address_key = NULL' (the sign-up counts restart; sealed addresses are untouched); otherwise no extra step: the old API-token default column is kept and kept current (the older binary reads it); a change to the hourly default made on the older binary's API tokens page while rolled back is not carried forward — set it again on the Capacity page after re-upgrading; on 0.29.88 the session ceiling is four times that default, so it becomes 4,000 an hour, not 20,000, and on 0.29.85-0.29.87 the session observation logs from 1,000 an hour (0.29.82-0.29.84, kate's 0.29.83 among them, have neither). A fleet already running 0.29.88 needs only the stop, the migrate and this start; a fleet on an older 0.29.8x (kate ran 0.29.83 on 2026-10-10) takes every note below in the same one migrate — including 0.29.88's one-time sign-out of every API session, since its last migrate was by 0.29.82-0.29.86. ")
 
 // v02988DeployChecklist is 0.29.87's ladder with a note on the start step.
-var v02988DeployChecklist = func() []deployStep {
-	prev := v02987DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.88: a signed-in account is refused (429) past four times the API-token default in an hour (20,000 with the default 5,000; log line 'signed-in session over its hourly ceiling'), and batch stats are scoped for every non-administrator; an API token can no longer change its owner's e-mail; a group add carries at most 1,000 URLs and a group name at most 200 characters; refusals are logged once a minute per user and kind; stored token hashes are tagged sha256$ (the migrate tags existing ones; nobody is signed out). ROLLBACK: going back to 0.29.82-0.29.87 makes every session and API token unusable while the older binary runs (it looks for the untagged hash); re-upgrading restores them — do not re-grant API tokens. Stop everything before this migrate (as the ladder does): an older web or api still running would write untagged rows the new api cannot read until the next migrate. An API token is now counted against its own hourly allowance also from an exempt network (api.exempt_cidrs), which no longer bypasses it; a token and its owner's signed-in session never share a cached compare, new-repositories or supply-chain answer. A database whose last migrate was by 0.29.82-0.29.86 signs every API session out once at this migrate (log line 'signed every API session out once', with the count): a session an older binary wrote there could be stored raw but marked hashed, and no row says which; a database that never ran those versions (kate, if it goes from 0.29.81) signs nobody out. NOT detected: a database that ran 0.29.82-0.29.86, then had a binary older than 0.29.82 run against it, and then ran 0.29.87 (0.29.87 cleared the marker). If that can be true here, sign everyone out once by hand, once per database it applies to: psql -h \"${PGHOST:?}\" -p \"${PGPORT:?}\" -U \"${PGUSER:?}\" -d \"${PGDATABASE:?}\" -c 'WITH gone AS (DELETE FROM aveloxis_ops.user_session_tokens RETURNING token) DELETE FROM aveloxis_ops.refresh_tokens WHERE user_session_token IN (SELECT token FROM gone)'. Also needed by the GUI's cache checker, which now requires API 0.29.85 or later. No new configuration. A fleet already running 0.29.87 needs only the stop, the migrate and this start. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02988DeployChecklist = withStartNote(v02987DeployChecklist, "0.29.88: a signed-in account is refused (429) past four times the API-token default in an hour (20,000 with the default 5,000; log line 'signed-in session over its hourly ceiling'), and batch stats are scoped for every non-administrator; an API token can no longer change its owner's e-mail; a group add carries at most 1,000 URLs and a group name at most 200 characters; refusals are logged once a minute per user and kind; stored token hashes are tagged sha256$ (the migrate tags existing ones; nobody is signed out). ROLLBACK: going back to 0.29.82-0.29.87 makes every session and API token unusable while the older binary runs (it looks for the untagged hash); re-upgrading restores them — do not re-grant API tokens. Stop everything before this migrate (as the ladder does): an older web or api still running would write untagged rows the new api cannot read until the next migrate. An API token is now counted against its own hourly allowance also from an exempt network (api.exempt_cidrs), which no longer bypasses it; a token and its owner's signed-in session never share a cached compare, new-repositories or supply-chain answer. A database whose last migrate was by 0.29.82-0.29.86 signs every API session out once at this migrate (log line 'signed every API session out once', with the count): a session an older binary wrote there could be stored raw but marked hashed, and no row says which; a database that never ran those versions (kate, if it goes from 0.29.81) signs nobody out. NOT detected: a database that ran 0.29.82-0.29.86, then had a binary older than 0.29.82 run against it, and then ran 0.29.87 (0.29.87 cleared the marker). If that can be true here, sign everyone out once by hand, once per database it applies to: psql -h \"${PGHOST:?}\" -p \"${PGPORT:?}\" -U \"${PGUSER:?}\" -d \"${PGDATABASE:?}\" -c 'WITH gone AS (DELETE FROM aveloxis_ops.user_session_tokens RETURNING token) DELETE FROM aveloxis_ops.refresh_tokens WHERE user_session_token IN (SELECT token FROM gone)'. Also needed by the GUI's cache checker, which now requires API 0.29.85 or later. No new configuration. A fleet already running 0.29.87 needs only the stop, the migrate and this start. ")
 
 // v02987DeployChecklist is 0.29.86's ladder with a note on the start step.
-var v02987DeployChecklist = func() []deployStep {
-	prev := v02986DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.87: a session token written by an older binary (after a rollback, or by a process still running the old version during the deploy) is removed by every migrate from 0.29.87 on (log line 'removed session tokens an older binary wrote', with the count): its user signs in again once — the contract a rollback already had. Below 0.29.82 such tokens were plaintext; they are no longer left behind. One case cannot be told apart: a session a pre-0.29.82 binary created during a rollback from 0.29.82-0.29.86 BEFORE this release first migrates stays in plaintext and no longer signs in; it is deleted at the first sign-in of anyone after it expires (30 days after it was created). No new configuration. A fleet already running 0.29.86 needs only the stop, the migrate and this start. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02987DeployChecklist = withStartNote(v02986DeployChecklist, "0.29.87: a session token written by an older binary (after a rollback, or by a process still running the old version during the deploy) is removed by every migrate from 0.29.87 on (log line 'removed session tokens an older binary wrote', with the count): its user signs in again once — the contract a rollback already had. Below 0.29.82 such tokens were plaintext; they are no longer left behind. One case cannot be told apart: a session a pre-0.29.82 binary created during a rollback from 0.29.82-0.29.86 BEFORE this release first migrates stays in plaintext and no longer signs in; it is deleted at the first sign-in of anyone after it expires (30 days after it was created). No new configuration. A fleet already running 0.29.86 needs only the stop, the migrate and this start. ")
 
 // v02986DeployChecklist is 0.29.85's ladder with a note on the start step.
-var v02986DeployChecklist = func() []deployStep {
-	prev := v02985DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.86: an API token reads only the repositories in its owner's groups — also one granted to an administrator (before, it read every repository) — and a request for any other repository is now refused 403 with the way to add it (its URL, the owner's groups, and the calls to add it or create a group), where since 0.29.82 it was auto-added to Shared with Me; a script that relied on that must add the repositories to a group first; the batch stats route (/repos/stats?ids=) likewise answers a token only for its owner's groups. If the cache-warm script runs with AVELOXIS_TOKEN set to an API token, it now reaches only that token owner's groups: run it from an exempt address without a token, or with an administrator's signed-in session token. Signed-in browser sessions are unchanged (they still auto-add). No schema change and no new configuration. A fleet already running 0.29.85 needs only the stop, the migrate and this start. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02986DeployChecklist = withStartNote(v02985DeployChecklist, "0.29.86: an API token reads only the repositories in its owner's groups — also one granted to an administrator (before, it read every repository) — and a request for any other repository is now refused 403 with the way to add it (its URL, the owner's groups, and the calls to add it or create a group), where since 0.29.82 it was auto-added to Shared with Me; a script that relied on that must add the repositories to a group first; the batch stats route (/repos/stats?ids=) likewise answers a token only for its owner's groups. If the cache-warm script runs with AVELOXIS_TOKEN set to an API token, it now reaches only that token owner's groups: run it from an exempt address without a token, or with an administrator's signed-in session token. Signed-in browser sessions are unchanged (they still auto-add). No schema change and no new configuration. A fleet already running 0.29.85 needs only the stop, the migrate and this start. ")
 
 // v02985DeployChecklist is 0.29.84's ladder with a note on the start step.
-var v02985DeployChecklist = func() []deployStep {
-	prev := v02984DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.85: signed-in sessions stay unlimited, but an account whose session makes more requests in an hour than an API token is allowed (the default on the API tokens page) is logged in api.log ('signed-in session made more requests this hour than an API token is allowed'), again at each doubling — observation only, nothing is refused; sign-out and the expired-session sweep also remove an old Augur refresh_tokens row that pointed at the session (before, such a session could not be signed out); cross-origin clients can read the rate-limit headers. No schema change and no new configuration. A fleet already running 0.29.84 needs only the stop, the migrate and this start. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02985DeployChecklist = withStartNote(v02984DeployChecklist, "0.29.85: signed-in sessions stay unlimited, but an account whose session makes more requests in an hour than an API token is allowed (the default on the API tokens page) is logged in api.log ('signed-in session made more requests this hour than an API token is allowed'), again at each doubling — observation only, nothing is refused; sign-out and the expired-session sweep also remove an old Augur refresh_tokens row that pointed at the session (before, such a session could not be signed out); cross-origin clients can read the rate-limit headers. No schema change and no new configuration. A fleet already running 0.29.84 needs only the stop, the migrate and this start. ")
 
 // v02984DeployChecklist is 0.29.83's ladder with a note on the start step.
-var v02984DeployChecklist = func() []deployStep {
-	prev := v02983DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.84: an API token already validated in the last minute is counted against its own hourly allowance even when its address has just sent a bad token and run out of its limit (it used to get the address's 429). No schema change and no new configuration. A fleet already running 0.29.83 needs only the stop, the migrate and this start. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02984DeployChecklist = withStartNote(v02983DeployChecklist, "0.29.84: an API token already validated in the last minute is counted against its own hourly allowance even when its address has just sent a bad token and run out of its limit (it used to get the address's 429). No schema change and no new configuration. A fleet already running 0.29.83 needs only the stop, the migrate and this start. ")
 
 // v02983DeployChecklist is 0.29.82's ladder (which a fleet that skipped
 // 0.29.82 still needs) with a note on the start step.
-var v02983DeployChecklist = func() []deployStep {
-	prev := v02982DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.83: built with Go 1.26.9 and golang.org/x/net v0.60.0 (security fixes in net/http, crypto/tls and HTTP/2); a star or comparison that links a repository already in your groups no longer counts against the per-user cap on repositories added by viewing them. No schema change and no new configuration. A fleet already running 0.29.82 needs only the stop, the migrate and this start. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02983DeployChecklist = withStartNote(v02982DeployChecklist, "0.29.83: built with Go 1.26.9 and golang.org/x/net v0.60.0 (security fixes in net/http, crypto/tls and HTTP/2); a star or comparison that links a repository already in your groups no longer counts against the per-user cap on repositories added by viewing them. No schema change and no new configuration. A fleet already running 0.29.82 needs only the stop, the migrate and this start. ")
 
 // v02982DeployChecklist is 0.29.81's ladder with a note on the start step.
-var v02982DeployChecklist = func() []deployStep {
-	prev := v02981DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.82: a request with a valid session token is no longer counted by the per-IP rate limit (signed-in visitors stop seeing 429 on large repository pages); the API's session tokens are stored hashed — the migrate hashed the existing ones once (log line 'column added and its one-time stamp applied' for user_session_tokens.token_hashed), so nobody is signed out, but rolling back to an older release afterwards signs every API session out once; and administrators can grant and revoke API tokens on the GUI's API tokens page (defaults 5,000 calls per hour and 30 days, editable there). No new configuration. A fleet already running 0.29.81 needs only the stop, the migrate and this start. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02982DeployChecklist = withStartNote(v02981DeployChecklist, "0.29.82: a request with a valid session token is no longer counted by the per-IP rate limit (signed-in visitors stop seeing 429 on large repository pages); the API's session tokens are stored hashed — the migrate hashed the existing ones once (log line 'column added and its one-time stamp applied' for user_session_tokens.token_hashed), so nobody is signed out, but rolling back to an older release afterwards signs every API session out once; and administrators can grant and revoke API tokens on the GUI's API tokens page (defaults 5,000 calls per hour and 30 days, editable there). No new configuration. A fleet already running 0.29.81 needs only the stop, the migrate and this start. ")
 
 // v02981DeployChecklist is 0.29.80's ladder with a note on the start step.
-var v02981DeployChecklist = func() []deployStep {
-	prev := v02980DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.81: top contributors (read from the daily commit table) credit a merged contributor's commits to the contributor it was merged into, instead of dropping them. No schema change: a fleet already running 0.29.80 needs only the stop, the migrate (a version stamp) and this start. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02981DeployChecklist = withStartNote(v02980DeployChecklist, "0.29.81: top contributors (read from the daily commit table) credit a merged contributor's commits to the contributor it was merged into, instead of dropping them. No schema change: a fleet already running 0.29.80 needs only the stop, the migrate (a version stamp) and this start. ")
 
 // v02980DeployChecklist is 0.29.79's ladder with a note on the start step.
-var v02980DeployChecklist = func() []deployStep {
-	prev := v02979DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.80: an INCREMENTAL GitHub or GitLab collection whose clone fails and whose API phase found nothing new now completes (last_error 'facade collection failed: …') instead of failing as 'no data collected' — so last_collected advances and the next collection stays incremental while the clone is fixed. A first or forced (force_full_collect) collection is still judged: with a failed clone and nothing from the API it still fails as 'no data collected'. No schema change: a fleet already running 0.29.79 needs only the stop, the migrate (a version stamp) and this start. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02980DeployChecklist = withStartNote(v02979DeployChecklist, "0.29.80: an INCREMENTAL GitHub or GitLab collection whose clone fails and whose API phase found nothing new now completes (last_error 'facade collection failed: …') instead of failing as 'no data collected' — so last_collected advances and the next collection stays incremental while the clone is fixed. A first or forced (force_full_collect) collection is still judged: with a failed clone and nothing from the API it still fails as 'no data collected'. No schema change: a fleet already running 0.29.79 needs only the stop, the migrate (a version stamp) and this start. ")
 
 // v02979DeployChecklist is 0.29.78's ladder with a note on the start step.
-var v02979DeployChecklist = func() []deployStep {
-	prev := v02978DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.79: a collection that inserts new commits but cannot record the repository's daily commit counts completely (a failed, stopped or untrimmed replace) now marks them incomplete (INFO 'daily commit counts marked incomplete'), so the page reads the commits table until the next clean walk instead of omitting the new commits; an ERROR 'could not clear the daily commit counts' completeness stamp' means the clear itself failed. No schema change: a fleet already running 0.29.78 needs only the stop, the migrate (a version stamp) and this start. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02979DeployChecklist = withStartNote(v02978DeployChecklist, "0.29.79: a collection that inserts new commits but cannot record the repository's daily commit counts completely (a failed, stopped or untrimmed replace) now marks them incomplete (INFO 'daily commit counts marked incomplete'), so the page reads the commits table until the next clean walk instead of omitting the new commits; an ERROR 'could not clear the daily commit counts' completeness stamp' means the clear itself failed. No schema change: a fleet already running 0.29.78 needs only the stop, the migrate (a version stamp) and this start. ")
 
 // v02978DeployChecklist is 0.29.77's ladder (a fleet that skipped 0.29.77
 // still needs its index builds and VACUUM) with a note on the start step.
-var v02978DeployChecklist = func() []deployStep {
-	prev := v02977DeployChecklist
-	out := make([]deployStep, len(prev))
-	copy(out, prev)
-	for i := range out {
-		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.78: with api.response_cache_mb unset (the default) the API again keeps the weekly time series and top contributors in memory, up to 1,000 answers as before 0.29.73; every other answer stays uncached until the setting is turned on. The start-up line 'API repository page cache' now also reports kept_without_budget (1000 at max_bytes=0, 0 with a budget); max_bytes=0 no longer means nothing is kept. No schema change: a fleet already running 0.29.77 needs only the stop, the migrate (a version stamp) and this start — not the VACUUM again. " + out[i].desc
-		}
-	}
-	return out
-}()
+var v02978DeployChecklist = withStartNote(v02977DeployChecklist, "0.29.78: with api.response_cache_mb unset (the default) the API again keeps the weekly time series and top contributors in memory, up to 1,000 answers as before 0.29.73; every other answer stays uncached until the setting is turned on. The start-up line 'API repository page cache' now also reports kept_without_budget (1000 at max_bytes=0, 0 with a budget); max_bytes=0 no longer means nothing is kept. No schema change: a fleet already running 0.29.77 needs only the stop, the migrate (a version stamp) and this start — not the VACUUM again. ")
 
 // v02977DeployChecklist is 0.29.76's ladder with a migrate that builds two
 // covering indexes and sets the autovacuum factor, a one-time VACUUM of the
@@ -1040,7 +837,7 @@ var v02977DeployChecklist = func() []deployStep {
 	// `start` waits only 30 s for that signal, so the prompt can return
 	// before it. NOTE for the next ladder: the start step is no longer
 	// last; find it by its cmd (TestEveryLadderStartsServeOnce), never by
-	// position.
+	// position — withStartNote does that (0.29.108).
 	out = append(out, deployStep{`tail -n +$((${AVX_LOG_LINES:?} + 1)) ~/.aveloxis/aveloxis.log | grep 'scheduler started'`, "must print a line — searched only among the lines written since this start (the count from the step before start; an earlier start's line would otherwise pass). serve logs it once its startup migrate (the fast path here: step 2 stamped the version, so a stamp probe and no DDL, seconds) is done and the ready signal is sent; `start all` waits only 30 s for that signal (then prints 'still starting after 30s'): repeat this step until it prints. It is an INFO line: with log_level warn or error in aveloxis.json it never appears — set info for the deploy, or confirm serve is up on the monitor at :5555 instead. Only then start the VACUUM below — a migrate that runs DDL (aveloxis migrate, or a serve start whose stamp is behind the binary) queues behind a VACUUM at the base DDL for its whole duration"})
 	out = append(out, deployStep{`nohup psql -w -h "${PGHOST:?}" -p "${PGPORT:?}" -U "${PGUSER:?}" -d "${PGDATABASE:?}" -c 'VACUUM (ANALYZE, VERBOSE) aveloxis_data.messages' -c 'VACUUM (ANALYZE, VERBOSE) aveloxis_data.pull_request_reviews' -c 'VACUUM (ANALYZE, VERBOSE) aveloxis_data.pull_requests' -c 'VACUUM (ANALYZE, VERBOSE) aveloxis_data.issues' > ~/.aveloxis/vacuum-0.29.77.log 2>&1 &`, "catches the visibility map up ONCE on the four tables the top-contributors forge arms read (kate: messages 48% of pages all-visible, issues 50%, pull requests 66%, reviews 81% — an index-only scan fetched nearly every row from the heap); the new autovacuum factor keeps it current afterwards. The commits table is left to autovacuum (89% current; the page reads the daily table instead). The connection values are aveloxis.json's database block (a bare psql reaches libpq's defaults); run it once per database the deployment serves (on kate: aveloxis and aveloxis_large). Online — no lock that blocks reads or writes — but it holds SHARE UPDATE EXCLUSIVE on each table in turn, and a migrate that runs DDL (aveloxis migrate; a serve start whose stamp is behind the binary) waits behind it at the base DDL: that is why this step comes AFTER step 2 stamped the version and after serve is up, and why a restart during it on a stamped fleet fast-paths past the DDL (a full migrate would wait; the blocker watch names this psql session — let it finish rather than terminating it). Its duration scales with the table sizes and is not measured; the log shows each table as it finishes. psql runs with -w (never prompt): a password prompt would stop a background job and leave the log empty, so the password must come from ~/.pgpass or PGPASSWORD; without either the log shows the authentication error at once — check it a few seconds after starting"})
 	return out
@@ -1992,3 +1789,12 @@ record is written anyway (harmless) and the command says so.`,
 	cmd.Flags().StringVar(&note, "note", "", "optional note stored with the acknowledgement")
 	return cmd
 }
+
+// v0.29.110 (2026-10-20): stage 4 of the admin-console program — the
+// /api/ proxy attaches the session's Bearer. 0.29.109's ladder (the notes
+// accumulate down the chain: a host coming from 0.29.107 reads both).
+var v029110DeployChecklist = withStartNote(v029109DeployChecklist, "0.29.110 (stage 4 of the admin-console program): no schema change. The web process now attaches a Bearer token of the signed-in session to every /api/ request it forwards (minted once per session, held in the web process, revoked by sign-out) and forwards no cookie to the api: the built-in GUI's charts and pages are scoped to the account like the SPA's, and api.require_auth can be true with this GUI (keep exempt_cidrs narrow — an exempt address still bypasses it). Nothing to change in aveloxis.json; a web restart drops the held tokens and mints new ones. ")
+
+// v0.29.111 (2026-10-20): stage 5 of the admin-console program —
+// documentation. 0.29.110's ladder; the notes accumulate.
+var v029111DeployChecklist = withStartNote(v029110DeployChecklist, "0.29.111 (stage 5 of the admin-console program): documentation only — the web GUI guide's Administration section, the serve monitor's loopback-only note, the GitLab-group parity statement, the API convention on the value field, and the REST API guide trimmed to prose with pointers into the reference. Nothing to run beyond the ladder. ")

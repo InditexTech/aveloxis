@@ -63,6 +63,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		if err := s.store.DeleteWebSession(r.Context(), cookie.Value); err != nil && !httpserver.RequestEnded(r.Context(), err) {
 			httpserver.LogFailure(r.Context(), s.logger, slog.LevelError, err, "logout: the session row could not be deleted — the cookie is cleared; the row expires on its own and the tokens minted from it stay valid until they expire", "error", err)
 		}
+		s.proxyTokens.forget(db.HashToken(cookie.Value)) // the proxy's Bearer for this session (0.29.110): the store revoked it with the session
 	}
 	http.SetCookie(w, s.expireCookie("aveloxis_session"))
 	// v0.20.13: also expire oauth_state defensively. A user who

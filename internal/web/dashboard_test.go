@@ -74,13 +74,14 @@ func TestRepoNameColumnNotOverlyTruncated(t *testing.T) {
 	// If no match, truncation was removed entirely — that's fine.
 }
 
-// TestComparePrePopulateDoesNotNestStatsFetch verifies the compare page
-// pre-populate code fetches timeseries directly instead of nesting inside
-// a stats fetch (which fails silently if the stats call errors).
+// TestComparePrePopulateDoesNotNestStatsFetch verifies the compare page's
+// pre-populate code reads the comparison directly (since 0.29.109 the
+// API's /compare, which labels each entity) instead of nesting inside a
+// stats fetch (which failed silently if the stats call errored).
 func TestComparePrePopulateDoesNotNestStatsFetch(t *testing.T) {
 	// The old code had: fetch(API_BASE + '/api/v1/repos/' + id + '/stats')
-	// nested with fetch(...timeseries) inside. The stats fetch is unnecessary
-	// and breaks the chain if it fails. We search the full template for the
+	// nested with the series fetch inside. The stats fetch is unnecessary
+	// and breaks the chain if it fails. We search the script for the
 	// pre-populate block (identified by "urlRepos") and check no /stats fetch follows.
 	compareJS := pageScripts(t)["compare.js"]
 	idx := strings.Index(compareJS, "urlRepos")
@@ -93,7 +94,7 @@ func TestComparePrePopulateDoesNotNestStatsFetch(t *testing.T) {
 	}
 	prePopulate := compareJS[idx:end]
 	if strings.Contains(prePopulate, "/stats'") || strings.Contains(prePopulate, `/stats"`) {
-		t.Error("compare pre-populate should not fetch /stats — fetch /timeseries directly for owner/name")
+		t.Error("compare pre-populate should not fetch /stats — the comparison's entity labels carry owner/name")
 	}
 }
 

@@ -1,14 +1,7 @@
 {{define "monitor"}}
 {{template "head" (dict "Title" "Monitor")}}
-<div class="nav">
-<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
-<div class="nav-user">
-{{if .Session.AvatarURL}}<img src="{{.Session.AvatarURL}}" alt="">{{end}}
-<span>{{.Session.LoginName}}</span>
-<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="nav-link">Logout</button></form>
-</div>
-</div>
-<div class="breadcrumb"><a href="/dashboard">Home</a><span class="sep">|</span><span class="current">Monitor</span></div>
+{{template "nav" .}}
+<div class="breadcrumb"><a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><span class="current">Monitor</span></div>
 <div class="container" style="max-width:1600px">
 <div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
 <div class="card" style="flex:1;min-width:120px;text-align:center;padding:1rem"><div style="font-size:2rem;font-weight:bold">{{.Stats.total}}</div><div style="color:#666;font-size:0.85rem">Total</div></div>
@@ -25,24 +18,25 @@
 <button type="submit" class="btn" style="padding:5px 12px;font-size:0.85rem">Search</button>
 {{if .Query}}<a href="/monitor" class="btn" style="padding:5px 12px;font-size:0.85rem;text-decoration:none">Clear</a>{{end}}
 </form>
-<div style="color:#666;font-size:0.85rem">Page {{.Page}} of {{.TotalPages}} ({{.Total}} repos) &mdash; auto-refreshes every 10s</div>
+<div style="color:#666;font-size:0.85rem">Page {{.Page}} of {{.TotalPages}} ({{.Total}} repos) &mdash; auto-refreshes every 10s &mdash; counts as of {{.StatsAt}} UTC, next {{.StatsNext}}</div>
 </div>
+{{range .Warnings}}<div class="notice notice-warn">{{.}}</div>{{end}}
 <table class="repo-table tbl-stack" style="width:100%">
 <thead>
 <tr>
   <th>#</th>
-  <th>Repository</th>
+  <th>{{template "sortTh" (dict "Key" "repo" "Label" "Repository" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
   <th>Platform</th>
-  <th>Status</th>
-  <th>Priority</th>
-  <th>Due</th>
-  <th>Last Run</th>
-  <th style="text-align:right">Issues</th>
-  <th style="text-align:right">Meta</th>
-  <th style="text-align:right">PRs</th>
-  <th style="text-align:right">Meta</th>
-  <th style="text-align:right">Commits</th>
-  <th style="text-align:right">Meta</th>
+  <th>{{template "sortTh" (dict "Key" "status" "Label" "Status" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
+  <th>{{template "sortTh" (dict "Key" "priority" "Label" "Priority" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
+  <th>{{template "sortTh" (dict "Key" "due" "Label" "Due" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
+  <th>{{template "sortTh" (dict "Key" "last_run" "Label" "Last Run" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
+  <th style="text-align:right">{{template "sortTh" (dict "Key" "issues" "Label" "Issues" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
+  <th style="text-align:right">{{template "sortTh" (dict "Key" "meta_issues" "Label" "Meta" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
+  <th style="text-align:right">{{template "sortTh" (dict "Key" "prs" "Label" "PRs" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
+  <th style="text-align:right">{{template "sortTh" (dict "Key" "meta_prs" "Label" "Meta" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
+  <th style="text-align:right">{{template "sortTh" (dict "Key" "commits" "Label" "Commits" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
+  <th style="text-align:right">{{template "sortTh" (dict "Key" "meta_commits" "Label" "Meta" "Sort" .Sort "Dir" .Dir "Href" .SortHref)}}</th>
   <th>Action</th>
 </tr>
 </thead>
@@ -50,7 +44,7 @@
 {{range .Jobs}}
 <tr{{if eq .Priority 0}} style="background:#fef3c7"{{end}}>
   <td data-label="#">{{.RowNum}}</td>
-  <td data-label="Repository">{{.Owner}}/{{.Repo}}</td>
+  <td data-label="Repository">{{.Label}}</td>
   <td data-label="Platform">{{.Plat}}</td>
   <td data-label="Status">
     <span class="{{if eq .Status "collecting"}}badge badge-blue{{else if eq .Status "queued"}}badge badge-gray{{else}}badge{{end}}">{{.Status}}</span>
@@ -80,10 +74,17 @@
 </tbody>
 </table>
 
-{{template "paginationNav" (dict "BasePath" "/monitor" "Page" .Page "TotalPages" .TotalPages "Query" .Query "PageWindow" .PageWindow)}}
+{{template "paginationNav" (dict "BasePath" "/monitor" "Page" .Page "TotalPages" .TotalPages "Query" .Query "Sort" .Sort "Dir" .Dir "PageSize" .PageSize "PageWindow" .PageWindow)}}
 </div>
 </div>
 <script src="/static/monitor.js"></script>
 </body></html>
 {{end}}
 
+{{/*
+  sortTh — one sortable column header of the monitor page (D-22, stage
+  3d): a link to the key's sort (ascending, or descending when already
+  sorted ascending) and the arrow of the current sort. Href is the map
+  queueview.SortHrefs built; Sort and Dir are the page's effective values.
+*/}}
+{{define "sortTh"}}{{if .Href}}<a href="{{index .Href .Key}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}{{if eq .Sort .Key}} <span class="sort-arrow">{{if eq .Dir "desc"}}&#9662;{{else}}&#9652;{{end}}</span>{{end}}{{end}}

@@ -1,0 +1,61 @@
+{{define "admin_tokens"}}
+{{template "head" (dict "Title" "API tokens")}}
+{{template "nav" .}}
+<div class="breadcrumb"><a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><span class="current">API tokens</span></div>
+<div class="container">
+{{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+
+<div class="card">
+<h2>Grant a token</h2>
+<p class="muted">A token authenticates as the account it is granted to, with that account's data scope and never with administrator privilege. It is shown once, on the next page.</p>
+<form method="POST" action="/admin/api-tokens" class="form-stack">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+<label>Account (user id)<input type="number" name="user_id" min="1" required></label>
+<label>Label<input type="text" name="label" maxlength="{{.MaxLabel}}" placeholder="who it is for, or what uses it" required></label>
+<label>Lifetime (days)<input type="number" name="lifetime_days" min="1" max="{{.MaxDays}}" placeholder="{{.Settings.DefaultLifetimeDays}}"></label>
+<label>Calls per hour<input type="number" name="rate_limit_per_hour" min="1" placeholder="{{.Settings.DefaultRateLimitPerHour}}"></label>
+<label>Calls per day<input type="number" name="rate_limit_per_day" min="1" placeholder="{{.Settings.DefaultRateLimitPerDay}}"></label>
+<button type="submit" class="btn btn-primary">Grant</button>
+</form>
+</div>
+
+<div class="card">
+<h2>Tokens</h2>
+{{if .Tokens}}
+<table class="tbl-stack">
+<thead><tr><th>Account</th><th>Status</th><th>Label</th><th>Calls per hour</th><th>Calls per day</th><th>Granted</th><th>Expires</th><th>Last used</th><th>Action</th></tr></thead>
+<tbody>
+{{range .Tokens}}
+<tr>
+<td data-label="Account">{{.OwnerLogin}}</td>
+<td data-label="Status"><span class="badge {{if eq .Status "active"}}badge-org{{else}}badge-user{{end}}">{{.Status}}</span></td>
+<td data-label="Label">{{.Label}}</td>
+<td data-label="Calls per hour">{{.RateLimitPerHour}}</td>
+<td data-label="Calls per day">{{.RateLimitPerDay}}</td>
+<td data-label="Granted">{{.CreatedAt.UTC.Format "2006-01-02"}} by {{.CreatedByLogin}}</td>
+<td data-label="Expires">{{.ExpiresAt.UTC.Format "2006-01-02"}}</td>
+<td data-label="Last used">{{if .LastUsedAt}}{{.LastUsedAt.UTC.Format "2006-01-02 15:04"}}{{else}}never{{end}}</td>
+<td data-label="Action">{{if eq .Status "active"}}<a href="/admin/api-tokens/{{.TokenID}}/revoke" class="btn btn-reject">Revoke</a>{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p class="empty">No token has been granted.</p>
+{{end}}
+</div>
+
+<div class="card">
+<h2>Defaults</h2>
+<p class="muted">What the grant form offers when a value is left empty. The allowances are the token quotas; one that aveloxis.json decides cannot be changed here.</p>
+<form method="POST" action="/admin/api-token-settings" class="form-stack">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+<label>Calls per hour<input type="number" name="default_rate_limit_per_hour" min="1" value="{{.Settings.DefaultRateLimitPerHour}}" required></label>
+<label>Calls per day<input type="number" name="default_rate_limit_per_day" min="1" value="{{.Settings.DefaultRateLimitPerDay}}"></label>
+<label>Lifetime (days)<input type="number" name="default_lifetime_days" min="1" max="{{.MaxDays}}" value="{{.Settings.DefaultLifetimeDays}}" required></label>
+<button type="submit" class="btn btn-primary">Save defaults</button>
+</form>
+</div>
+</div>
+</body></html>
+{{end}}

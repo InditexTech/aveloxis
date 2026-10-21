@@ -76,6 +76,12 @@ func AdminPrivilegeDropped(ctx context.Context) bool {
 	return v
 }
 
+// HashToken is hashToken for a caller outside the store that keys on a
+// secret without holding it: the web process keys its proxy-token cache
+// by the session cookie's hash (0.29.110, stage 4 of summary/59). One
+// hasher (SR-17): the value equals the stored token column.
+func HashToken(raw string) string { return hashToken(raw) }
+
 // hashToken is the one spelling of a stored token (session and API): the
 // SHA-256 of the raw token, hex-encoded.
 func hashToken(raw string) string {

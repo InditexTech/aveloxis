@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 )
 
@@ -185,145 +186,52 @@ func (s *Server) handleCollectionCopy(w http.ResponseWriter, r *http.Request) {
 }
 
 // ─── Admin mutations (requireAdmin, POST-everywhere) ────────────
+//
+// Since 0.29.109 (stage 3b of summary/59) the rules are the admin
+// service's; these handlers decode, call it and answer. The bodies are the
+// ones v0.27.70 answered: an input refusal is plain text (http.Error), the
+// store's refusals JSON, so clients see what they saw.
 
-// handleAdminCollectionCreate — POST /admin/collections
-// {name, description, position}.
-func (s *Server) handleAdminCollectionCreate(w http.ResponseWriter, r *http.Request) {
-	info, ok := s.requireAdmin(w, r)
-	if !ok {
-		return
-	}
+// collectionFields decodes {name, description, position}; a body that is
+// not that JSON answers the route's own "name required".
+func collectionFields(w http.ResponseWriter, r *http.Request) (admin.CollectionFields, bool) {
 	var req struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		Position    int    `json:"position"`
 	}
-	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &req); err != nil || req.Name == "" {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &req); err != nil {
 		http.Error(w, "name required", http.StatusBadRequest)
-		return
+		return admin.CollectionFields{}, false
 	}
-	id, err := s.store.CreateCollection(r.Context(), req.Name, req.Description, req.Position, info.UserID)
-	if err != nil {
-		if !s.refuseCollection(w, err) {
-			s.serverError(w, r, "handleAdminCollectionCreate", err)
-		}
-		return
-	}
-	s.writeJSON(w, r, map[string]any{"collection_id": id})
+	return admin.CollectionFields{Name: req.Name, Description: req.Description, Position: req.Position}, true
 }
 
-// handleAdminCollectionUpdate — POST /admin/collections/{collectionID}
-// {name, description, position}.
-func (s *Server) handleAdminCollectionUpdate(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r); !ok {
-		return
+// refuseCollectionOp answers the admin operations' refusals in the words
+// v0.27.70 used: an input refusal as plain text, no such group as its own
+// 404, everything else from the one table. false for a failure (the
+// caller's serverError).
+func (s *Server) refuseCollectionOp(w http.ResponseWriter, info authInfo, err error) bool {
+	switch {
+	case errors.Is(err, admin.ErrInvalidInput):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return true
+	case errors.Is(err, db.ErrGroupNotFound):
+		writeAuthError(w, http.StatusNotFound, "no group with that id")
+		return true
+	case errors.Is(err, db.ErrGroupNotAdminOwned):
+		// The store's sentinel, not an inputError: it has its own plain-text
+		// arm so the body stays what v0.27.70 answered (round-1 review F1).
+		http.Error(w, db.ErrGroupNotAdminOwned.Error(), http.StatusBadRequest)
+		return true
 	}
-	collID, err := strconv.ParseInt(r.PathValue("collectionID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid collection_id", http.StatusBadRequest)
-		return
-	}
-	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Position    int    `json:"position"`
-	}
-	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &req); err != nil || req.Name == "" {
-		http.Error(w, "name required", http.StatusBadRequest)
-		return
-	}
-	if err := s.store.UpdateCollection(r.Context(), collID, req.Name, req.Description, req.Position); err != nil {
-		if !s.refuseCollection(w, err) {
-			s.serverError(w, r, "handleAdminCollectionUpdate", err)
-		}
-		return
-	}
-	s.writeJSON(w, r, map[string]any{"ok": true})
+	return s.refuse(w, info, err)
 }
 
-// handleAdminCollectionDelete — POST /admin/collections/{collectionID}/delete.
-func (s *Server) handleAdminCollectionDelete(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r); !ok {
-		return
-	}
-	collID, err := strconv.ParseInt(r.PathValue("collectionID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid collection_id", http.StatusBadRequest)
-		return
-	}
-	if err := s.store.DeleteCollection(r.Context(), collID); err != nil {
-		if !s.refuseCollection(w, err) {
-			s.serverError(w, r, "handleAdminCollectionDelete", err)
-		}
-		return
-	}
-	s.writeJSON(w, r, map[string]any{"ok": true})
-}
-
-// handleAdminCollectionAddGroup — POST /admin/collections/{collectionID}/groups
-// {group_id}: link an admin-owned group into the collection.
-func (s *Server) handleAdminCollectionAddGroup(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r); !ok {
-		return
-	}
-	collID, err := strconv.ParseInt(r.PathValue("collectionID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid collection_id", http.StatusBadRequest)
-		return
-	}
-	var req struct {
-		GroupID int64 `json:"group_id"`
-	}
-	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &req); err != nil || req.GroupID == 0 {
-		http.Error(w, "group_id required", http.StatusBadRequest)
-		return
-	}
-	if err := s.store.AddGroupToCollection(r.Context(), collID, req.GroupID); err != nil {
-		if errors.Is(err, db.ErrGroupNotAdminOwned) {
-			http.Error(w, "collection member groups must be admin-owned", http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, db.ErrGroupNotFound) {
-			writeAuthError(w, http.StatusNotFound, "no group with that id")
-			return
-		}
-		if !s.refuseCollection(w, err) {
-			s.serverError(w, r, "handleAdminCollectionAddGroup", err)
-		}
-		return
-	}
-	s.writeJSON(w, r, map[string]any{"ok": true})
-}
-
-// handleAdminCollectionRemoveGroup — POST
-// /admin/collections/{collectionID}/groups/{groupID}/remove.
-func (s *Server) handleAdminCollectionRemoveGroup(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r); !ok {
-		return
-	}
-	collID, err := strconv.ParseInt(r.PathValue("collectionID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid collection_id", http.StatusBadRequest)
-		return
-	}
-	groupID, err := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid group_id", http.StatusBadRequest)
-		return
-	}
-	if err := s.store.RemoveGroupFromCollection(r.Context(), collID, groupID); err != nil {
-		if !s.refuseCollection(w, err) {
-			s.serverError(w, r, "handleAdminCollectionRemoveGroup", err)
-		}
-		return
-	}
-	s.writeJSON(w, r, map[string]any{"ok": true})
-}
-
-// refuseCollection answers the collection store's refusals (58 §7 item 8:
-// an unknown id or a duplicate name answered 500; the detail and the copy
-// answered 200 for an unknown id): 404 for no such collection, 409 for a
-// taken name. false for anything else (the caller's serverError).
+// refuseCollection answers the collection store's refusals on the read
+// routes (58 §7 item 8: an unknown id or a duplicate name answered 500;
+// the detail and the copy answered 200 for an unknown id): 404 for no such
+// collection, 409 for a taken name. false for anything else.
 func (s *Server) refuseCollection(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, db.ErrCollectionNotFound):
@@ -334,4 +242,130 @@ func (s *Server) refuseCollection(w http.ResponseWriter, err error) bool {
 		return false
 	}
 	return true
+}
+
+func collectionID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("collectionID"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid collection_id", http.StatusBadRequest)
+		return 0, false
+	}
+	return id, true
+}
+
+// handleAdminCollectionCreate — POST /admin/collections
+// {name, description, position}.
+func (s *Server) handleAdminCollectionCreate(w http.ResponseWriter, r *http.Request) {
+	info, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	f, ok := collectionFields(w, r)
+	if !ok {
+		return
+	}
+	id, err := s.admin.CreateCollection(r.Context(), s.actor(info), f)
+	if err != nil {
+		if !s.refuseCollectionOp(w, info, err) {
+			s.serverError(w, r, "handleAdminCollectionCreate", err)
+		}
+		return
+	}
+	s.writeJSON(w, r, map[string]any{"collection_id": id})
+}
+
+// handleAdminCollectionUpdate — POST /admin/collections/{collectionID}
+// {name, description, position}: the rename/reorder operation the
+// console's collections page also calls (stage 3c).
+func (s *Server) handleAdminCollectionUpdate(w http.ResponseWriter, r *http.Request) {
+	info, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	collID, ok := collectionID(w, r)
+	if !ok {
+		return
+	}
+	f, ok := collectionFields(w, r)
+	if !ok {
+		return
+	}
+	if err := s.admin.UpdateCollection(r.Context(), s.actor(info), collID, f); err != nil {
+		if !s.refuseCollectionOp(w, info, err) {
+			s.serverError(w, r, "handleAdminCollectionUpdate", err)
+		}
+		return
+	}
+	s.writeJSON(w, r, map[string]any{"ok": true})
+}
+
+// handleAdminCollectionDelete — POST /admin/collections/{collectionID}/delete.
+func (s *Server) handleAdminCollectionDelete(w http.ResponseWriter, r *http.Request) {
+	info, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	collID, ok := collectionID(w, r)
+	if !ok {
+		return
+	}
+	if err := s.admin.DeleteCollection(r.Context(), s.actor(info), collID); err != nil {
+		if !s.refuseCollectionOp(w, info, err) {
+			s.serverError(w, r, "handleAdminCollectionDelete", err)
+		}
+		return
+	}
+	s.writeJSON(w, r, map[string]any{"ok": true})
+}
+
+// handleAdminCollectionAddGroup — POST /admin/collections/{collectionID}/groups
+// {group_id}: link an admin-owned group into the collection.
+func (s *Server) handleAdminCollectionAddGroup(w http.ResponseWriter, r *http.Request) {
+	info, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	collID, ok := collectionID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		GroupID int64 `json:"group_id"`
+	}
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &req); err != nil {
+		http.Error(w, "group_id required", http.StatusBadRequest)
+		return
+	}
+	if err := s.admin.AddGroupToCollection(r.Context(), s.actor(info), collID, req.GroupID); err != nil {
+		if !s.refuseCollectionOp(w, info, err) {
+			s.serverError(w, r, "handleAdminCollectionAddGroup", err)
+		}
+		return
+	}
+	s.writeJSON(w, r, map[string]any{"ok": true})
+}
+
+// handleAdminCollectionRemoveGroup — POST
+// /admin/collections/{collectionID}/groups/{groupID}/remove.
+func (s *Server) handleAdminCollectionRemoveGroup(w http.ResponseWriter, r *http.Request) {
+	info, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	collID, ok := collectionID(w, r)
+	if !ok {
+		return
+	}
+	groupID, err := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid group_id", http.StatusBadRequest)
+		return
+	}
+	if err := s.admin.RemoveGroupFromCollection(r.Context(), s.actor(info), collID, groupID); err != nil {
+		if !s.refuseCollectionOp(w, info, err) {
+			s.serverError(w, r, "handleAdminCollectionRemoveGroup", err)
+		}
+		return
+	}
+	s.writeJSON(w, r, map[string]any{"ok": true})
 }

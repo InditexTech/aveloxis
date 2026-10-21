@@ -23,6 +23,7 @@ import (
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 	"github.com/aveloxis/aveloxis/internal/model"
+	"github.com/aveloxis/aveloxis/internal/queueview"
 	"github.com/aveloxis/aveloxis/internal/scheduler"
 	"github.com/aveloxis/aveloxis/internal/static"
 )
@@ -44,47 +45,29 @@ type pageParams struct {
 	PageSize int
 	Search   string
 	Offset   int
+	// SearchTooLong is the parser's verdict on q (queueview.MaxSearchBytes):
+	// nothing can match, no query runs, the page says so (whole-branch L10
+	// pass of 0.29.109: this copy dropped it and listed the whole queue).
+	SearchTooLong bool
 }
 
-// parsePageParams extracts page, page_size, and q from the URL query,
-// falling back to safe defaults on missing/non-numeric/out-of-range
-// input. Never returns PageSize > maxDashboardPageSize.
+// parsePageParams reads page, page_size and q through the one queue-page
+// parser (queueview.ParseParams, 0.29.109): the defaults and the clamp to
+// maxDashboardPageSize are this dashboard's; the arithmetic is shared.
 func parsePageParams(r *http.Request) pageParams {
-	q := r.URL.Query()
-	p := pageParams{Page: 1, PageSize: defaultDashboardPageSize}
-
-	if v, err := strconv.Atoi(q.Get("page")); err == nil && v > 0 {
-		p.Page = v
-	}
-	if v, err := strconv.Atoi(q.Get("page_size")); err == nil && v > 0 {
-		if v > maxDashboardPageSize {
-			v = maxDashboardPageSize
-		}
-		p.PageSize = v
-	}
-	p.Search = strings.TrimSpace(q.Get("q"))
-	p.Offset = (p.Page - 1) * p.PageSize
-	return p
+	p := queueview.ParseParams(r.URL.Query(), defaultDashboardPageSize, maxDashboardPageSize)
+	return pageParams{Page: p.Page, PageSize: p.PageSize, Search: p.Search, Offset: p.Offset, SearchTooLong: p.SearchTooLong}
 }
 
-// totalPages returns how many pages the given total item count spans at
-// the given page size. Always returns at least 1 so the pagination
-// controls still render for an empty fleet. A zero pageSize (defensive
-// guard — parsePageParams won't produce one) also returns 1 rather than
-// dividing by zero.
-func totalPages(total, pageSize int) int {
-	if pageSize <= 0 {
-		return 1
-	}
-	if total <= 0 {
-		return 1
-	}
-	n := total / pageSize
-	if total%pageSize != 0 {
-		n++
-	}
-	return n
+// view is the shared loader's parameters: this dashboard sorts in the
+// browser, so the store's default order is asked for.
+func (p pageParams) view() queueview.Params {
+	return queueview.Params{Page: p.Page, PageSize: p.PageSize, Search: p.Search, Offset: p.Offset, SearchTooLong: p.SearchTooLong}
 }
+
+// totalPages is queueview.TotalPages under the name this package's tests
+// and template use.
+func totalPages(total, pageSize int) int { return queueview.TotalPages(total, pageSize) }
 
 // renderMatviewBanner writes a visible pause banner at the top of the
 // dashboard while scheduler.MatviewRebuildActive is set. Operators were
@@ -115,13 +98,18 @@ func formatRelativeAgo(d time.Duration) string {
 	}
 }
 
-// DefaultQueueStatsCacheTTL is the cache window for QueueStats results
-// served to the monitor dashboard. The user explicitly accepts periodic
-// freshness ("freshness CAN be periodic. Perhaps every 10 minutes")
-// and asked for a "last updated" / "next update" header. 60 seconds
-// gives the dashboard responsive feedback while still amortizing the
-// GROUP BY scan over many tab refreshes.
-const DefaultQueueStatsCacheTTL = 60 * time.Second
+// QueueStatsCache is the shared queue stats cache (internal/queueview since
+// 0.29.109, stage 3d) under the name this package has used since v0.18.30;
+// NewQueueStatsCache and DefaultQueueStatsCacheTTL likewise.
+type QueueStatsCache = queueview.StatsCache
+
+// NewQueueStatsCache returns a cache with the given TTL.
+func NewQueueStatsCache(ttl time.Duration, logger *slog.Logger) *QueueStatsCache {
+	return queueview.NewStatsCache(ttl, logger)
+}
+
+// DefaultQueueStatsCacheTTL is the cache window for QueueStats results.
+const DefaultQueueStatsCacheTTL = queueview.DefaultStatsTTL
 
 // DefaultDashboardRefreshSeconds is the meta-refresh cadence emitted
 // in the dashboard HTML. v0.18.30 raised this from 10s — the
@@ -186,7 +174,7 @@ func newServer(store monitorStore, logger *slog.Logger, opts Options) *Server {
 		store:           store,
 		logger:          logger,
 		mux:             http.NewServeMux(),
-		queueStatsCache: NewQueueStatsCache(DefaultQueueStatsCacheTTL),
+		queueStatsCache: NewQueueStatsCache(DefaultQueueStatsCacheTTL, logger),
 		refreshSeconds:  refresh,
 	}
 	s.mux.HandleFunc("GET /", s.handleDashboard)
@@ -266,12 +254,21 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 	// JSON payload per request, which any polling client (the
 	// dashboard's JavaScript, external tooling) would re-fetch
 	// repeatedly. Route through ListQueuePage with the same
-	// page/page_size/q semantics as the dashboard.
+	// page/page_size/q semantics as the dashboard. Left apart from
+	// queueview.Load on purpose (L18, 0.29.109): this answer is the queue
+	// rows only — no repository names, no counts — so the two enrichment
+	// reads Load adds would be paid for nothing; the parameters do go
+	// through the one parser.
 	params := parsePageParams(r)
-	jobs, total, err := s.store.ListQueuePage(r.Context(), params.PageSize, params.Offset, params.Search, "", "")
-	if err != nil {
-		s.serverError(w, r, "handleQueue", err)
-		return
+	var jobs []db.QueueJob
+	var total int
+	if !params.SearchTooLong { // an over-long q matches nothing: no query, said in the envelope
+		var err error
+		jobs, total, err = s.store.ListQueuePage(r.Context(), params.PageSize, params.Offset, params.Search, "", "")
+		if err != nil {
+			s.serverError(w, r, "handleQueue", err)
+			return
+		}
 	}
 
 	type jobView struct {
@@ -317,12 +314,16 @@ func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
 		views = append(views, v)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	env := map[string]any{
 		"total":     total,
 		"page":      params.Page,
 		"page_size": params.PageSize,
 		"jobs":      views,
-	})
+	}
+	if params.SearchTooLong {
+		env["warnings"] = []string{queueview.WarnSearchTooLong}
+	}
+	json.NewEncoder(w).Encode(env)
 }
 
 func (s *Server) handlePrioritize(w http.ResponseWriter, r *http.Request) {
@@ -362,64 +363,16 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleDashboard", err)
 		return
 	}
-	jobs, total, err := s.store.ListQueuePage(ctx, params.PageSize, params.Offset, params.Search, "", "")
+	// The page's rows through the one loader (queueview.Load, 0.29.109):
+	// the listing, the two batched enrichment reads and their failure mode
+	// (a bare row, logged) are shared with the web GUI's /monitor and the
+	// API's queue route.
+	page, err := queueview.Load(ctx, s.store, params.view(), s.logger)
 	if err != nil {
 		s.serverError(w, r, "handleDashboard", err)
 		return
 	}
-
-	// Look up repo details and stats for display.
-	type enrichedJob struct {
-		db.QueueJob
-		Owner           string
-		Repo            string
-		URL             string
-		Plat            string
-		GatheredPRs     int
-		GatheredIssues  int
-		GatheredCommits int
-		MetaPRs         int
-		MetaIssues      int
-		MetaCommits     int
-	}
-
-	// Collect the page's repo IDs, then fetch repos and stats in two
-	// batched queries — not one-query-per-row like the pre-v0.18.6
-	// N+1 loop that starved collection workers for pgx pool connections.
-	repoIDs := make([]int64, 0, len(jobs))
-	for _, j := range jobs {
-		repoIDs = append(repoIDs, j.RepoID)
-	}
-	repos, err := s.store.GetReposBatch(ctx, repoIDs)
-	if err != nil {
-		s.serverError(w, r, "handleDashboard", err)
-		return
-	}
-	repoStats, err := s.store.GetRepoStatsBatch(ctx, repoIDs)
-	if err != nil {
-		s.serverError(w, r, "handleDashboard", err)
-		return
-	}
-
-	enriched := make([]enrichedJob, 0, len(jobs))
-	for _, j := range jobs {
-		ej := enrichedJob{QueueJob: j}
-		if repo, ok := repos[j.RepoID]; ok {
-			ej.Owner = repo.Owner
-			ej.Repo = repo.Name
-			ej.URL = repo.GitURL
-			ej.Plat = repo.Platform.String()
-		}
-		if st, ok := repoStats[j.RepoID]; ok {
-			ej.GatheredPRs = st.GatheredPRs
-			ej.GatheredIssues = st.GatheredIssues
-			ej.GatheredCommits = st.GatheredCommits
-			ej.MetaPRs = st.MetadataPRs
-			ej.MetaIssues = st.MetadataIssues
-			ej.MetaCommits = st.MetadataCommits
-		}
-		enriched = append(enriched, ej)
-	}
+	enriched, total := page.Rows, page.Total
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// v0.23.0: meta-refresh cadence is operator-configurable via
@@ -589,6 +542,10 @@ function sortTable(col) {
 	// Collecting showed more jobs than workers.
 	fmt.Fprintf(w, `<div class="stat" title="Parked by serve's leftover-staging drain or by heal-collection-gaps; they hold no worker slot"><div class="value">%d</div><div class="label">Parked (drain / heal)</div></div>`, stats["draining"])
 	fmt.Fprint(w, `</div>`)
+	// A failed enrichment read is said, not shown as zeros (queueview.Page).
+	for _, warn := range page.Warnings {
+		fmt.Fprintf(w, `<div style="background:#fde68a;color:#78350f;padding:0.75rem 1rem;border-radius:8px;margin-bottom:1rem;border:1px solid #f59e0b">%s</div>`, template.HTMLEscapeString(warn))
+	}
 
 	// Search box + page-size selector. Server-side search replaces the
 	// Ctrl-F workflow from the all-rows-at-once era: much better for
@@ -663,15 +620,16 @@ function sortTable(col) {
 
 		// HTML-escape user-controlled values to prevent stored XSS.
 		// repo_owner/repo_name come from user-submitted URLs via the web GUI.
-		escOwner := template.HTMLEscapeString(j.Owner)
-		escRepo := template.HTMLEscapeString(j.Repo)
+		// The label is the id when the names could not be read (never a
+		// bare slash; the banner above the table says why).
+		escLabel := template.HTMLEscapeString(j.Label())
 
 		// v0.23.0: every <td> carries a data-label="..." attribute so
 		// the mobile stacked-card layout (CSS above) can prefix the
 		// column name. Column order matches the <thead> emitted
 		// earlier so client-side JS sort still indexes correctly.
-		fmt.Fprintf(w, `<tr%s><td data-label="#">%d</td><td data-label="Repo">%s/%s</td><td data-label="Platform">%s</td><td data-label="Status" class="%s">%s%s%s</td><td data-label="Priority">%d</td><td data-label="Due">%s</td><td data-label="Last Run">%s</td>`,
-			rowClass, i+1, escOwner, escRepo, j.Plat,
+		fmt.Fprintf(w, `<tr%s><td data-label="#">%d</td><td data-label="Repo">%s</td><td data-label="Platform">%s</td><td data-label="Status" class="%s">%s%s%s</td><td data-label="Priority">%d</td><td data-label="Due">%s</td><td data-label="Last Run">%s</td>`,
+			rowClass, i+1, escLabel, j.Plat,
 			statusClass, j.Status, worker, errInfo,
 			j.Priority, due, lastRun)
 

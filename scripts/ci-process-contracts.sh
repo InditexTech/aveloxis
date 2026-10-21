@@ -93,6 +93,13 @@ token=$(curl -fsS -X POST -H "$COOKIE" -H "$ORIGIN" "$WEB/auth/token" | python3 
 BEARER="Authorization: Bearer $token"
 expect 200 -H "$BEARER" "$API/api/v1/groups"
 
+echo "== the web's /api/ proxy attaches the session's own Bearer (require_auth is on)"
+expect 302 "$WEB/api/v1/groups"                 # no session: the login redirect, never the api
+expect 200 -H "$COOKIE" "$WEB/api/v1/groups"    # the session's Bearer, minted and attached by the web process
+expect 200 -H "$COOKIE" "$WEB/api/v1/groups"    # held: one child token per session
+session_hash="'sha256\$' || encode(sha256('$raw'::bytea), 'hex')"
+children=$(q "SELECT count(*) FROM aveloxis_ops.user_session_tokens WHERE kind = 'api' AND parent_token = $session_hash")
+[ "$children" = "2" ] || fail "the session has $children child tokens; want 2 (the /auth/token exchange above and the proxy's one)"
 echo "== the web guard bounds and types form bodies before any gate"
 expect 415 -X POST -H "$COOKIE" -H "$ORIGIN" -F "repo_urls=https://github.com/a/b" "$WEB/groups/add-repo"
 big=$LOGDIR/big.form
@@ -104,9 +111,12 @@ expect 200 -H "$COOKIE" "$WEB/admin/users"
 q "UPDATE aveloxis_ops.users SET admin = FALSE WHERE user_id = $uid" >/dev/null
 expect 403 -H "$COOKIE" "$WEB/admin/users"
 
-echo "== signing out in web is a 401 in api at once"
+echo "== signing out in web is a 401 in api at once, and the proxy's token goes with it"
 expect 302 -X POST -H "$COOKIE" -H "$ORIGIN" "$WEB/logout"
 expect 401 -H "$BEARER" "$API/api/v1/groups"
+children=$(q "SELECT count(*) FROM aveloxis_ops.user_session_tokens WHERE kind = 'api' AND parent_token = $session_hash")
+[ "$children" = "0" ] || fail "the signed-out session still has $children child token(s)"
+expect 302 -H "$COOKIE" "$WEB/api/v1/groups"    # the gate sends the signed-out browser to /login
 expect 302 -X POST -H "$COOKIE" -H "$ORIGIN" "$WEB/auth/token" # the gate sends the signed-out browser to /login
 
 echo "== every process stops cleanly on SIGTERM (within 60 s)"

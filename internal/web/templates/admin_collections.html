@@ -1,0 +1,39 @@
+{{define "admin_collections"}}
+{{template "head" (dict "Title" "Collections")}}
+{{template "nav" .}}
+<div class="breadcrumb"><a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><span class="current">Collections</span></div>
+<div class="container">
+{{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+<div class="card">
+<h2>Collections</h2>
+<p class="muted">Curated sets of administrator-owned groups, shown on the public catalogue in position order.</p>
+{{if .Collections}}
+<table class="tbl-stack">
+<thead><tr><th>Name</th><th>Position</th><th>Groups</th><th>Repositories</th><th>Created</th></tr></thead>
+<tbody>
+{{range .Collections}}
+<tr>
+<td data-label="Name"><a href="/admin/collections/{{.CollectionID}}">{{.Name}}</a>{{if .Description}} <span class="muted">{{.Description}}</span>{{end}}</td>
+<td data-label="Position">{{.Position}}</td>
+<td data-label="Groups">{{.GroupCount}}</td>
+<td data-label="Repositories">{{.RepoCount}}</td>
+<td data-label="Created">{{.CreatedAt.UTC.Format "2006-01-02"}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}<p class="empty">No collection yet.</p>{{end}}
+</div>
+<div class="card">
+<h2>Create a collection</h2>
+<form method="POST" action="/admin/collections" class="form-stack">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+<label>Name<input type="text" name="name" maxlength="{{.MaxName}}" required></label>
+<label>Description<input type="text" name="description" maxlength="{{.MaxDescription}}"></label>
+<label>Position<input type="number" name="position" value="0"></label>
+<button type="submit" class="btn btn-primary">Create</button>
+</form>
+</div>
+</div>
+</body></html>
+{{end}}

@@ -88,7 +88,7 @@ func (s *Server) refusePage(w http.ResponseWriter, r *http.Request, err error) b
 		// A pending org nothing could ever enumerate (v0.29.57 round 3;
 		// review 5267193512: the message names no URL).
 		http.Error(w, "Cannot approve: "+ref.Detail, http.StatusConflict)
-	case admin.LastAdmin, admin.Superseded:
+	case admin.LastAdmin, admin.Superseded, admin.Conflict:
 		http.Error(w, detail("refused"), http.StatusConflict)
 	case admin.SelfDemotion:
 		http.Error(w, "Refusing self-demotion — use another admin account.", http.StatusBadRequest)

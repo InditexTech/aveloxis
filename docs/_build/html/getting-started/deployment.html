@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Production Deployment &mdash; Aveloxis 0.29.107 documentation</title>
+  <title>Production Deployment &mdash; Aveloxis 0.29.111 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=4510acb2"></script>
+      <script src="../_static/documentation_options.js?v=4e2e6822"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -328,10 +328,13 @@
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#how-repos-get-queued-for-collection">How Repos Get Queued for Collection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#session-management">Session Management</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#running-alongside-aveloxis-serve">Running Alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#administration">Administration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#security-considerations">Security Considerations</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#endpoints">Endpoints</a><ul>
@@ -1884,7 +1887,7 @@ the ones a public host must get right:</p>
 <span class="w">  </span><span class="nt">&quot;api&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;addr&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1:8383&quot;</span><span class="p">,</span><span class="w">            </span><span class="c1">// loopback only; the proxy forwards to it</span>
 <span class="w">    </span><span class="nt">&quot;trusted_proxy&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;127.0.0.1&quot;</span><span class="p">,</span><span class="w">        </span><span class="c1">// the proxy&#39;s peer IP, in canonical form; X-Forwarded-For is believed only from it</span>
-<span class="w">    </span><span class="nt">&quot;require_auth&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w">               </span><span class="c1">// keep false for this GUI: its charts fetch the API without a Bearer token</span>
+<span class="w">    </span><span class="nt">&quot;require_auth&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w">                </span><span class="c1">// the web process attaches each session&#39;s own Bearer on /api/ (0.29.110); true scopes the API to signed-in accounts</span>
 <span class="w">    </span><span class="nt">&quot;exempt_cidrs&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;127.0.0.0/8&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;::1/128&quot;</span><span class="p">],</span><span class="w">   </span><span class="c1">// bypass the per-IP limits (not a valid token&#39;s own quotas) AND require_auth — narrow the RFC1918 defaults on a shared network</span>
 <span class="w">    </span><span class="nt">&quot;cors_origins&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span><span class="w">                  </span><span class="c1">// empty = Access-Control-Allow-Origin: * ; list your origin to make it strict</span>
 <span class="w">    </span><span class="nt">&quot;response_cache_mb&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">              </span><span class="c1">// advanced, off by default: megabytes of repository answers the API keeps in memory</span>
@@ -1916,7 +1919,12 @@ on one host, set both <code class="docutils literal notranslate"><span class="pr
 API token is still counted against its own quotas, v0.29.89) <em>and</em> <code class="docutils literal notranslate"><span class="pre">require_auth</span></code>. The
 defaults include the RFC1918 ranges; on a host whose private network is
 shared with others, narrow them to loopback as shown.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">api.require_auth</span></code></strong> stays <code class="docutils literal notranslate"><span class="pre">false</span></code> with this GUI: its pages call the
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">api.require_auth</span></code></strong> can be <code class="docutils literal notranslate"><span class="pre">true</span></code> with this GUI since 0.29.110: the web
+process mints a token for each signed-in session (revoked by sign-out) and
+attaches it to every <code class="docutils literal notranslate"><span class="pre">/api/</span></code> request it forwards, so the pages are scoped
+to the account like the SPA’s — and counted, like the SPA’s, against the
+account’s <code class="docutils literal notranslate"><span class="pre">requests_per_hour</span></code> and <code class="docutils literal notranslate"><span class="pre">requests_per_day</span></code> (shadow by default; a
+page load is several requests). Before 0.29.110 it had to stay <code class="docutils literal notranslate"><span class="pre">false</span></code>: its pages called the
 API from the visitor’s browser without a Bearer token, so turning it on
 stops the charts for everyone outside <code class="docutils literal notranslate"><span class="pre">exempt_cidrs</span></code>. It exists for a
 separate front end that holds the token the web process mints.</p></li>

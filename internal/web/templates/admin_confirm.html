@@ -1,0 +1,24 @@
+{{/*
+  admin_confirm — the one confirm step of every destructive console action
+  (D-19: a server-side page, never a dialog). Title, Question, the POST
+  Action with its Button, the Back link, and Fields: hidden inputs the
+  action needs (a network, for example). Needs .Session and .CSRF.
+*/}}
+{{define "admin_confirm"}}
+{{template "head" (dict "Title" .Title)}}
+{{template "nav" .}}
+<div class="breadcrumb"><a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><span class="current">{{.Title}}</span></div>
+<div class="container">
+<div class="card confirm-box">
+<h2>{{.Title}}</h2>
+<p>{{.Question}}</p>
+<form method="POST" action="{{.Action}}" class="form-row">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+{{range $name, $value := .Fields}}<input type="hidden" name="{{$name}}" value="{{$value}}">{{end}}
+<button type="submit" class="btn btn-danger">{{.Button}}</button>
+<a href="{{.Back}}" class="btn">Cancel</a>
+</form>
+</div>
+</div>
+</body></html>
+{{end}}

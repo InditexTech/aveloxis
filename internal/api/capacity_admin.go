@@ -88,15 +88,16 @@ func (s *Server) handleAdminCapacityLargest(w http.ResponseWriter, r *http.Reque
 }
 
 // POST /api/v1/admin/capacity/quotas/{name} {allowed, mode} — only a quota
-// whose aveloxis.json word is WEB (409 otherwise, naming the file).
+// whose aveloxis.json word is WEB (409 otherwise, naming the file). The
+// route's own existence is answered first (58 §7 item 12: a bad body to an
+// unknown quota answered 400) from the same shipped table the service
+// consults; the values, the mode and the source are the service's rules.
 func (s *Server) handleAdminCapacityQuota(w http.ResponseWriter, r *http.Request) {
 	info, ok := s.requireAdmin(w, r)
 	if !ok {
 		return
 	}
 	name := r.PathValue("name")
-	// The route's own existence first (58 §7 item 12: a bad body to an
-	// unknown quota answered 400).
 	if _, known := capacity.Shipped[name]; !known {
 		writeAuthError(w, http.StatusNotFound, "no quota named "+strconv.Quote(name))
 		return
@@ -109,20 +110,13 @@ func (s *Server) handleAdminCapacityQuota(w http.ResponseWriter, r *http.Request
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {allowed, mode}")
 		return
 	}
-	mode, err := capacity.ParseMode(body.Mode)
-	if err != nil || body.Allowed == nil || !validRateLimit(*body.Allowed) {
-		writeAuthError(w, http.StatusBadRequest, "allowed must be a positive number, at most "+strconv.Itoa(maxAPITokenRateLimit)+", and mode one of enforce, shadow, off")
+	mode, err := s.admin.SetCapacityQuota(r.Context(), s.actor(info), name, admin.QuotaChange{Allowed: body.Allowed, Mode: body.Mode})
+	if err != nil {
+		if !s.refuse(w, info, err) {
+			s.serverError(w, r, "handleAdminCapacityQuota", err)
+		}
 		return
 	}
-	if src := s.store.CapacitySource(name); src != capacity.SourceWeb {
-		writeAuthError(w, http.StatusConflict, name+" is set in aveloxis.json ("+string(src)+"); change it there")
-		return
-	}
-	if err := s.store.SetCapacityQuota(r.Context(), name, int(*body.Allowed), mode, info.UserID); err != nil {
-		s.serverError(w, r, "handleAdminCapacityQuota", err)
-		return
-	}
-	s.logger.Info("capacity quota changed", "quota", name, "allowed", *body.Allowed, "mode", string(mode), "by", info.UserID)
 	s.writeJSON(w, r, map[string]any{"name": name, "allowed": *body.Allowed, "mode": mode})
 }
 
@@ -140,16 +134,12 @@ func (s *Server) handleAdminCapacityContact(w http.ResponseWriter, r *http.Reque
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {contact_email} (an empty string clears it)")
 		return
 	}
-	err := s.store.SetCapacityContact(r.Context(), *body.ContactEmail, info.UserID)
-	if errors.Is(err, db.ErrInvalidCapacitySettings) {
-		writeAuthError(w, http.StatusBadRequest, "contact_email must be an email address of at most "+strconv.Itoa(db.MaxContactEmailBytes)+" bytes, or empty")
+	if err := s.admin.SetCapacityContact(r.Context(), s.actor(info), *body.ContactEmail); err != nil {
+		if !s.refuse(w, info, err) {
+			s.serverError(w, r, "handleAdminCapacityContact", err)
+		}
 		return
 	}
-	if err != nil {
-		s.serverError(w, r, "handleAdminCapacityContact", err)
-		return
-	}
-	s.logger.Info("capacity contact address changed", "by", info.UserID)
 	s.writeJSON(w, r, map[string]any{"saved": true})
 }
 
@@ -171,8 +161,10 @@ func (s *Server) handleAdminCapacityAccount(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		a, err = s.store.CapacityAccountByID(r.Context(), id)
+	} else if login, ok := admin.NormalizeLogin(r.URL.Query().Get("login")); !ok {
+		err = db.ErrUserNotFound // no forge issues such a login: no account, no query (round-1 review of 0.29.109)
 	} else {
-		a, err = s.store.CapacityAccountByLogin(r.Context(), r.URL.Query().Get("login"))
+		a, err = s.store.CapacityAccountByLogin(r.Context(), login)
 	}
 	if errors.Is(err, db.ErrUserNotFound) {
 		writeAuthError(w, http.StatusNotFound, "no such account")
@@ -226,20 +218,18 @@ func (s *Server) handleAdminCapacityOverride(w http.ResponseWriter, r *http.Requ
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {repos_allowed?, requests_per_hour?, requests_per_day?, links_per_day?, note}")
 		return
 	}
-	err = s.store.SetCapacityOverride(r.Context(), db.CapacityOverride{UserID: userID, ReposAllowed: body.ReposAllowed,
-		RequestsPerHour: body.RequestsPerHour, RequestsPerDay: body.RequestsPerDay, LinksPerDay: body.LinksPerDay, Note: body.Note}, info.UserID)
-	switch {
-	case errors.Is(err, db.ErrInvalidCapacitySettings):
-		writeAuthError(w, http.StatusBadRequest, "each value must be a positive number (or null for the quota's value); the note is at most "+strconv.Itoa(db.MaxCapacityNoteLength)+" characters")
-		return
-	case errors.Is(err, db.ErrUserNotFound):
-		writeAuthError(w, http.StatusNotFound, "no account with that user id")
-		return
-	case err != nil:
-		s.serverError(w, r, "handleAdminCapacityOverride", err)
+	err = s.admin.SetCapacityOverride(r.Context(), s.actor(info), db.CapacityOverride{UserID: userID, ReposAllowed: body.ReposAllowed,
+		RequestsPerHour: body.RequestsPerHour, RequestsPerDay: body.RequestsPerDay, LinksPerDay: body.LinksPerDay, Note: body.Note})
+	if err != nil {
+		if errors.Is(err, db.ErrUserNotFound) { // the route's own words, kept byte-identical
+			writeAuthError(w, http.StatusNotFound, "no account with that user id")
+			return
+		}
+		if !s.refuse(w, info, err) {
+			s.serverError(w, r, "handleAdminCapacityOverride", err)
+		}
 		return
 	}
-	s.logger.Info("capacity override changed", "user_id", userID, "by", info.UserID)
 	s.writeJSON(w, r, map[string]any{"user_id": userID, "saved": true})
 }
 
@@ -257,16 +247,13 @@ func (s *Server) handleAdminSignupAllowlistAdd(w http.ResponseWriter, r *http.Re
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {cidr, note}")
 		return
 	}
-	cidr, err := s.store.AddSignupAllowlist(r.Context(), body.CIDR, body.Note, info.UserID)
-	if errors.Is(err, db.ErrInvalidCIDR) || errors.Is(err, db.ErrInvalidCapacitySettings) {
-		writeAuthError(w, http.StatusBadRequest, "cidr must be a network in CIDR form (such as 192.0.2.0/24); the note is at most "+strconv.Itoa(db.MaxCapacityNoteLength)+" characters")
-		return
-	}
+	cidr, err := s.admin.AddSignupAllowlist(r.Context(), s.actor(info), body.CIDR, body.Note)
 	if err != nil {
-		s.serverError(w, r, "handleAdminSignupAllowlistAdd", err)
+		if !s.refuse(w, info, err) {
+			s.serverError(w, r, "handleAdminSignupAllowlistAdd", err)
+		}
 		return
 	}
-	s.logger.Info("sign-up allowlist entry added", "cidr", cidr, "by", info.UserID)
 	s.writeJSON(w, r, map[string]any{"cidr": cidr})
 }
 
@@ -283,20 +270,17 @@ func (s *Server) handleAdminSignupAllowlistRemove(w http.ResponseWriter, r *http
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {cidr}")
 		return
 	}
-	removed, err := s.store.RemoveSignupAllowlist(r.Context(), body.CIDR)
-	if errors.Is(err, db.ErrInvalidCIDR) {
-		writeAuthError(w, http.StatusBadRequest, "cidr must be a network in CIDR form")
-		return
-	}
+	removed, err := s.admin.RemoveSignupAllowlist(r.Context(), s.actor(info), body.CIDR)
 	if err != nil {
-		s.serverError(w, r, "handleAdminSignupAllowlistRemove", err)
+		if !s.refuse(w, info, err) {
+			s.serverError(w, r, "handleAdminSignupAllowlistRemove", err)
+		}
 		return
 	}
 	if !removed {
 		writeAuthError(w, http.StatusNotFound, "that network is not on the allowlist")
 		return
 	}
-	s.logger.Info("sign-up allowlist entry removed", "cidr", body.CIDR, "by", info.UserID)
 	s.writeJSON(w, r, map[string]any{"removed": true})
 }
 

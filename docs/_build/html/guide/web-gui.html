@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Web GUI &mdash; Aveloxis 0.29.107 documentation</title>
+  <title>Web GUI &mdash; Aveloxis 0.29.111 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=4510acb2"></script>
+      <script src="../_static/documentation_options.js?v=4e2e6822"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -328,10 +328,13 @@
 <li class="toctree-l2"><a class="reference internal" href="#how-repos-get-queued-for-collection">How Repos Get Queued for Collection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#session-management">Session Management</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#running-alongside-aveloxis-serve">Running Alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#administration">Administration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#security-considerations">Security Considerations</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#endpoints">Endpoints</a><ul>
@@ -2034,6 +2037,67 @@ aveloxis<span class="w"> </span>api
 </div>
 <p>Or all three in the background with <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">start</span> <span class="pre">all</span></code>. They share the same PostgreSQL database. The web GUI writes to the queue; the scheduler reads from it. There is no direct communication between the two processes, except that <code class="docutils literal notranslate"><span class="pre">web</span></code> proxies <code class="docutils literal notranslate"><span class="pre">/api/*</span></code> to the API at <code class="docutils literal notranslate"><span class="pre">web.api_internal_url</span></code>.</p>
 <p>You can run them on different hosts as long as both can reach the database.</p>
+</section>
+<section id="administration">
+<h2>Administration<a class="headerlink" href="#administration" title="Link to this heading"></a></h2>
+<p>The first account to sign in is the administrator; an administrator
+promotes others on the Users page. An administrator’s breadcrumb carries the
+console’s links on every page. Every deletion and revocation has a confirm
+page; there are no dialogs, and nothing on these pages scrolls sideways.</p>
+<p><strong>Monitor</strong> (<code class="docutils literal notranslate"><span class="pre">/monitor</span></code>) is the collection queue: one row per repository
+with its status, priority, due time, last run and the gathered and
+forge-reported counts, sortable by any column (the header links), searched
+by owner or name, 200 rows a page (<code class="docutils literal notranslate"><span class="pre">page_size</span></code> down to 1). The status
+counts at the top are read once a minute and say when they were read. When
+a batched read fails the rows show repository ids and zero counts under a
+banner that says so, never a bare slash. This is the same queue the serve
+process’s own <code class="docutils literal notranslate"><span class="pre">--monitor</span></code> page shows; that page (<code class="docutils literal notranslate"><span class="pre">127.0.0.1:5555</span></code> by
+default) has no sign-in and is diagnostics for the host it runs on — keep it
+on the loopback address and never expose it (see
+<a class="reference internal" href="monitoring.html"><span class="std std-doc">Monitoring</span></a>).</p>
+<p><strong>Approvals</strong> (<code class="docutils literal notranslate"><span class="pre">/admin/groups/pending</span></code>) lists the additions non-administrators
+asked for — repository pastes and organization registrations that would start
+new collection — with the requester, the group, the count and sample URLs;
+approve or reject each (the requester is mailed when mail is configured).
+Below them, the forge-ID changes collection observed: a repository deleted
+and re-created under the same URL on its forge. Adopting one, with an
+optional note (at most 1,000 characters), treats the new repository as the
+continuation of the old; a change another adoption superseded is not offered.</p>
+<p><strong>Users</strong> (<code class="docutils literal notranslate"><span class="pre">/admin/users</span></code>) is every account with its login, e-mail, forge,
+role, join date and last sign-in; promote or demote with one button. The
+last administrator cannot be demoted, and nobody demotes themselves.
+Privilege is read from the account row at every request: a demoted
+administrator’s open session loses the console at once.</p>
+<p><strong>Capacity</strong> (<code class="docutils literal notranslate"><span class="pre">/admin/capacity</span></code>) is the fair-use quotas as applied: each
+quota’s value, mode (enforce, shadow, off) and where it is decided — a quota
+<code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> sets is read-only here and changed there. The contact address
+every refusal names; one account looked up by login or id (its repositories
+against its allocation, its requests today, its own values and a note; clear
+them with one button); the accounts with their own values, the busiest today
+and, on request, the largest; sign-ups per day for the last 30 days; and the
+sign-up allowlist of networks (CIDR) that bypass the sign-up quota. The
+rules and the configuration half are in
+<a class="reference internal" href="../getting-started/configuration.html"><span class="std std-doc">Configuration</span></a>, “Capacity”.</p>
+<p><strong>API tokens</strong> (<code class="docutils literal notranslate"><span class="pre">/admin/api-tokens</span></code>) grants an operator-issued token to an
+account (a label, a lifetime of 1 to 365 days, hourly and daily allowances;
+the defaults the form offers are set on the same page). The token is shown
+once, on the page that answers the grant — reloading that page would grant
+another — and is sent as <code class="docutils literal notranslate"><span class="pre">Authorization:</span> <span class="pre">Bearer</span></code>. Revoking a token stops it
+on its next call; the list shows each token’s owner, label, dates, allowances
+and last use, never the token.</p>
+<p><strong>Collections</strong> (<code class="docutils literal notranslate"><span class="pre">/admin/collections</span></code>) are the curated sets of
+administrator-owned groups the public catalogue shows, in position order:
+create one (a name of at most 200 characters, a description of at most
+1,000), rename or reorder it, add or remove member groups, delete it (the
+groups stay).</p>
+<p>An administrator can open any account’s group read-only (<code class="docutils literal notranslate"><span class="pre">/groups/{id}</span></code>):
+the page says so, offers nothing to add or remove, and the read is logged
+with the administrator’s account. The decisions behind every form are the
+same service the REST API’s administrative routes call, so the two GUIs
+refuse the same inputs by the same rules. A change made here is seen by the
+web GUI on its next request; the REST API applies a role, scope or quota
+change to its signed-in callers within about a minute of its next request
+(its authorization cache), while a revoked token stops on its next call.</p>
 </section>
 <section id="security-considerations">
 <h2>Security Considerations<a class="headerlink" href="#security-considerations" title="Link to this heading"></a></h2>

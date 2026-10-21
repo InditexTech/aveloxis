@@ -26,7 +26,6 @@ import (
 	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/config"
 	"github.com/aveloxis/aveloxis/internal/db"
-	"github.com/aveloxis/aveloxis/internal/srctest"
 	"github.com/aveloxis/aveloxis/internal/static"
 )
 
@@ -317,24 +316,35 @@ func TestChartGridsAndInputsReflow(t *testing.T) {
 }
 
 // TestAdminPagesCarryTheViewportAndStackedTables (W8, the same rule): the
-// two hand-written administrator pages (approvals, users) are outside the
-// template set and were plain seven-column tables with no viewport meta —
-// sideways scrolling on a phone. They carry the viewport meta, the shared
-// stylesheet and stacked tables (.tbl-stack with data-label cells) like
-// every template.
+// two administrator pages (approvals, users) were hand-written HTML
+// outside the template set — plain seven-column tables with no viewport
+// meta, sideways scrolling on a phone. Since 0.29.109 (stage 3a) they are
+// templates; rendered through the production parse with the golden
+// fixtures, each carries the viewport meta, the shared stylesheet and
+// stacked tables (.tbl-stack with data-label cells), and the template text
+// fixes no pixel width.
 func TestAdminPagesCarryTheViewportAndStackedTables(t *testing.T) {
-	for _, fn := range []string{"handleAdminPendingGroups", "handleAdminUsers"} {
-		body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/web", "func (s *Server) "+fn+"("))
+	tmpl := parseTemplates()
+	for _, name := range []string{"admin_approvals", "admin_users"} {
+		var buf bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&buf, name, renderFixtures[name]); err != nil {
+			t.Fatalf("render %s: %v", name, err)
+		}
+		page := buf.String()
 		for _, needle := range []string{`name="viewport"`, `href="/static/app.css"`, `class="tbl-stack"`, `data-label="`} {
-			if !strings.Contains(body, needle) {
-				t.Errorf("%s: the page lacks %s", fn, needle)
+			if !strings.Contains(page, needle) {
+				t.Errorf("%s: the page lacks %s", name, needle)
 			}
 		}
-		if m := fixedWidthInline.FindString(body); m != "" {
-			t.Errorf("%s: %q — an inline fixed width on a phone is a horizontal scroll (operator rule)", fn, m)
+		src, err := templateFS.ReadFile("templates/" + name + ".html")
+		if err != nil {
+			t.Fatal(err)
 		}
-		if strings.Contains(body, "max-width: 28rem") || strings.Contains(body, "<table><tr>") {
-			t.Errorf("%s: the page still lays its table out for a wide screen", fn)
+		if m := fixedWidthInline.FindString(string(src)); m != "" {
+			t.Errorf("%s: %q — an inline fixed width on a phone is a horizontal scroll (operator rule)", name, m)
+		}
+		if strings.Contains(page, "max-width: 28rem") || strings.Contains(page, "<table><tr>") {
+			t.Errorf("%s: the page still lays its table out for a wide screen", name)
 		}
 	}
 }

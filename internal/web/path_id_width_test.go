@@ -27,7 +27,9 @@ import (
 // run decide — this pin is the cheap tripwire, not the oracle). The
 // behavioural half is TestBadAdminIdsAre400BeforeTheStore's int4 case.
 func TestOnlyTheTwoParsersReadAPathValue(t *testing.T) {
-	readers := map[string]bool{"pathID": true, "pathUserID": true}
+	// pathName (0.29.109) reads the one textual path value, a quota's name,
+	// bounded in length; the two id parsers stay the only numeric readers.
+	readers := map[string]bool{"pathID": true, "pathUserID": true, "pathName": true}
 	bound := regexp.MustCompile(`(\w+)\s*,\s*\w+\s*:=\s*pathID\(`)
 	examined, found, narrowings := 0, 0, 0
 	bodies := map[string]string{} // every function in the package, by name
@@ -39,7 +41,7 @@ func TestOnlyTheTwoParsersReadAPathValue(t *testing.T) {
 			if strings.Contains(body, ".PathValue(") {
 				found++
 				if !readers[name] {
-					t.Errorf("%s: %s reads a path value itself; route ids go through pathID or pathUserID", path, name)
+					t.Errorf("%s: %s reads a path value itself; route ids go through pathID or pathUserID, a name through pathName", path, name)
 				}
 				if name != "pathID" && (strings.Contains(body, "strconv.ParseInt(") || strings.Contains(body, "strconv.ParseUint(")) {
 					t.Errorf("%s: %s parses a path value at 64 bits; the int-typed id is read by admin.ParseUserID", path, name)

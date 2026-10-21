@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration &mdash; Aveloxis 0.29.107 documentation</title>
+  <title>Configuration &mdash; Aveloxis 0.29.111 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=4510acb2"></script>
+      <script src="../_static/documentation_options.js?v=4e2e6822"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -328,10 +328,13 @@
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#how-repos-get-queued-for-collection">How Repos Get Queued for Collection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#session-management">Session Management</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#running-alongside-aveloxis-serve">Running Alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#administration">Administration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#security-considerations">Security Considerations</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#endpoints">Endpoints</a><ul>
@@ -2755,7 +2758,7 @@ a half against its own reference table below:</p>
 </tr>
 </tbody>
 </table>
-<p>A quota set by <code class="docutils literal notranslate"><span class="pre">DEFAULT</span></code>, <code class="docutils literal notranslate"><span class="pre">SHADOW</span></code> or <code class="docutils literal notranslate"><span class="pre">OFF</span></code> is read-only on the Capacity page. An unknown quota name or word is refused at startup.</p>
+<p>A quota set by <code class="docutils literal notranslate"><span class="pre">DEFAULT</span></code>, <code class="docutils literal notranslate"><span class="pre">SHADOW</span></code> or <code class="docutils literal notranslate"><span class="pre">OFF</span></code> is read-only on the Capacity page (the built-in web GUI’s Administration → Capacity since 0.29.109, and aveloxis-gui’s capacity page; both call the same service). An unknown quota name or word is refused at startup.</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Quota</p></th>
@@ -2940,7 +2943,7 @@ you enforce them.</p>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">require_auth</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
-<td><p>Gate every data endpoint (all but <code class="docutils literal notranslate"><span class="pre">/health</span></code> and <code class="docutils literal notranslate"><span class="pre">/public/stats</span></code>) behind the Bearer session tokens the web process mints at <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code>. Keep it <code class="docutils literal notranslate"><span class="pre">false</span></code> with the built-in web GUI, whose pages call the API from the browser without a token; turn it on only for a front end that holds the token. Exempt-CIDR clients bypass auth even when enabled. Scoped users receive structured 403s for repos outside their approved groups.</p></td>
+<td><p>Gate every data endpoint (all but <code class="docutils literal notranslate"><span class="pre">/health</span></code> and <code class="docutils literal notranslate"><span class="pre">/public/stats</span></code>) behind the Bearer session tokens the web process mints at <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code>. It can be <code class="docutils literal notranslate"><span class="pre">true</span></code> with the built-in web GUI since 0.29.110: the web process mints a token for each signed-in session on its first <code class="docutils literal notranslate"><span class="pre">/api/</span></code> request (held in the web process, revoked by sign-out) and attaches it to every request it forwards, so the pages are scoped to the account; before 0.29.110 it had to stay <code class="docutils literal notranslate"><span class="pre">false</span></code>. Those page loads are counted against the account’s <code class="docutils literal notranslate"><span class="pre">requests_per_hour</span></code> and <code class="docutils literal notranslate"><span class="pre">requests_per_day</span></code> (shadow by default). Exempt-CIDR clients bypass auth even when enabled. Scoped users receive structured 403s for repos outside their approved groups.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">response_cache_mb</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>

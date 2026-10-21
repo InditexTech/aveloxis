@@ -35,8 +35,10 @@ func TestHandleDashboardUsesListQueuePage(t *testing.T) {
 		body = body[:end]
 	}
 
-	if !strings.Contains(body, "ListQueuePage") {
-		t.Error("handleDashboard must call ListQueuePage (paginated); ListQueue returns the whole fleet")
+	// Since 0.29.109 the page lists through the one loader (queueview.Load),
+	// which calls ListQueuePage — pinned there (TestLoadNumbersEnrichesAndPassesTheEffectiveSort).
+	if !strings.Contains(body, "queueview.Load(") {
+		t.Error("handleDashboard must list through queueview.Load (paginated); ListQueue returns the whole fleet")
 	}
 	if strings.Contains(body, "s.store.ListQueue(") {
 		t.Error("handleDashboard must not call ListQueue — use ListQueuePage")
@@ -64,8 +66,9 @@ func TestHandleDashboardUsesReposBatch(t *testing.T) {
 		body = body[:end]
 	}
 
-	if !strings.Contains(body, "GetReposBatch") {
-		t.Error("handleDashboard must call GetReposBatch for a single round-trip")
+	// The batched enrichment lives in queueview.Load since 0.29.109.
+	if !strings.Contains(body, "queueview.Load(") {
+		t.Error("handleDashboard must enrich through queueview.Load (GetReposBatch, one round-trip)")
 	}
 	if strings.Contains(body, "GetRepoByID") {
 		t.Error("handleDashboard must not call GetRepoByID in a loop (N+1 regression)")

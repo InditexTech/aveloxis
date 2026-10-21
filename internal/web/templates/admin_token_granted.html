@@ -1,0 +1,21 @@
+{{/*
+  admin_token_granted — the one page that carries a raw API token: the
+  grant's answer, served with Cache-Control: no-store and never through a
+  redirect. Needs .Session, .Token and .Grant (the stored row).
+*/}}
+{{define "admin_token_granted"}}
+{{template "head" (dict "Title" "Token granted")}}
+{{template "nav" .}}
+<div class="breadcrumb"><a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><a href="/admin/api-tokens">API tokens</a><span class="sep">/</span><span class="current">Token granted</span></div>
+<div class="container">
+<div class="card">
+<h2>Token granted to {{.Grant.OwnerLogin}}</h2>
+<p>Copy it now: this is the only time it is shown. It expires on {{.Grant.ExpiresAt.UTC.Format "2006-01-02"}} and is sent as <code>Authorization: Bearer</code>.</p>
+<p class="token-box">{{.Token}}</p>
+<p class="muted">Label: {{.Grant.Label}} &middot; {{.Grant.RateLimitPerHour}} calls per hour, {{.Grant.RateLimitPerDay}} per day &middot; token {{.Grant.TokenID}}</p>
+<p class="muted">This page is the answer to the grant: reloading it would grant another token. Use Done.</p>
+<p><a href="/admin/api-tokens" class="btn btn-primary">Done</a></p>
+</div>
+</div>
+</body></html>
+{{end}}

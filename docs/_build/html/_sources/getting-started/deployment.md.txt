@@ -105,7 +105,7 @@ the ones a public host must get right:
   "api": {
     "addr": "127.0.0.1:8383",            // loopback only; the proxy forwards to it
     "trusted_proxy": "127.0.0.1",        // the proxy's peer IP, in canonical form; X-Forwarded-For is believed only from it
-    "require_auth": false,               // keep false for this GUI: its charts fetch the API without a Bearer token
+    "require_auth": true,                // the web process attaches each session's own Bearer on /api/ (0.29.110); true scopes the API to signed-in accounts
     "exempt_cidrs": ["127.0.0.0/8", "::1/128"],   // bypass the per-IP limits (not a valid token's own quotas) AND require_auth — narrow the RFC1918 defaults on a shared network
     "cors_origins": [],                  // empty = Access-Control-Allow-Origin: * ; list your origin to make it strict
     "response_cache_mb": 0,              // advanced, off by default: megabytes of repository answers the API keeps in memory
@@ -137,7 +137,12 @@ What the values mean:
   API token is still counted against its own quotas, v0.29.89) *and* `require_auth`. The
   defaults include the RFC1918 ranges; on a host whose private network is
   shared with others, narrow them to loopback as shown.
-- **`api.require_auth`** stays `false` with this GUI: its pages call the
+- **`api.require_auth`** can be `true` with this GUI since 0.29.110: the web
+  process mints a token for each signed-in session (revoked by sign-out) and
+  attaches it to every `/api/` request it forwards, so the pages are scoped
+  to the account like the SPA's — and counted, like the SPA's, against the
+  account's `requests_per_hour` and `requests_per_day` (shadow by default; a
+  page load is several requests). Before 0.29.110 it had to stay `false`: its pages called the
   API from the visitor's browser without a Bearer token, so turning it on
   stops the charts for everyone outside `exempt_cidrs`. It exists for a
   separate front end that holds the token the web process mints.

@@ -70,6 +70,14 @@ type apiPackageScan struct {
 	problems []string                   // registrations the scan cannot read; each fails the test
 }
 
+// externalQueryReaders are the functions of OTHER packages that read query
+// parameters for a handler (the reach follows calls within internal/api
+// only), with the names each reads from the url.Values it is given.
+var externalQueryReaders = map[string][]string{
+	// The one queue-page parser (stage 3d of summary/59, 0.29.109).
+	"queueview.ParseParams": {"page", "page_size", "q", "sort", "dir"},
+}
+
 // accessExceptions are handlers whose access is not decided by one of the
 // require helpers. Each states why.
 var accessExceptions = map[string]string{
@@ -325,6 +333,13 @@ func scanAPIPackage(files map[string]string) (apiPackageScan, error) {
 					}
 					if name, ok := queryRead(fn, call); ok {
 						f.query[name] = true
+					}
+					// A parameter reader of another package: the reach cannot
+					// follow it, so the table says what it reads.
+					if pkg, ok := fn.X.(*ast.Ident); ok {
+						for _, name := range externalQueryReaders[pkg.Name+"."+fn.Sel.Name] {
+							f.query[name] = true
+						}
 					}
 					// recv.M() is the method of the receiver's own type. Any
 					// other x.M() is followed only when one type in the

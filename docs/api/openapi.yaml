@@ -4106,6 +4106,14 @@ paths:
           schema:
             type: integer
             default: 1
+        - name: page_size
+          in: query
+          description: Rows per page, at most 100 (since 0.29.109; earlier releases always answered 100).
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 100
         - name: q
           in: query
           description: Filter on the repository.
@@ -4179,6 +4187,15 @@ paths:
                   dir:
                     type: string
                     enum: ["", asc, desc]
+                  warnings:
+                    type: array
+                    description: |
+                      Present only when a batched read behind the page failed (since 0.29.109):
+                      "Repository names could not be read; the rows show repository ids." (every
+                      `repo` is then the id) and/or "Repository counts could not be read; the counts
+                      show 0." The failure is logged on the server.
+                    items:
+                      type: string
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -6785,6 +6802,11 @@ components:
           description: Present (true) when a metadata snapshot exists, even one without a date.
     WeeklyDataPoint:
       type: object
+      description: |
+        One week of the repository time series. Its number is `count`, the
+        one native series that predates the `value` convention (see the
+        conventions page, "One field name for a metric's number"); `/compare`
+        and the Augur-compatible metrics carry `value`.
       required: [week_start, count]
       properties:
         week_start:

@@ -1,0 +1,61 @@
+{{define "admin_approvals"}}
+{{template "head" (dict "Title" "Approvals")}}
+{{template "nav" .}}
+<div class="breadcrumb"><a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><span class="current">Approvals</span></div>
+<div class="container">
+<div class="card">
+<h2>Pending additions</h2>
+{{if .Requests}}
+<table class="tbl-stack">
+<thead><tr><th>#</th><th>Requested by</th><th>Group</th><th>Kind</th><th>Items</th><th>Sample</th><th>Requested</th><th>Decision</th></tr></thead>
+<tbody>
+{{range .Requests}}
+<tr>
+<td data-label="#">{{.RequestID}}</td>
+<td data-label="Requested by">{{.UserLogin}}</td>
+<td data-label="Group">{{.GroupName}}</td>
+<td data-label="Kind">{{.Kind}}</td>
+<td data-label="Items">{{if eq .Kind "org"}}1{{else}}{{.ItemCount}}{{end}}</td>
+<td data-label="Sample" class="urls">{{if eq .Kind "org"}}{{.OrgURL}}{{else}}{{range $i, $u := .SampleURLs}}{{if $i}}<br>{{end}}{{$u}}{{end}}{{end}}</td>
+<td data-label="Requested">{{.CreatedAt.UTC.Format "2006-01-02 15:04"}}</td>
+<td data-label="Decision">
+<form method="POST" action="/admin/add-requests/{{.RequestID}}/approve" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button class="btn btn-approve" type="submit">Approve</button></form>
+<form method="POST" action="/admin/add-requests/{{.RequestID}}/reject" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><button class="btn btn-reject" type="submit">Reject</button></form>
+</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p class="empty">No pending additions awaiting review.</p>
+{{end}}
+</div>
+
+<div class="card">
+<h2>Forge-ID changes</h2>
+<p class="muted">A repository whose forge reports a new identity was deleted and re-created under the same name. Adopting moves the stored ID to the one the scan observed and lets collection continue; the change is recorded with your name. A change whose old ID is no longer the stored one is superseded and not offered.</p>
+{{if .Changes}}
+<table class="tbl-stack">
+<thead><tr><th>Repository</th><th>Old ID</th><th>New ID</th><th>Re-created</th><th>First seen</th><th>Decision</th></tr></thead>
+<tbody>
+{{range .Changes}}
+<tr>
+<td data-label="Repository" class="urls">{{.RepoGit}}</td>
+<td data-label="Old ID">{{.OldForgeID}}</td>
+<td data-label="New ID">{{.NewForgeID}}</td>
+<td data-label="Re-created">{{if .ForgeCreatedAt}}{{.ForgeCreatedAt.UTC.Format "2006-01-02"}}{{else}}-{{end}}</td>
+<td data-label="First seen">{{.FirstObservedAt.UTC.Format "2006-01-02 15:04"}}</td>
+<td data-label="Decision">
+<form method="POST" action="/admin/forge-id-changes/{{.RepoID}}/adopt" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="old_forge_id" value="{{.OldForgeID}}"><input type="hidden" name="new_forge_id" value="{{.NewForgeID}}"><input type="text" name="note" class="note-input" placeholder="Note (optional)" maxlength="{{$.NoteMax}}"><button class="btn btn-approve" type="submit">Adopt</button></form>
+</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}
+<p class="empty">No forge-ID changes awaiting a decision.</p>
+{{end}}
+</div>
+</div>
+</body></html>
+{{end}}

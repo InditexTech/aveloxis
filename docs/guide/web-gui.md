@@ -233,6 +233,74 @@ Or all three in the background with `aveloxis start all`. They share the same Po
 
 You can run them on different hosts as long as both can reach the database.
 
+## Administration
+
+The first account to sign in is the administrator; an administrator
+promotes others on the Users page. An administrator's breadcrumb carries the
+console's links on every page. Every deletion and revocation has a confirm
+page; there are no dialogs, and nothing on these pages scrolls sideways.
+
+**Monitor** (`/monitor`) is the collection queue: one row per repository
+with its status, priority, due time, last run and the gathered and
+forge-reported counts, sortable by any column (the header links), searched
+by owner or name, 200 rows a page (`page_size` down to 1). The status
+counts at the top are read once a minute and say when they were read. When
+a batched read fails the rows show repository ids and zero counts under a
+banner that says so, never a bare slash. This is the same queue the serve
+process's own `--monitor` page shows; that page (`127.0.0.1:5555` by
+default) has no sign-in and is diagnostics for the host it runs on — keep it
+on the loopback address and never expose it (see
+[Monitoring](monitoring.md)).
+
+**Approvals** (`/admin/groups/pending`) lists the additions non-administrators
+asked for — repository pastes and organization registrations that would start
+new collection — with the requester, the group, the count and sample URLs;
+approve or reject each (the requester is mailed when mail is configured).
+Below them, the forge-ID changes collection observed: a repository deleted
+and re-created under the same URL on its forge. Adopting one, with an
+optional note (at most 1,000 characters), treats the new repository as the
+continuation of the old; a change another adoption superseded is not offered.
+
+**Users** (`/admin/users`) is every account with its login, e-mail, forge,
+role, join date and last sign-in; promote or demote with one button. The
+last administrator cannot be demoted, and nobody demotes themselves.
+Privilege is read from the account row at every request: a demoted
+administrator's open session loses the console at once.
+
+**Capacity** (`/admin/capacity`) is the fair-use quotas as applied: each
+quota's value, mode (enforce, shadow, off) and where it is decided — a quota
+`aveloxis.json` sets is read-only here and changed there. The contact address
+every refusal names; one account looked up by login or id (its repositories
+against its allocation, its requests today, its own values and a note; clear
+them with one button); the accounts with their own values, the busiest today
+and, on request, the largest; sign-ups per day for the last 30 days; and the
+sign-up allowlist of networks (CIDR) that bypass the sign-up quota. The
+rules and the configuration half are in
+[Configuration](../getting-started/configuration.md), "Capacity".
+
+**API tokens** (`/admin/api-tokens`) grants an operator-issued token to an
+account (a label, a lifetime of 1 to 365 days, hourly and daily allowances;
+the defaults the form offers are set on the same page). The token is shown
+once, on the page that answers the grant — reloading that page would grant
+another — and is sent as `Authorization: Bearer`. Revoking a token stops it
+on its next call; the list shows each token's owner, label, dates, allowances
+and last use, never the token.
+
+**Collections** (`/admin/collections`) are the curated sets of
+administrator-owned groups the public catalogue shows, in position order:
+create one (a name of at most 200 characters, a description of at most
+1,000), rename or reorder it, add or remove member groups, delete it (the
+groups stay).
+
+An administrator can open any account's group read-only (`/groups/{id}`):
+the page says so, offers nothing to add or remove, and the read is logged
+with the administrator's account. The decisions behind every form are the
+same service the REST API's administrative routes call, so the two GUIs
+refuse the same inputs by the same rules. A change made here is seen by the
+web GUI on its next request; the REST API applies a role, scope or quota
+change to its signed-in callers within about a minute of its next request
+(its authorization cache), while a revoked token stops on its next call.
+
 ## Security Considerations
 
 - **OAuth tokens**: The access token obtained during login is used only to fetch the user's profile and is dropped once the callback has done so. The session row holds the user id, never the token.

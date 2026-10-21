@@ -60,7 +60,6 @@ internal/importers/numfocus/crawler_test.go readFixture
 internal/mailer/helpers_test.go readSrc
 internal/monitor/dashboard_freshness_test.go extractMonitorFn
 internal/monitor/matview_banner_test.go mustReadMonitorSource
-internal/monitor/queue_stats_cache_test.go mustReadFileMon
 internal/platform/github/graphql_listing_test.go readPhase2Source
 internal/scheduler/activity_classification_test.go readSchedulerFile
 internal/scheduler/global_state_ticker_test.go readRunJob

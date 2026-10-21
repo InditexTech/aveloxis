@@ -142,9 +142,14 @@ var adminStoreWrites = map[string]bool{
 	"SetUserAdmin":        true,
 	"SetUserPendingEmail": true, "ClearUserPendingEmailIf": true, "CreateEmailConfirmation": true, "ConfirmEmailToken": true,
 	"AdoptPendingForgeIDChange": true,
+	// Stage 3b (0.29.109): tokens, capacity, collections.
+	"CreateAPIToken": true, "RevokeAPIToken": true, "SetAPITokenSettings": true,
+	"SetCapacityQuota": true, "SetCapacityContact": true, "SetCapacityOverride": true, "AddSignupAllowlist": true, "RemoveSignupAllowlist": true,
+	"CreateCollection": true, "UpdateCollection": true, "DeleteCollection": true, "AddGroupToCollection": true, "RemoveGroupFromCollection": true,
 	// Reads.
 	"GroupOwner": false, "RepoInGroup": false, "GetAddRequest": false, "IsUserAdmin": false, "UserLabel": false,
 	"GetUserEmail": false, "GetUserLivePendingEmail": false,
+	"GetAPITokenSettings": false, "CapacitySource": false,
 }
 
 // serviceReceivers reports, for a package's files, the identifiers and
@@ -349,7 +354,23 @@ var adminParity = map[string]adminParityRow{
 	"NotifyAddRequestSubmitted": {API: "-", Web: "-", CLI: "-", Why: "called by AddToGroup and AddOrgToGroup, never by an adapter"},
 	"RejectGroup":               {API: "POST /api/v1/admin/groups/{groupID}/reject", Web: "POST /admin/groups/{id}/reject", CLI: "-", Why: "an administrator's decision in a GUI"},
 	"SetUserAdmin":              {API: "POST /api/v1/admin/users/{userID}/admin", Web: "POST /admin/users/{id}/admin", CLI: "-", Why: "the first account is the administrator (OAuth); no CLI command sets roles"},
-	"AdoptForgeID":              {API: "POST /api/v1/admin/forge-id-changes/{repoID}/adopt", Web: "-", CLI: "- (aveloxis adopt-forge-id is a different operation: it asks the forge for the current id and writes through store.AdoptForgeID)", Why: "the web GUI has no forge-ID page; the CLI probes the forge first"},
+	"AdoptForgeID":              {API: "POST /api/v1/admin/forge-id-changes/{repoID}/adopt", Web: "POST /admin/forge-id-changes/{repoID}/adopt", CLI: "- (aveloxis adopt-forge-id is a different operation: it asks the forge for the current id and writes through store.AdoptForgeID)", Why: "the CLI probes the forge first"},
+	// Stages 3b and 3c (0.29.109): the console's operations, each with its
+	// API route and its page's form; the CLI has no token, capacity or
+	// collection command (an administrator's console operation).
+	"GrantAPIToken":             {API: "POST /api/v1/admin/api-tokens", Web: "POST /admin/api-tokens", CLI: "-", Why: "the CLI has no token command"},
+	"RevokeAPIToken":            {API: "POST /api/v1/admin/api-tokens/{tokenID}/revoke", Web: "POST /admin/api-tokens/{tokenID}/revoke", CLI: "-", Why: "the CLI has no token command"},
+	"SetAPITokenDefaults":       {API: "POST /api/v1/admin/api-token-settings", Web: "POST /admin/api-token-settings", CLI: "-", Why: "the CLI has no token command"},
+	"SetCapacityQuota":          {API: "POST /api/v1/admin/capacity/quotas/{name}", Web: "POST /admin/capacity/quotas/{name}", CLI: "-", Why: "a quota aveloxis.json decides is set there, not by a command"},
+	"SetCapacityContact":        {API: "POST /api/v1/admin/capacity/contact", Web: "POST /admin/capacity/contact", CLI: "-", Why: "the seed from mail.operator_email is the store's at migrate (C6)"},
+	"SetCapacityOverride":       {API: "POST /api/v1/admin/capacity/accounts/{userID}", Web: "POST /admin/capacity/accounts/{userID}, POST /admin/capacity/accounts/{userID}/clear", CLI: "-", Why: "the CLI has no capacity command"},
+	"AddSignupAllowlist":        {API: "POST /api/v1/admin/capacity/signup-allowlist", Web: "POST /admin/capacity/signup-allowlist", CLI: "-", Why: "the CLI has no capacity command"},
+	"RemoveSignupAllowlist":     {API: "POST /api/v1/admin/capacity/signup-allowlist/remove", Web: "POST /admin/capacity/signup-allowlist/remove", CLI: "-", Why: "the CLI has no capacity command"},
+	"CreateCollection":          {API: "POST /api/v1/admin/collections", Web: "POST /admin/collections", CLI: "-", Why: "the CLI has no collection command"},
+	"UpdateCollection":          {API: "POST /api/v1/admin/collections/{collectionID}", Web: "POST /admin/collections/{collectionID}", CLI: "-", Why: "the CLI has no collection command"},
+	"DeleteCollection":          {API: "POST /api/v1/admin/collections/{collectionID}/delete", Web: "POST /admin/collections/{collectionID}/delete", CLI: "-", Why: "the CLI has no collection command"},
+	"AddGroupToCollection":      {API: "POST /api/v1/admin/collections/{collectionID}/groups", Web: "POST /admin/collections/{collectionID}/groups", CLI: "-", Why: "the CLI has no collection command"},
+	"RemoveGroupFromCollection": {API: "POST /api/v1/admin/collections/{collectionID}/groups/{groupID}/remove", Web: "POST /admin/collections/{collectionID}/groups/{groupID}/remove", CLI: "-", Why: "the CLI has no collection command"},
 }
 
 func TestAdminServiceParityRegistry(t *testing.T) {

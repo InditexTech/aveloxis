@@ -375,7 +375,7 @@ ORDER BY h.last_seen DESC
 LIMIT 1;
 ```
 
-The Go store method `PostgresStore.GetContributorLoginHistory(ctx, cntrbID)` returns the rows ordered chronologically — useful for the contributor detail page in the web GUI (display planned for a follow-up release).
+The rows are read by operator SQL (`SELECT … FROM aveloxis_data.contributor_login_history WHERE cntrb_id = … ORDER BY first_seen`); the Go reader that once wrapped that query had no caller and was removed in 0.29.109.
 
 ### Why the two write paths exist (v0.22.12 vs v0.22.13)
 

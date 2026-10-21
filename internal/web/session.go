@@ -72,6 +72,22 @@ func pathUserID(r *http.Request, name string) (int, bool) {
 	return id, err == nil
 }
 
+// pathName reads a textual path value (a quota's name, 0.29.109): the
+// third and last reader of a path value beside the two id parsers. The
+// service decides whether the name exists; this bounds it to what a route
+// segment can be so an unbounded value never reaches a log line.
+func pathName(r *http.Request, name string) string {
+	v := r.PathValue(name)
+	if len(v) > maxPathNameBytes {
+		return v[:maxPathNameBytes]
+	}
+	return v
+}
+
+// maxPathNameBytes bounds a textual path value: every shipped quota name
+// fits in it many times over, and a longer one is no name.
+const maxPathNameBytes = 64
+
 // createSession records a signed-in user as a row of
 // aveloxis_ops.user_session_tokens (0.29.102, stage 2c of summary/59,
 // B2/N12: sessions survive a restart of the web process and a sign-out is

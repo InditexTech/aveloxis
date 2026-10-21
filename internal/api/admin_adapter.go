@@ -44,6 +44,16 @@ func (h apiHooks) RoleChanged(userID int) {
 	h.s.homeCache.invalidate(userID)
 }
 
+// TokensChanged drops every cached validation after a revoke (stage 3b;
+// the handler did this itself before). The token itself is stopped by the
+// per-call row recheck (APITokenActive) in every api process; this drops
+// what the cache holds for it — the owner's role and scope — in this one.
+func (h apiHooks) TokensChanged() {
+	if h.s.auth != nil {
+		h.s.auth.invalidateAll()
+	}
+}
+
 // refusalAnswer is the API's one table from a refusal kind to the status
 // and body it answers. The words are presentation (eval-2 item 4); the
 // kind is the service's. A group that is not the caller's and one that
@@ -68,7 +78,7 @@ func refusalAnswer(ref admin.Refusal) (int, string) {
 		return http.StatusConflict, "the group has been rejected by an administrator"
 	case admin.InvalidInput, admin.TooMany, admin.SelfDemotion, admin.OffHost:
 		return http.StatusBadRequest, detail("invalid request")
-	case admin.OrgUnregistrable, admin.LastAdmin, admin.Superseded:
+	case admin.OrgUnregistrable, admin.LastAdmin, admin.Superseded, admin.Conflict:
 		return http.StatusConflict, detail("refused")
 	case admin.Partial:
 		// The message holds counts only, no database text.

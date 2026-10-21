@@ -7,6 +7,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 	"github.com/aveloxis/aveloxis/internal/mailer"
 	"github.com/aveloxis/aveloxis/internal/platform"
+	"github.com/aveloxis/aveloxis/internal/queueview"
 	"github.com/aveloxis/aveloxis/internal/static"
 	"golang.org/x/oauth2"
 )
@@ -55,14 +57,24 @@ type Server struct {
 	// tests without a store plant their own. db.ErrNoWebSession means no
 	// session; any other error is a 500, never "no session" (SR-5).
 	lookupSession func(ctx context.Context, raw string) (*Session, error)
-	tmpl          *template.Template
-	apiProxy      http.Handler   // reverse proxy for /api/* → cfg.APIInternalURL; nil on parse failure
-	mailer        *mailer.Mailer // gmail-backed transactional mailer; safely nil if unconfigured (v0.19.0)
+	// mintProxyToken mints the Bearer the /api/ proxy attaches for a web
+	// session (0.29.110, stage 4): New sets it to the store's
+	// MintTokenForWebSession (kind "api", parent = the session); tests
+	// without a store plant their own. proxyTokens holds the answers.
+	mintProxyToken func(ctx context.Context, cookie string) (string, error)
+	proxyTokens    proxyTokens
+	tmpl           *template.Template
+	apiProxy       http.Handler   // reverse proxy for /api/* → cfg.APIInternalURL; nil on parse failure
+	mailer         *mailer.Mailer // gmail-backed transactional mailer; safely nil if unconfigured (v0.19.0)
 	// admin is the administrative service this process adapts (stage 1 of
 	// summary/59): groups, additions, approvals, roles and the account
 	// e-mail flow. Built by New, rebuilt by WithMailer so the mailer it
 	// sends through is the one attached.
 	admin *admin.Service
+	// queueStats caches the queue's status counts for the /monitor page
+	// (stage 3d, D-22): the GROUP BY over the queue runs once per TTL, not
+	// once per tab refresh.
+	queueStats *queueview.StatsCache
 }
 
 // Session is a signed-in browser session as the gate resolved it for
@@ -98,6 +110,12 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 		logger:    logger,
 	}
 	s.lookupSession = s.storeSession
+	s.mintProxyToken = func(ctx context.Context, cookie string) (string, error) {
+		if store == nil { // a test server without a store plants its own minter
+			return "", errors.New("no store to mint a proxy token")
+		}
+		return store.MintTokenForWebSession(ctx, cookie)
+	}
 
 	baseURL := strings.TrimSuffix(cfg.BaseURL, "/")
 	if baseURL == "" {
@@ -172,6 +190,10 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 		rp := &httputil.ReverseProxy{Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
 			pr.Out.Host = pr.In.Host
+			// The api identifies the caller by the Bearer the handler below
+			// attached, never by a cookie (0.29.110, stage 4): the session
+			// cookie and every other cookie stop here.
+			pr.Out.Header.Del("Cookie")
 			for _, h := range []string{"X-Forwarded-Host", "X-Forwarded-Proto"} {
 				if v := pr.In.Header.Values(h); len(v) > 0 {
 					pr.Out.Header[h] = v
@@ -188,6 +210,7 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 		// a separate wait of the same length only raced it. A dead api
 		// fails fast at the dial (connection refused → 502).
 		rp.Transport = &http.Transport{IdleConnTimeout: 60 * time.Second}
+		rp.ModifyResponse = s.forgetRefusedProxyToken // a refused Bearer is dropped, never presented again (0.29.110)
 		rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 			if r.Context().Err() != nil {
 				// The web's bound fired (its WARN says so) or the client
@@ -206,6 +229,7 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 
 	// Parse embedded templates.
 	s.tmpl = parseTemplates()
+	s.queueStats = queueview.NewStatsCache(queueview.DefaultStatsTTL, s.logger)
 
 	s.admin = s.newAdminService(nil)
 	return s
@@ -323,6 +347,33 @@ func (s *Server) Handler() http.Handler {
 	// non-admin additions of not-yet-tracked repos/orgs.
 	mux.HandleFunc("POST /admin/add-requests/{id}/approve", s.requireAdmin(s.handleApproveAddRequest))
 	mux.HandleFunc("POST /admin/add-requests/{id}/reject", s.requireAdmin(s.handleRejectAddRequest))
+	// Stage 3a (0.29.109): the Approvals page adopts a recorded forge-ID change (D-24).
+	mux.HandleFunc("POST /admin/forge-id-changes/{repoID}/adopt", s.requireAdmin(s.handleAdoptForgeID))
+	// Stage 3c (0.29.109): the API-tokens, Capacity and Collections pages.
+	// Every destructive action has a GET confirm page and a POST (D-19).
+	mux.HandleFunc("GET /admin/api-tokens", s.requireAdmin(s.handleAdminAPITokens))
+	mux.HandleFunc("POST /admin/api-tokens", s.requireAdmin(s.handleAdminAPITokenGrant))
+	mux.HandleFunc("GET /admin/api-tokens/{tokenID}/revoke", s.requireAdmin(s.handleAdminAPITokenRevokeConfirm))
+	mux.HandleFunc("POST /admin/api-tokens/{tokenID}/revoke", s.requireAdmin(s.handleAdminAPITokenRevoke))
+	mux.HandleFunc("POST /admin/api-token-settings", s.requireAdmin(s.handleAdminAPITokenDefaults))
+	mux.HandleFunc("GET /admin/capacity", s.requireAdmin(s.handleAdminCapacity))
+	mux.HandleFunc("POST /admin/capacity/quotas/{name}", s.requireAdmin(s.handleAdminCapacityQuota))
+	mux.HandleFunc("POST /admin/capacity/contact", s.requireAdmin(s.handleAdminCapacityContact))
+	mux.HandleFunc("POST /admin/capacity/accounts/{userID}", s.requireAdmin(s.handleAdminCapacityOverride))
+	mux.HandleFunc("GET /admin/capacity/accounts/{userID}/clear", s.requireAdmin(s.handleAdminCapacityClearConfirm))
+	mux.HandleFunc("POST /admin/capacity/accounts/{userID}/clear", s.requireAdmin(s.handleAdminCapacityClear))
+	mux.HandleFunc("POST /admin/capacity/signup-allowlist", s.requireAdmin(s.handleAdminAllowlistAdd))
+	mux.HandleFunc("GET /admin/capacity/signup-allowlist/remove", s.requireAdmin(s.handleAdminAllowlistRemoveConfirm))
+	mux.HandleFunc("POST /admin/capacity/signup-allowlist/remove", s.requireAdmin(s.handleAdminAllowlistRemove))
+	mux.HandleFunc("GET /admin/collections", s.requireAdmin(s.handleAdminCollections))
+	mux.HandleFunc("POST /admin/collections", s.requireAdmin(s.handleAdminCollectionCreate))
+	mux.HandleFunc("GET /admin/collections/{collectionID}", s.requireAdmin(s.handleAdminCollection))
+	mux.HandleFunc("POST /admin/collections/{collectionID}", s.requireAdmin(s.handleAdminCollectionUpdate))
+	mux.HandleFunc("GET /admin/collections/{collectionID}/delete", s.requireAdmin(s.handleAdminCollectionDeleteConfirm))
+	mux.HandleFunc("POST /admin/collections/{collectionID}/delete", s.requireAdmin(s.handleAdminCollectionDelete))
+	mux.HandleFunc("POST /admin/collections/{collectionID}/groups", s.requireAdmin(s.handleAdminCollectionAddGroup))
+	mux.HandleFunc("GET /admin/collections/{collectionID}/groups/{groupID}/remove", s.requireAdmin(s.handleAdminCollectionRemoveGroupConfirm))
+	mux.HandleFunc("POST /admin/collections/{collectionID}/groups/{groupID}/remove", s.requireAdmin(s.handleAdminCollectionRemoveGroup))
 	mux.HandleFunc("GET /admin/users", s.requireAdmin(s.handleAdminUsers))
 	mux.HandleFunc("POST /admin/users/{id}/admin", s.requireAdmin(s.handleSetUserAdmin))
 
@@ -331,11 +382,13 @@ func (s *Server) Handler() http.Handler {
 	// /api/v1/... URLs; this handler forwards them to cfg.APIInternalURL.
 	// Gated by requireAuth so an anonymous visitor can't query collected
 	// data through the proxy. The browser sends the aveloxis_session cookie
-	// on same-origin requests, which the auth middleware validates.
+	// on same-origin requests, which the gate validates; the api then sees
+	// the session's own Bearer, attached here (0.29.110, stage 4 of
+	// summary/59, D-9/C1), so it scopes the answer to the account and
+	// works with api.require_auth on. A Bearer the browser sent itself is
+	// replaced: the session decides the identity, nothing the page holds.
 	if s.apiProxy != nil {
-		mux.Handle("/api/", s.requireAuth(func(w http.ResponseWriter, r *http.Request, _ *Session) {
-			s.apiProxy.ServeHTTP(w, r)
-		}))
+		mux.Handle("/api/", s.requireAuth(s.handleAPIProxy))
 	}
 
 	// Every answer carries the security headers, and every state change

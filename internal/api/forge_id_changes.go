@@ -45,16 +45,14 @@ func (s *Server) handleAdminForgeIDChanges(w http.ResponseWriter, r *http.Reques
 	s.writeJSON(w, r, map[string]any{"changes": changes})
 }
 
-// adoptNoteMaxBytes bounds the optional note (it is stored and shown to
-// operators, not rendered on the public page).
-const adoptNoteMaxBytes = admin.AdoptNoteMaxBytes
-
-// adoptBodyMaxBytes bounds the raw request body. JSON may spell one byte
-// of the note as a six-byte \uXXXX escape, so a note at the limit can take
-// six times its size on the wire; the two forge IDs and the object's keys
-// fit in the fixed allowance (a forge ID is a decimal integer, at most 19
-// digits for an int64). The note's own limit is checked after decoding.
-const adoptBodyMaxBytes = 6*adoptNoteMaxBytes + 256
+// adoptBodyMaxBytes bounds the raw request body. The note is at most
+// admin.AdoptNoteMaxLength characters; JSON may spell one character as a
+// twelve-byte surrogate-pair escape (\uD83D\uDE00), so a note at the limit
+// can take twelve times its length on the wire; the two forge IDs and the
+// object's keys fit in the fixed allowance (a forge ID is a decimal
+// integer, at most 19 digits for an int64). The note's own limit is
+// checked after decoding.
+const adoptBodyMaxBytes = 12*admin.AdoptNoteMaxLength + 256
 
 func (s *Server) handleAdminForgeIDAdopt(w http.ResponseWriter, r *http.Request) {
 	info, ok := s.requireAdmin(w, r)

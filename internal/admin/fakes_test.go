@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/db"
 )
 
@@ -42,6 +43,22 @@ type fakeStore struct {
 	createEmailConfirmation   func(ctx context.Context, userID int, email string) (string, error)
 	confirmEmailToken         func(ctx context.Context, token string, userID int) (string, error)
 	adoptPendingForgeIDChange func(ctx context.Context, repoID int64, oldID, newID, adoptedBy, note string) error
+	// Stage 3b (0.29.109): tokens, capacity, collections.
+	getAPITokenSettings       func(ctx context.Context) (db.APITokenSettings, error)
+	createAPIToken            func(ctx context.Context, g db.APITokenGrant) (string, db.APIToken, error)
+	revokeAPIToken            func(ctx context.Context, tokenID int64, revokedBy int) error
+	setAPITokenSettings       func(ctx context.Context, st db.APITokenSettings, updatedBy int) error
+	capacitySource            func(name string) capacity.Source
+	setCapacityQuota          func(ctx context.Context, name string, allowed int, mode capacity.Mode, by int) error
+	setCapacityContact        func(ctx context.Context, email string, by int) error
+	setCapacityOverride       func(ctx context.Context, o db.CapacityOverride, by int) error
+	addSignupAllowlist        func(ctx context.Context, cidr, note string, by int) (string, error)
+	removeSignupAllowlist     func(ctx context.Context, cidr string) (bool, error)
+	createCollection          func(ctx context.Context, name, description string, position int, createdBy int) (int64, error)
+	updateCollection          func(ctx context.Context, collectionID int64, name, description string, position int) error
+	deleteCollection          func(ctx context.Context, collectionID int64) error
+	addGroupToCollection      func(ctx context.Context, collectionID, groupID int64) error
+	removeGroupFromCollection func(ctx context.Context, collectionID, groupID int64) error
 }
 
 func (f *fakeStore) unexpected(name string) {
@@ -197,6 +214,111 @@ func adminIs(v bool) func(context.Context, int) (bool, error) {
 	return func(context.Context, int) (bool, error) { return v, nil }
 }
 
+func (f *fakeStore) GetAPITokenSettings(ctx context.Context) (db.APITokenSettings, error) {
+	if f.getAPITokenSettings == nil {
+		f.unexpected("GetAPITokenSettings")
+		return db.APITokenSettings{}, nil
+	}
+	return f.getAPITokenSettings(ctx)
+}
+func (f *fakeStore) CreateAPIToken(ctx context.Context, g db.APITokenGrant) (string, db.APIToken, error) {
+	if f.createAPIToken == nil {
+		f.unexpected("CreateAPIToken")
+		return "", db.APIToken{}, nil
+	}
+	return f.createAPIToken(ctx, g)
+}
+func (f *fakeStore) RevokeAPIToken(ctx context.Context, tokenID int64, revokedBy int) error {
+	if f.revokeAPIToken == nil {
+		f.unexpected("RevokeAPIToken")
+		return nil
+	}
+	return f.revokeAPIToken(ctx, tokenID, revokedBy)
+}
+func (f *fakeStore) SetAPITokenSettings(ctx context.Context, st db.APITokenSettings, updatedBy int) error {
+	if f.setAPITokenSettings == nil {
+		f.unexpected("SetAPITokenSettings")
+		return nil
+	}
+	return f.setAPITokenSettings(ctx, st, updatedBy)
+}
+func (f *fakeStore) CapacitySource(name string) capacity.Source {
+	if f.capacitySource == nil {
+		return capacity.SourceWeb
+	}
+	return f.capacitySource(name)
+}
+func (f *fakeStore) SetCapacityQuota(ctx context.Context, name string, allowed int, mode capacity.Mode, by int) error {
+	if f.setCapacityQuota == nil {
+		f.unexpected("SetCapacityQuota")
+		return nil
+	}
+	return f.setCapacityQuota(ctx, name, allowed, mode, by)
+}
+func (f *fakeStore) SetCapacityContact(ctx context.Context, email string, by int) error {
+	if f.setCapacityContact == nil {
+		f.unexpected("SetCapacityContact")
+		return nil
+	}
+	return f.setCapacityContact(ctx, email, by)
+}
+func (f *fakeStore) SetCapacityOverride(ctx context.Context, o db.CapacityOverride, by int) error {
+	if f.setCapacityOverride == nil {
+		f.unexpected("SetCapacityOverride")
+		return nil
+	}
+	return f.setCapacityOverride(ctx, o, by)
+}
+func (f *fakeStore) AddSignupAllowlist(ctx context.Context, cidr, note string, by int) (string, error) {
+	if f.addSignupAllowlist == nil {
+		f.unexpected("AddSignupAllowlist")
+		return "", nil
+	}
+	return f.addSignupAllowlist(ctx, cidr, note, by)
+}
+func (f *fakeStore) RemoveSignupAllowlist(ctx context.Context, cidr string) (bool, error) {
+	if f.removeSignupAllowlist == nil {
+		f.unexpected("RemoveSignupAllowlist")
+		return false, nil
+	}
+	return f.removeSignupAllowlist(ctx, cidr)
+}
+func (f *fakeStore) CreateCollection(ctx context.Context, name, description string, position int, createdBy int) (int64, error) {
+	if f.createCollection == nil {
+		f.unexpected("CreateCollection")
+		return 0, nil
+	}
+	return f.createCollection(ctx, name, description, position, createdBy)
+}
+func (f *fakeStore) UpdateCollection(ctx context.Context, collectionID int64, name, description string, position int) error {
+	if f.updateCollection == nil {
+		f.unexpected("UpdateCollection")
+		return nil
+	}
+	return f.updateCollection(ctx, collectionID, name, description, position)
+}
+func (f *fakeStore) DeleteCollection(ctx context.Context, collectionID int64) error {
+	if f.deleteCollection == nil {
+		f.unexpected("DeleteCollection")
+		return nil
+	}
+	return f.deleteCollection(ctx, collectionID)
+}
+func (f *fakeStore) AddGroupToCollection(ctx context.Context, collectionID, groupID int64) error {
+	if f.addGroupToCollection == nil {
+		f.unexpected("AddGroupToCollection")
+		return nil
+	}
+	return f.addGroupToCollection(ctx, collectionID, groupID)
+}
+func (f *fakeStore) RemoveGroupFromCollection(ctx context.Context, collectionID, groupID int64) error {
+	if f.removeGroupFromCollection == nil {
+		f.unexpected("RemoveGroupFromCollection")
+		return nil
+	}
+	return f.removeGroupFromCollection(ctx, collectionID, groupID)
+}
+
 // sentMail records one mailer call.
 type sentMail struct {
 	kind     string // "confirmation" | "submitted" | "decided"
@@ -294,6 +416,7 @@ func (h *recHooks) ScopeChanged(ids ...int) {
 	h.add(b.String())
 }
 func (h *recHooks) RoleChanged(id int) { h.add("role " + itoa(id)) }
+func (h *recHooks) TokensChanged()     { h.add("tokens") }
 func (h *recHooks) got() []string {
 	h.mu.Lock()
 	defer h.mu.Unlock()

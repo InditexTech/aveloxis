@@ -191,8 +191,8 @@ func TestGroupTemplateUsesPaginationNav(t *testing.T) {
 func TestHandleMonitorUsesGetReposBatch(t *testing.T) {
 	body := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleMonitor(")
 
-	if !strings.Contains(body, "GetReposBatch") {
-		t.Error("handleMonitor must use GetReposBatch for a single round-trip " +
+	if !strings.Contains(body, "queueview.Load(") { // the loader batches GetReposBatch (one round-trip), pinned in its package
+		t.Error("handleMonitor must use queueview.Load (GetReposBatch, a single round-trip) " +
 			"repo lookup; the per-row GetRepoByID loop makes page renders so " +
 			"slow that the 10s auto-refresh races against click-navigation " +
 			"and cancels it")

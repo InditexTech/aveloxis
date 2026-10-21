@@ -1,0 +1,30 @@
+{{define "admin_users"}}
+{{template "head" (dict "Title" "Users")}}
+{{template "nav" .}}
+<div class="breadcrumb"><a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><span class="current">Users</span></div>
+<div class="container">
+<div class="card">
+<h2>Users</h2>
+<table class="tbl-stack">
+<thead><tr><th>ID</th><th>Login</th><th>Email</th><th>Provider</th><th>Role</th><th>Joined</th><th>Last seen</th><th>Action</th></tr></thead>
+<tbody>
+{{range .Users}}
+<tr>
+<td data-label="ID">{{.UserID}}</td>
+<td data-label="Login">{{.Login}}</td>
+<td data-label="Email">{{.Email}}</td>
+<td data-label="Provider">{{.Provider}}</td>
+<td data-label="Role">{{if .IsAdmin}}<span class="badge badge-admin">admin</span>{{else}}<span class="badge badge-user">user</span>{{end}}</td>
+<td data-label="Joined">{{.CreatedAt.UTC.Format "2006-01-02"}}</td>
+<td data-label="Last seen">{{.LastSeen.UTC.Format "2006-01-02 15:04"}}</td>
+<td data-label="Action">
+{{if eq .UserID $.Session.UserID}}<span class="muted">(you)</span>{{else if .IsAdmin}}<form method="POST" action="/admin/users/{{.UserID}}/admin" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="admin" value="false"><button class="btn btn-reject" type="submit">Demote</button></form>{{else}}<form method="POST" action="/admin/users/{{.UserID}}/admin" class="inline-form"><input type="hidden" name="csrf_token" value="{{$.CSRF}}"><input type="hidden" name="admin" value="true"><button class="btn btn-approve" type="submit">Promote to admin</button></form>{{end}}
+</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+</div>
+</body></html>
+{{end}}

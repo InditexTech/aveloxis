@@ -62,6 +62,10 @@ const (
 	// Superseded: the forge-ID change was overtaken by another adoption;
 	// nothing was written (Detail says what the row holds now).
 	Superseded
+	// Conflict: the request is well formed but the current state refuses
+	// it — a name already taken, a quota aveloxis.json decides (Detail
+	// names what to change instead). Adapters answer 409 (stage 3b).
+	Conflict
 )
 
 func (k Kind) String() string {
@@ -96,6 +100,8 @@ func (k Kind) String() string {
 		return "user not found"
 	case Superseded:
 		return "superseded"
+	case Conflict:
+		return "conflict"
 	}
 	return fmt.Sprintf("kind %d", int(k))
 }
@@ -136,6 +142,19 @@ func (e *inputError) Error() string        { return e.detail }
 func (e *inputError) Is(target error) bool { return target == e.sentinel }
 
 func refuseInput(detail string) error { return &inputError{sentinel: ErrInvalidInput, detail: detail} }
+
+// kindError is a refusal of a kind with its own words, decided inside the
+// service before or instead of a store sentinel (stage 3b): a NotFound
+// for a quota name, a Conflict for a value aveloxis.json decides.
+type kindError struct {
+	kind   Kind
+	detail string
+}
+
+func (e *kindError) Error() string { return e.detail }
+
+func refuseNotFound(detail string) error { return &kindError{kind: NotFound, detail: detail} }
+func refuseConflict(detail string) error { return &kindError{kind: Conflict, detail: detail} }
 func refuseTooMany(detail string) error {
 	return &inputError{sentinel: ErrTooMany, detail: detail}
 }
@@ -180,6 +199,11 @@ func (e *supersededError) Unwrap() error { return db.ErrForgeIDNotAsExpected }
 // 5261384568), or a value the database rejected.
 const urlInputDetail = "a URL in the request is invalid, carries credentials or is too long"
 
+// rejectedValueDetail is the sentence for a value the database refused
+// (SQLSTATE class 22: invalid text such as a NUL byte, or a number out of
+// its column's range) on an operation that takes no URL.
+const rejectedValueDetail = "a value in the request was refused by the database (invalid text, or out of range)"
+
 // Classify names the refusal an operation returned. ok=false means the
 // error is not a refusal: a failure the adapter logs and answers 500
 // (SR-5: an unknown error is never read as "no").
@@ -209,6 +233,10 @@ func Classify(err error) (Refusal, bool) {
 	if errors.As(err, &sup) {
 		return Refusal{Kind: Superseded, Detail: sup.Error()}, true
 	}
+	var ke *kindError
+	if errors.As(err, &ke) {
+		return Refusal{Kind: ke.kind, Detail: ke.detail}, true
+	}
 	switch {
 	case errors.Is(err, ErrNotAdmin):
 		return Refusal{Kind: Forbidden}, true
@@ -228,8 +256,14 @@ func Classify(err error) (Refusal, bool) {
 		return Refusal{Kind: OffHost, Detail: db.ErrOrgOffGitHubHost.Error()}, true
 	case errors.Is(err, db.ErrOrgOffGitLabInstance):
 		return Refusal{Kind: OffHost, Detail: db.ErrOrgOffGitLabInstance.Error()}, true
-	case errors.Is(err, db.ErrURLTooLong), errors.Is(err, db.ErrInvalidOrgURL), errors.Is(err, platform.ErrURLUserinfo), db.IsRejectedValue(err):
+	case errors.Is(err, db.ErrURLTooLong), errors.Is(err, db.ErrInvalidOrgURL), errors.Is(err, platform.ErrURLUserinfo):
 		return Refusal{Kind: InvalidInput, Detail: urlInputDetail}, true
+	case db.IsRejectedValue(err):
+		// SQLSTATE class 22 from any operation's store call (stage 3b routes
+		// thirteen non-URL operations through here): a NUL byte in a token
+		// label or a collection name is 22021. The words name the class, not
+		// a URL (whole-branch review of 0.29.109).
+		return Refusal{Kind: InvalidInput, Detail: rejectedValueDetail}, true
 	case errors.Is(err, db.ErrAddItemsFailed):
 		return Refusal{Kind: Partial, Detail: err.Error()}, true
 	case errors.Is(err, db.ErrLastAdmin):
@@ -240,6 +274,19 @@ func Classify(err error) (Refusal, bool) {
 		return Refusal{Kind: NotFound, Detail: "no pending forge-ID change with that pair for this repository (already adopted, or never observed)"}, true
 	case errors.Is(err, db.ErrForgeIDNotAsExpected):
 		return Refusal{Kind: Superseded, Detail: "superseded: another change was adopted first — nothing adopted; reload the list"}, true
+	// Stage 3b: the token, capacity and collection sentinels. The
+	// operations wrap the capacity-settings and CIDR refusals with their own
+	// words first; these rows are the fallback for a path that does not.
+	case errors.Is(err, db.ErrAPITokenNotFound):
+		return Refusal{Kind: NotFound, Detail: "no API token with that id"}, true
+	case errors.Is(err, db.ErrInvalidCIDR), errors.Is(err, db.ErrInvalidCapacitySettings):
+		return Refusal{Kind: InvalidInput, Detail: err.Error()}, true
+	case errors.Is(err, db.ErrCollectionNotFound):
+		return Refusal{Kind: NotFound, Detail: "no collection with that id"}, true
+	case errors.Is(err, db.ErrCollectionNameTaken):
+		return Refusal{Kind: Conflict, Detail: db.ErrCollectionNameTaken.Error()}, true
+	case errors.Is(err, db.ErrGroupNotAdminOwned):
+		return Refusal{Kind: InvalidInput, Detail: db.ErrGroupNotAdminOwned.Error()}, true
 	}
 	return Refusal{}, false
 }
