@@ -1871,9 +1871,12 @@ const trafficWeekLastDay = 6
 // runs from the first to the last daily bucket, never from the
 // collection date: GitHub's 14 zero-filled days end before it for a
 // repository with traffic, on it for one without. A weekly bucket is
-// kept when it starts on a Monday and its seven days lie inside the
-// window, which skips partial weeks however GitHub labels the first
-// bucket. Zeros are kept; a kind without daily buckets has no window.
+// kept when it starts on a Monday, its seven days lie inside the window,
+// and that week has ended by the snapshot date: a zero-traffic read
+// includes the collection day, so on a Sunday the current Monday-to-Sunday
+// bucket is still counting and its uniques (0) must not be stored as a
+// complete week. Zeros are kept; a kind without daily buckets has no
+// window.
 func deriveTrafficRows(tr *model.RepoTraffic, clones []model.RepoClone) ([]model.RepoTrafficWindow, []model.RepoTrafficWeek) {
 	var (
 		windows []model.RepoTrafficWindow
@@ -1885,7 +1888,8 @@ func deriveTrafficRows(tr *model.RepoTraffic, clones []model.RepoClone) ([]model
 		for _, b := range buckets {
 			start := b.WeekStart.UTC()
 			if start.Weekday() != time.Monday || start.Before(window.Start) ||
-				start.AddDate(0, 0, trafficWeekLastDay).After(window.End) {
+				start.AddDate(0, 0, trafficWeekLastDay).After(window.End) ||
+				start.AddDate(0, 0, trafficWeekLastDay+1).After(tr.SnapshotDate.UTC()) {
 				continue
 			}
 			weeks = append(weeks, model.RepoTrafficWeek{Kind: kind, WeekStart: start, Uniques: b.Uniques})

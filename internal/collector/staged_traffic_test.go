@@ -146,6 +146,7 @@ func TestDeriveTrafficRowsKeepsWindowsAndCompleteWeeks(t *testing.T) {
 	cases := []struct {
 		name        string
 		traffic     *model.RepoTraffic
+		snapshot    time.Time
 		clones      []model.RepoClone
 		wantWindows []string
 		wantWeeks   []string
@@ -164,7 +165,8 @@ func TestDeriveTrafficRowsKeepsWindowsAndCompleteWeeks(t *testing.T) {
 				WeeklyViews:  trafficWeekBuckets(model.TrafficKindViews, []time.Time{trafficDay(5), trafficDay(12)}, []int{21, 25}),
 				WeeklyClones: trafficWeekBuckets(model.TrafficKindClones, []time.Time{trafficDay(5), trafficDay(12)}, []int{5, 6}),
 			},
-			clones: trafficCloneDays(trafficDay(5), 14),
+			clones:   trafficCloneDays(trafficDay(5), 14),
+			snapshot: trafficDay(19),
 			wantWindows: []string{
 				"views 2026-10-05T00:00:00Z..2026-10-18T00:00:00Z uniques=37",
 				"clones 2026-10-05T00:00:00Z..2026-10-18T00:00:00Z uniques=9",
@@ -181,9 +183,10 @@ func TestDeriveTrafficRowsKeepsWindowsAndCompleteWeeks(t *testing.T) {
 			// on the collection day, the Tuesday-labelled first bucket
 			// and the 2026-10-19 bucket are partial weeks, and every
 			// row is kept with uniques 0.
-			name:    "zero-traffic fixture",
-			traffic: zeroTraffic,
-			clones:  zeroClones,
+			name:     "zero-traffic fixture",
+			traffic:  zeroTraffic,
+			clones:   zeroClones,
+			snapshot: trafficDay(19),
 			wantWindows: []string{
 				"views 2026-10-06T00:00:00Z..2026-10-19T00:00:00Z uniques=0",
 				"clones 2026-10-06T00:00:00Z..2026-10-19T00:00:00Z uniques=0",
@@ -206,7 +209,8 @@ func TestDeriveTrafficRowsKeepsWindowsAndCompleteWeeks(t *testing.T) {
 				WeeklyViews:  trafficWeekBuckets(model.TrafficKindViews, []time.Time{trafficDay(5), trafficDay(12), trafficDay(19)}, []int{4, 7, 2}),
 				WeeklyClones: trafficWeekBuckets(model.TrafficKindClones, []time.Time{trafficDay(5), trafficDay(12), trafficDay(19)}, []int{1, 3, 1}),
 			},
-			clones: trafficCloneDays(trafficDay(8), 14),
+			clones:   trafficCloneDays(trafficDay(8), 14),
+			snapshot: trafficDay(21),
 			wantWindows: []string{
 				"views 2026-10-08T00:00:00Z..2026-10-21T00:00:00Z uniques=15",
 				"clones 2026-10-08T00:00:00Z..2026-10-21T00:00:00Z uniques=4",
@@ -230,7 +234,8 @@ func TestDeriveTrafficRowsKeepsWindowsAndCompleteWeeks(t *testing.T) {
 				WeeklyViews:  trafficWeekBuckets(model.TrafficKindViews, []time.Time{trafficDay(5).In(behind), trafficDay(12).In(behind)}, []int{21, 25}),
 				WeeklyClones: trafficWeekBuckets(model.TrafficKindClones, []time.Time{trafficDay(5).In(ahead), trafficDay(12).In(ahead)}, []int{5, 6}),
 			},
-			clones: trafficCloneDays(trafficDay(5).In(ahead), 14),
+			clones:   trafficCloneDays(trafficDay(5).In(ahead), 14),
+			snapshot: trafficDay(19),
 			wantWindows: []string{
 				"views 2026-10-05T00:00:00Z..2026-10-18T00:00:00Z uniques=37",
 				"clones 2026-10-05T00:00:00Z..2026-10-18T00:00:00Z uniques=9",
@@ -255,7 +260,8 @@ func TestDeriveTrafficRowsKeepsWindowsAndCompleteWeeks(t *testing.T) {
 				WeeklyViews:  trafficWeekBuckets(model.TrafficKindViews, []time.Time{trafficDay(5), trafficDay(12)}, []int{21, 25}),
 				WeeklyClones: trafficWeekBuckets(model.TrafficKindClones, []time.Time{trafficDay(6), trafficDay(12), trafficDay(19)}, []int{4, 6, 1}),
 			},
-			clones: trafficCloneDays(trafficDay(6), 14),
+			clones:   trafficCloneDays(trafficDay(6), 14),
+			snapshot: trafficDay(19),
 			wantWindows: []string{
 				"views 2026-10-05T00:00:00Z..2026-10-18T00:00:00Z uniques=37",
 				"clones 2026-10-06T00:00:00Z..2026-10-19T00:00:00Z uniques=9",
@@ -279,7 +285,8 @@ func TestDeriveTrafficRowsKeepsWindowsAndCompleteWeeks(t *testing.T) {
 				WeeklyViews:  trafficWeekBuckets(model.TrafficKindViews, []time.Time{trafficDay(5), trafficDay(12)}, []int{21, 25}),
 				WeeklyClones: trafficWeekBuckets(model.TrafficKindClones, []time.Time{trafficDay(5), trafficDay(12)}, []int{5, 6}),
 			},
-			clones: nil,
+			clones:   nil,
+			snapshot: trafficDay(19),
 			wantWindows: []string{
 				"views 2026-10-05T00:00:00Z..2026-10-18T00:00:00Z uniques=37",
 			},
@@ -288,10 +295,37 @@ func TestDeriveTrafficRowsKeepsWindowsAndCompleteWeeks(t *testing.T) {
 				"views 2026-10-12T00:00:00Z uniques=25",
 			},
 		},
+		{
+			// A zero-traffic read on Sunday 2026-10-25 (UTC): the
+			// window ends on the collection day, so it contains the
+			// current Monday 2026-10-19 bucket, which is still
+			// counting and whose uniques (0) must not be stored as a
+			// complete week. The previous Monday 2026-10-12 week ended
+			// on 2026-10-18 and is kept.
+			name: "zero-traffic read on a Sunday rejects the still-counting week",
+			traffic: &model.RepoTraffic{
+				Views:        trafficViewDays(trafficDay(12), 14),
+				ViewUniques:  0,
+				CloneUniques: 0,
+				WeeklyViews:  trafficWeekBuckets(model.TrafficKindViews, []time.Time{trafficDay(12), trafficDay(19)}, []int{0, 0}),
+				WeeklyClones: trafficWeekBuckets(model.TrafficKindClones, []time.Time{trafficDay(12), trafficDay(19)}, []int{0, 0}),
+			},
+			clones:   trafficCloneDays(trafficDay(12), 14),
+			snapshot: trafficDay(25),
+			wantWindows: []string{
+				"views 2026-10-12T00:00:00Z..2026-10-25T00:00:00Z uniques=0",
+				"clones 2026-10-12T00:00:00Z..2026-10-25T00:00:00Z uniques=0",
+			},
+			wantWeeks: []string{
+				"views 2026-10-12T00:00:00Z uniques=0",
+				"clones 2026-10-12T00:00:00Z uniques=0",
+			},
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			tc.traffic.SnapshotDate = tc.snapshot
 			windows, weeks := deriveTrafficRows(tc.traffic, tc.clones)
 
 			gotWindows := make([]string, len(windows))

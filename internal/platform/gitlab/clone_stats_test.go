@@ -267,9 +267,13 @@ func TestFetchCloneStats500NamesTheEndpoint(t *testing.T) {
 // zeros: storing zeros for a day nobody counted claims that nobody cloned.
 func TestFetchCloneStatsUnreadableAnswerIsAnError(t *testing.T) {
 	for name, body := range map[string]string{
-		"no fetches member": `{"message":"ok"}`,
-		"not JSON":          `<html>sign in</html>`,
-		"unreadable date":   `{"fetches":{"total":1,"days":[{"count":1,"date":"yesterday"}]}}`,
+		"no fetches member":   `{"message":"ok"}`,
+		"not JSON":            `<html>sign in</html>`,
+		"unreadable date":     `{"fetches":{"total":1,"days":[{"count":1,"date":"yesterday"}]}}`,
+		"no days array":       `{"fetches":{"total":7}}`,
+		"null days":           `{"fetches":{"total":7,"days":null}}`,
+		"a day without count": `{"fetches":{"total":7,"days":[{"date":"2026-11-29"}]}}`,
+		"null day count":      `{"fetches":{"total":7,"days":[{"count":null,"date":"2026-11-29"}]}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			client, _ := statsClient(t, time.Date(2026, 11, 30, 8, 0, 0, 0, time.UTC), http.StatusOK, body)

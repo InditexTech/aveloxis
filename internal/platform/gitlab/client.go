@@ -1573,6 +1573,12 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 	if raw.Fetches == nil {
 		return nil, fmt.Errorf("%s: answer has no fetches member", endpoint)
 	}
+	// A malformed answer must be an error, never a period of zeros: a
+	// day with a missing count is not a day of 0 fetches, and 30 stored
+	// zeros would overwrite counts already collected.
+	if raw.Fetches.Days == nil {
+		return nil, fmt.Errorf("%s: fetches has no days array", endpoint)
+	}
 
 	now := time.Now
 	if c.now != nil {
@@ -1582,16 +1588,19 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 	today := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 	oldest := today.AddDate(0, 0, 1-cloneStatsDays)
 
-	counts := make(map[string]int, len(raw.Fetches.Days))
-	for _, listed := range raw.Fetches.Days {
+	counts := make(map[string]int, len(*raw.Fetches.Days))
+	for _, listed := range *raw.Fetches.Days {
 		day, err := time.Parse(time.DateOnly, listed.Date)
 		if err != nil {
 			return nil, fmt.Errorf("%s: unreadable date %q: %w", endpoint, listed.Date, err)
 		}
+		if listed.Count == nil {
+			return nil, fmt.Errorf("%s: day %s has no count", endpoint, listed.Date)
+		}
 		// A day listed twice would be a GitLab bug; the last listing
 		// wins. A day outside the period (a clock edge between GitLab
 		// and this host) is never looked up below, so it is not stored.
-		counts[day.Format(time.DateOnly)] = listed.Count
+		counts[day.Format(time.DateOnly)] = *listed.Count
 	}
 
 	clones := make([]model.RepoClone, cloneStatsDays)
