@@ -1,0 +1,1058 @@
+.github/workflows/integration.yml
+  h_e3804906c674bd 153-288
+.github/workflows/lint.yml
+  h_e3804906c674bd 39-44
+.github/workflows/network-canary.yml
+  h_e3804906c674bd 34,65,72
+.github/workflows/nightly.yml
+  h_e3804906c674bd 1-138
+.gitignore
+  h_e3804906c674bd 7
+README.md
+  h_e3804906c674bd 504,702,708,1066,1086,1098,1220
+cmd/aveloxis/accumulated_checklist_test.go
+  h_e3804906c674bd 70,85,113,133-134,159,177,188,215,246-247,302,318,331,341,400,497,544,686
+cmd/aveloxis/add_repo_org_link_test.go
+  h_e3804906c674bd 10-11,13-24,26-29,31-35
+cmd/aveloxis/admin_service_wiring_test.go
+  h_e3804906c674bd 1-82
+cmd/aveloxis/adopt_forge_id.go
+  h_e3804906c674bd 101,109,111
+cmd/aveloxis/capacity_contact_wiring_test.go
+  h_e3804906c674bd 1-39
+cmd/aveloxis/collect_github_host_test.go
+  h_e3804906c674bd 28-30
+cmd/aveloxis/deploy_checklist.go
+  h_e3804906c674bd 593-634,639-671,681-774,781,1321-1323,1623-1627,1824-1831
+cmd/aveloxis/deploy_checklist_test.go
+  h_e3804906c674bd 79,95,105,118,217,243,263,277,283,301,313,320,327,336,363,370,380,415,667,882
+cmd/aveloxis/deploy_checklist_v029108_test.go
+  h_e3804906c674bd 7,14-43,54-55,57,76,79,81,83,100,108,141,146-149,151-152
+cmd/aveloxis/deploy_gate_hardening_test.go
+  h_e3804906c674bd 84
+cmd/aveloxis/import_foundations.go
+  h_e3804906c674bd 13,110-112,163,197
+cmd/aveloxis/load_foundation_orgs.go
+  h_e3804906c674bd 14,117-124,127,161,210-214,219,226
+cmd/aveloxis/load_foundation_orgs_test.go
+  h_e3804906c674bd 59-62
+cmd/aveloxis/load_numfocus_cmds_test.go
+  h_e3804906c674bd 10-11,65-69,71-78,90-95
+cmd/aveloxis/load_numfocus_orgs.go
+  h_e3804906c674bd 12,102-106,108,112,144-145,151-154,167-171
+cmd/aveloxis/load_numfocus_projects.go
+  h_e3804906c674bd 14,26-30,117-119,125,129,136,156-163,169-172,185-189,210,216-220,225-228
+cmd/aveloxis/mail_wiring_test.go
+  h_e3804906c674bd 49-51,53-54,56-59,144
+cmd/aveloxis/main.go
+  h_e3804906c674bd 236,257-259,522,675,699,702-707,711-714,780-782,1025,1095,1174-1178,1397-1398,1401,2086-2093,2096-2102,2114-2115,2144-2146,2246,2250-2251,2285,2338-2354
+cmd/aveloxis/probe_cli_userinfo_test.go
+  h_e3804906c674bd 96,98
+cmd/aveloxis/test_mail_cmd_test.go
+  h_e3804906c674bd 10-11,54-63
+cmd/aveloxis/trusted_proxy_e2e_test.go
+  h_e3804906c674bd 28,32
+cmd/aveloxis/upgrade_tools_cmd.go
+  h_e3804906c674bd 141-142
+cmd/aveloxis/upgrade_tools_cmd_test.go
+  h_e3804906c674bd 81-85,87-89,91-104
+docs/_build/html/.buildinfo
+  h_e3804906c674bd 3
+docs/_build/html/_downloads/1818c5c8a1ccac7ab5e6b70b7caa595b/openapi.yaml
+  h_e3804906c674bd 183-184,196-198,201-203,229,306,366,375-376,394,436,442,451-452,466,493,497,513-514,517-518,561-562,565-566,576-577,594,634-635,638-639,682,691-692,739,748-749,792,801-802,873,882-883,909,953-954,1513,1535,1550,1563,1677-1678,1690,1724,1748-1749,1953,1958-1963,2032-2037,2147-2152,2195-2206,2238-2243,2292-2297,2330-2335,2456,2653,2830,3408,3410,3483,3487,3489,3492-3493,3495,3497,3522-3528,3533-3537,3595-3599,3606-3609,3612,3614,3623-3634,3639-3642,3644-3646,3696,3698,3701-3702,3704,3706,3755,3757,3760-3761,3763,3765,3914,3916,3918,3923-3924,3926,3928-3930,3934,3941,3943-3944,3946-3951,3953,3960,3971,3973,3975,3980-3985,4104,4106,4114,4116,4120-4121,4123,4125,4355-4356,4396,4428-4429,4582,4584,4592,4594,4598,4600,4604,4613,4626,4643,4656,4693,4720,4741,4764,4793-4794,4813,4854,4871,4883-4884,4886,4903,4924,4928,4937-4938,4951,4972,4976,4985-4986,4999,5020,5024,5033-5034,5071,5080-5081,5120,5129-5130,5143,5163,5167,5176-5177,5214,5223-5224,5237,5255,5267,5276-5277,5314,5323-5324,5361,5370-5371,5384,5405,5409,5418-5419,5432,5453,5457,5466-5467,5480,5501,5505,5514-5515,5528,5549,5553,5562-5563,5576,5596,5600,5609-5610,5623,5644,5648,5657-5658,5671,5692,5696,5705-5706,5719,5740,5744,5753-5754,5767,5787,5791,5800-5801,5814,5835,5839,5848-5849,5862,5880,5884,5893-5894,5933,5942-5943,5956,5974,5978,5987-5988,6027,6036-6037,6048,6050,6061,6068,6081,6090-6091,6130,6139-6140,6180,6189-6190,6203,6243,6249,6258-6259,6272,6312,6318,6327-6328,6341,6362,6366,6375-6376,6389,6407,6411,6420-6421,6434,6452,6456,6465-6466,6479,6497,6501,6510-6511,6524,6542,6546,6555-6556,6593,6626-6627,6637,6646,6654,6890,6900,6905,6909,6913,7306,7310,7399,7572,7952,8545-8550
+docs/_build/html/_sources/architecture/contributor-resolution.md.txt
+  h_e3804906c674bd 676
+docs/_build/html/_sources/architecture/db-package.md.txt
+  h_e3804906c674bd 57,61,84
+docs/_build/html/_sources/architecture/overview.md.txt
+  h_e3804906c674bd 254-258
+docs/_build/html/_sources/contributing/README.md.txt
+  h_e3804906c674bd 19
+docs/_build/html/_sources/contributing/adding-a-platform.md.txt
+  h_e3804906c674bd 89,358,361,376
+docs/_build/html/_sources/contributing/adding-a-visualization.md.txt
+  h_e3804906c674bd 8,24-27,55,57,59-71,75-93,114,150,152,180,205-206,209,230-237,254
+docs/_build/html/_sources/contributing/review-pass-brief.md.txt
+  h_e3804906c674bd 34
+docs/_build/html/_sources/contributing/schema-migrations.md.txt
+  h_e3804906c674bd 255-290
+docs/_build/html/_sources/contributing/testing.md.txt
+  h_e3804906c674bd 219-242,596-611
+docs/_build/html/_sources/getting-started/configuration.md.txt
+  h_e3804906c674bd 38,75,237,386,388,451,643,672,677,679,689,693
+docs/_build/html/_sources/getting-started/deployment.md.txt
+  h_e3804906c674bd 150-154,256
+docs/_build/html/_sources/getting-started/upgrading.md.txt
+  h_e3804906c674bd 167-178
+docs/_build/html/_sources/guide/api.md.txt
+  h_e3804906c674bd 11-86,130,282-283,310,341-343,390,418,500,910-914,919-922,1167-1174,1199,1232-1236,1673-1676,1698-1709,1733-1735,1749-1751,1753-1763,1767-1771,1791,1845-1847,1864-1866,1875-1876,1878-1879,1881-1882,1885-1886,1888-1890,1899-1904,1910-1916
+docs/_build/html/_sources/guide/ci-cd.md.txt
+  h_e3804906c674bd 265,267
+docs/_build/html/_sources/guide/collection-pipeline.md.txt
+  h_e3804906c674bd 46,50,52
+docs/_build/html/_sources/guide/commands.md.txt
+  h_e3804906c674bd 111,308-309,328
+docs/_build/html/_sources/guide/visualizations.md.txt
+  h_e3804906c674bd 12,129
+docs/_build/html/_sources/guide/web-gui.md.txt
+  h_e3804906c674bd 140-143,201-215,238-241
+docs/_build/html/_sources/schema.md.txt
+  h_e3804906c674bd 999,1016,1035,1053,1071
+docs/_build/html/_static/documentation_options.js
+  h_e3804906c674bd 2
+docs/_build/html/api/conventions.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/api/index.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/api/reference.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1924,1968,1999-2001,2004-2006,2053,2089,2103,2159,2165-2166,2168,2195,2198,2237,2248,2270,2273,2312,2322,2345,2347,2393,2410,2412,2449-2450,2495,2504,2506,2554,2639,2652,2684,2700,2727,2742,2788,2850,2887,2901,2923,2978,2984-2985,2987,3009,3012,3063,3069-3070,3072,3086,3089,3138,3144-3145,3147,3171,3174,3224,3230-3231,3233,3261,3264,3310,3315,3344,3658,4300,4308,4342-4347,4351-4355,4378,4388-4391,4395-4396,4398-4400,4443,4487,4517,4639,4647,4698,4865,4868,4879-4880,4883,4889-4896,4910-4911,4914,5014-5015,5148,5210,5258-5259,5299,5346,5387,5492,5866,6154,6179,6202,6237,6280,6304,6338,6382,6406,6428,6469,6475,6493-6494,6519,6524,6529-6530,6544,6547,6578,6583,6588-6589,6603,6606,6637,6642,6647-6648,6662,6665,6701,6712,6715,6751,6762,6765,6796,6801,6806-6807,6822,6825,6861,6872,6875,6906,6911,6923,6926,6962,6973,6976,7012,7023,7026,7057,7062,7067-7068,7082,7085,7116,7121,7126-7127,7141,7144,7175,7180,7185-7186,7200,7203,7234,7239,7244-7245,7259,7262,7293,7298,7303-7304,7319,7322,7353,7358,7363-7364,7378,7381,7412,7417,7422-7423,7437,7440,7471,7476,7481-7482,7497,7500,7531,7536,7541-7542,7560,7563,7594,7599,7604-7605,7619,7622,7653,7658,7671,7674,7710,7722,7725,7756,7761,7774,7777,7813,7825,7828,7858-7859,7864,7876-7877,7880,7916,7928,7931,7967,7979,7982,8013,8023,8049,8052,8089,8099,8125,8128,8165,8170,8175-8176,8190,8193,8224,8229,8248,8251,8282,8287,8304,8307,8338,8343,8360,8363,8394,8399,8416,8419,8591-8595
+docs/_build/html/architecture/analysis.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/architecture/column-mapping.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/architecture/contributor-resolution.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,2601,2603
+docs/_build/html/architecture/db-package.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1888-1889,1899,1918
+docs/_build/html/architecture/distribution.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/architecture/facade-commits.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/architecture/human-provenance.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/architecture/mailing-list.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/architecture/materialized-views.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/architecture/overview.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,2117-2121
+docs/_build/html/architecture/platform-layer.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/architecture/scancode.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/architecture/staged-pipeline.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/architecture/vulnerability-and-sbom.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/contributing/README.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1792
+docs/_build/html/contributing/adding-a-collection-phase.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/contributing/adding-a-platform.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1919,2174-2175,2190
+docs/_build/html/contributing/adding-a-rest-endpoint.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/contributing/adding-a-visualization.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1783,1794-1797,1822-1842,1844,1846-1852,1855,1875,1909,1911,1962,1986-1987,1990,2010-2017,2034
+docs/_build/html/contributing/code-conventions.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/contributing/development-setup.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/contributing/review-lenses.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/contributing/review-pass-brief.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1813
+docs/_build/html/contributing/schema-migrations.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,2011-2072
+docs/_build/html/contributing/testing.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1983-2006,2354-2369
+docs/_build/html/genindex.html
+  h_e3804906c674bd 8,16,332-333,346,1332,1409-1412,1509
+docs/_build/html/getting-started/augur-migration.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/getting-started/configuration.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1808,1843,2072,2572,2577,2582,2587,2592,2597,2602,2605,2607,2612,2615,2617,2622,2627,2812,3051,3099,3104,3106,3114,3118
+docs/_build/html/getting-started/deployment.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1935-1939,2031
+docs/_build/html/getting-started/installation.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/getting-started/quickstart.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/getting-started/upgrading.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1929-1935
+docs/_build/html/guide/api.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1784-1859,1897,2042-2043,2066,2103-2107,2110,2163,2207-2208,2317,2811-2816,2820-2823,3078-3084,3107,3140-3144,3578-3581,3603-3614,3637-3639,3652-3665,3669-3673,3693,3746-3748,3764-3766,3775-3778,3780-3781,3784-3785,3787-3789,3798-3803,3809-3815
+docs/_build/html/guide/ci-cd.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,2028-2029
+docs/_build/html/guide/collection-pipeline.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1815,1819,1821
+docs/_build/html/guide/commands.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1935,1940,1945,1950,1955,1960,1965,1970,1975,1999,2228-2229,2250
+docs/_build/html/guide/data-test.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/guide/dedicated-scancode-host.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/guide/metrics.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/guide/monitoring.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/guide/running-as-a-service.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/guide/scaling.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/guide/signup-escrow.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/guide/troubleshooting.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/guide/visualizations.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1787,1922
+docs/_build/html/guide/web-gui.html
+  h_e3804906c674bd 9,17,335-336,349,1335,1412-1415,1512,1858,1862,1866,1870,1874,1878,1952-1955,2011-2012,2014-2025,2047-2050
+docs/_build/html/http-routingtable.html
+  h_e3804906c674bd 8,16,339-340,353,1339,1416-1419,1516,2309
+docs/_build/html/index.html
+  h_e3804906c674bd 9,17,334-335,348,1334,1411-1414,1511,1957-1958
+docs/_build/html/schema.html
+  h_e3804906c674bd 9,17,334-335,348,1334,1411-1414,1511,5021,5068,5125,5177,5229
+docs/_build/html/search.html
+  h_e3804906c674bd 8,17,335-336,349,1335,1412-1415,1512
+docs/_build/html/searchindex.js
+  h_e3804906c674bd 1
+docs/api/openapi.yaml
+  h_e3804906c674bd 183-184,196-198,201-203,229,306,366,375-376,394,436,442,451-452,466,493,497,513-514,517-518,561-562,565-566,576-577,594,634-635,638-639,682,691-692,739,748-749,792,801-802,873,882-883,909,953-954,1513,1535,1550,1563,1677-1678,1690,1724,1748-1749,1953,1958-1963,2032-2037,2147-2152,2195-2206,2238-2243,2292-2297,2330-2335,2456,2653,2830,3408,3410,3483,3487,3489,3492-3493,3495,3497,3522-3528,3533-3537,3595-3599,3606-3609,3612,3614,3623-3634,3639-3642,3644-3646,3696,3698,3701-3702,3704,3706,3755,3757,3760-3761,3763,3765,3914,3916,3918,3923-3924,3926,3928-3930,3934,3941,3943-3944,3946-3951,3953,3960,3971,3973,3975,3980-3985,4104,4106,4114,4116,4120-4121,4123,4125,4355-4356,4396,4428-4429,4582,4584,4592,4594,4598,4600,4604,4613,4626,4643,4656,4693,4720,4741,4764,4793-4794,4813,4854,4871,4883-4884,4886,4903,4924,4928,4937-4938,4951,4972,4976,4985-4986,4999,5020,5024,5033-5034,5071,5080-5081,5120,5129-5130,5143,5163,5167,5176-5177,5214,5223-5224,5237,5255,5267,5276-5277,5314,5323-5324,5361,5370-5371,5384,5405,5409,5418-5419,5432,5453,5457,5466-5467,5480,5501,5505,5514-5515,5528,5549,5553,5562-5563,5576,5596,5600,5609-5610,5623,5644,5648,5657-5658,5671,5692,5696,5705-5706,5719,5740,5744,5753-5754,5767,5787,5791,5800-5801,5814,5835,5839,5848-5849,5862,5880,5884,5893-5894,5933,5942-5943,5956,5974,5978,5987-5988,6027,6036-6037,6048,6050,6061,6068,6081,6090-6091,6130,6139-6140,6180,6189-6190,6203,6243,6249,6258-6259,6272,6312,6318,6327-6328,6341,6362,6366,6375-6376,6389,6407,6411,6420-6421,6434,6452,6456,6465-6466,6479,6497,6501,6510-6511,6524,6542,6546,6555-6556,6593,6626-6627,6637,6646,6654,6890,6900,6905,6909,6913,7306,7310,7399,7572,7952,8545-8550
+docs/architecture/contributor-resolution.md
+  h_e3804906c674bd 676
+docs/architecture/db-package.md
+  h_e3804906c674bd 57,61,84
+docs/architecture/overview.md
+  h_e3804906c674bd 254-258
+docs/contributing/README.md
+  h_e3804906c674bd 19
+docs/contributing/adding-a-platform.md
+  h_e3804906c674bd 89,358,361,376
+docs/contributing/adding-a-visualization.md
+  h_e3804906c674bd 8,24-27,55,57,59-71,75-93,114,150,152,180,205-206,209,230-237,254
+docs/contributing/review-pass-brief.md
+  h_e3804906c674bd 34
+docs/contributing/schema-migrations.md
+  h_e3804906c674bd 255-290
+docs/contributing/testing.md
+  h_e3804906c674bd 219-242,596-611
+docs/getting-started/configuration.md
+  h_e3804906c674bd 38,75,237,386,388,451,643,672,677,679,689,693
+docs/getting-started/deployment.md
+  h_e3804906c674bd 150-154,256
+docs/getting-started/upgrading.md
+  h_e3804906c674bd 167-178
+docs/guide/api.md
+  h_e3804906c674bd 11-86,130,282-283,310,341-343,390,418,500,910-914,919-922,1167-1174,1199,1232-1236,1673-1676,1698-1709,1733-1735,1749-1751,1753-1763,1767-1771,1791,1845-1847,1864-1866,1875-1876,1878-1879,1881-1882,1885-1886,1888-1890,1899-1904,1910-1916
+docs/guide/ci-cd.md
+  h_e3804906c674bd 265,267
+docs/guide/collection-pipeline.md
+  h_e3804906c674bd 46,50,52
+docs/guide/commands.md
+  h_e3804906c674bd 111,308-309,328
+docs/guide/visualizations.md
+  h_e3804906c674bd 12,129
+docs/guide/web-gui.md
+  h_e3804906c674bd 140-143,201-215,238-241
+docs/schema.md
+  h_e3804906c674bd 999,1016,1035,1053,1071
+internal/admin/account.go
+  h_e3804906c674bd 1-316
+internal/admin/account_test.go
+  h_e3804906c674bd 4,9,45-46,48-60,88,93,95,98,135-175,193,225-227,262-266,268,270,279-280,282-283,285,287,294-295,297,299-300,302,304,316-317,320-323,326-330,334-344,347-349,351-356,358,367-390,393-407,410-425,437-439,450-499
+internal/admin/decisions.go
+  h_e3804906c674bd 1-228
+internal/admin/decisions_test.go
+  h_e3804906c674bd 1-426
+internal/admin/fakes_test.go
+  h_e3804906c674bd 1-352
+internal/admin/groups.go
+  h_e3804906c674bd 1-276
+internal/admin/groups_test.go
+  h_e3804906c674bd 1-577
+internal/admin/helpers_test.go
+  h_e3804906c674bd 1-21
+internal/admin/logurl.go
+  h_e3804906c674bd 1-17
+internal/admin/logurl_test.go
+  h_e3804906c674bd 1-31
+internal/admin/mail.go
+  h_e3804906c674bd 1-40
+internal/admin/refusal.go
+  h_e3804906c674bd 1-245
+internal/admin/refusal_test.go
+  h_e3804906c674bd 1-124
+internal/admin/service.go
+  h_e3804906c674bd 1-258
+internal/admin/service_db_test.go
+  h_e3804906c674bd 1-292
+internal/admin/service_test.go
+  h_e3804906c674bd 1-175
+internal/admin/testmain_test.go
+  h_e3804906c674bd 1-19
+internal/admin/user_id.go
+  h_e3804906c674bd 1-33
+internal/admin/user_id_test.go
+  h_e3804906c674bd 1-50
+internal/admin/users.go
+  h_e3804906c674bd 1-52
+internal/admin/users_test.go
+  h_e3804906c674bd 1-85
+internal/api/account.go
+  h_e3804906c674bd 11-12,20,24,55-57,63,70,79,85,99,106,110-113,118
+internal/api/account_test.go
+  h_e3804906c674bd 19,63-85,239,252,266,269,301
+internal/api/admin_adapter.go
+  h_e3804906c674bd 1-95
+internal/api/admin_decision_one_log_db_test.go
+  h_e3804906c674bd 16,40-41,48
+internal/api/admin_user_id_test.go
+  h_e3804906c674bd 1-51
+internal/api/analytics.go
+  h_e3804906c674bd 369-372,380-383,387,428,645-648,751,896,928,947,958,967
+internal/api/api_tokens_admin.go
+  h_e3804906c674bd 23,57,75,79,124,170,183,200,236
+internal/api/approve_refusals_db_test.go
+  h_e3804906c674bd 58,67,72,92-98,112,115,119-124,129-136
+internal/api/auth.go
+  h_e3804906c674bd 89-92,110,201-212,305-309,435,477,546-553
+internal/api/auth_test.go
+  h_e3804906c674bd 16-17,36,72,76,133-141,225-232,236-260
+internal/api/capacity_admin.go
+  h_e3804906c674bd 19,70,87,98-103,108,126,136,138-140,143,153,168-169,177,201,213-214,225,235,243,256,270,282,300,311-313,320-322,324-326,335
+internal/api/capacity_limits.go
+  h_e3804906c674bd 89-93,179
+internal/api/capacity_refusal_test.go
+  h_e3804906c674bd 42-47,49,65-66,71-75
+internal/api/catalog_scope_db_test.go
+  h_e3804906c674bd 1-172
+internal/api/collection_cache_test.go
+  h_e3804906c674bd 42
+internal/api/collection_copy_group_db_test.go
+  h_e3804906c674bd 1-81
+internal/api/collections.go
+  h_e3804906c674bd 33,67,94-96,101-103,106-110,115-118,145,155-159,161-163,176-178,184,201,207-209,212,231,236-238,241,255-257,260,277,286-292,295,315-317,320-336
+internal/api/contributions.go
+  h_e3804906c674bd 15-16,19-21,31,43-44,47-49,59,66-67,70-72,82
+internal/api/contributions_test.go
+  h_e3804906c674bd 126-128,146-148,160-170,172-175
+internal/api/contributor_elsewhere.go
+  h_e3804906c674bd 39-40,44-48,74,86,139-140,163-164
+internal/api/endpoint_smoke_test.go
+  h_e3804906c674bd 66,137,299-314,325-327,350-361,363,368-370,416-421,423-427,430-434,548-628
+internal/api/forge_id_changes.go
+  h_e3804906c674bd 7,11,45,50,64-66,77-81,84-89,92
+internal/api/group_add_repo_status_db_test.go
+  h_e3804906c674bd 75,109-113,115-118,133-136,141,165-167,227-234,239,256-258
+internal/api/group_approval_mail_db_test.go
+  h_e3804906c674bd 63,71,86,90,98,131,135,139,143,218,226,238,243,343,359,378,417,423,427,432-450
+internal/api/json_body.go
+  h_e3804906c674bd 1-52
+internal/api/json_body_test.go
+  h_e3804906c674bd 1-159
+internal/api/logsink_test.go
+  h_e3804906c674bd 1-264
+internal/api/metrics.go
+  h_e3804906c674bd 15-16,19-22,27,30,125-159,161,166,170,175,179-180,185,192,201,206,212-213,220,225,234,238-240,243-244,253-256,261,265,268-286,289-291,294,296,299-302,305-309,312-314,317,319,322-325,328-332,335,337,340-343,346-350,353,355,358-387,391-394,398,402-405,409,413-416,422-425,433-435,444-446,450-452,456,464-466,470-472,476-478,486,490-492,499-504,506-511,515,519-521,525-533,537-542,544-549,553,557-560,568-569,583,593,601-603,611,619
+internal/api/metrics_test.go
+  h_e3804906c674bd 9,11,243-245,248-250,252-257,261-262,265-269,272-273,277,279-283
+internal/api/new_repos.go
+  h_e3804906c674bd 55,60
+internal/api/openapi_body_test.go
+  h_e3804906c674bd 1-194
+internal/api/page_cache_authorize_once_test.go
+  h_e3804906c674bd 116-118,141,143,161,163,180-183
+internal/api/page_query.go
+  h_e3804906c674bd 7-8,12-13,22-34,36,38,40-78,80-104,144-147,157,187-193,196,198,200,202,204,206,208,210,212,219,221,223,229-237,239,242
+internal/api/portal.go
+  h_e3804906c674bd 30,165,218,224-225,227,229,240-241,244,246-248,251,260-261,271,282-287,290,298-303,321,324-327,330,346,371,380-381,396,400,403,406-411,413,417-419,421-422,424-428,430-431,435-444,457,460-463,466,471,484,516,534,544,547,549-552,554,556,583,591,593,597,599-602,605-610,614,617-623,630,633-638,641,653,695-704,734,748,750,761,774,776-785,847,860,862-865,874,938-941,971-975
+internal/api/portal_bulk_add_test.go
+  h_e3804906c674bd 21-22,80-82,85,88-90,100
+internal/api/portal_group_page_test.go
+  h_e3804906c674bd 57,87
+internal/api/portal_org_host_test.go
+  h_e3804906c674bd 145
+internal/api/portal_test.go
+  h_e3804906c674bd 36,54-55,71,114-121,123-128,152
+internal/api/public_stats.go
+  h_e3804906c674bd 65
+internal/api/ratelimit.go
+  h_e3804906c674bd 89-92
+internal/api/repo_authz_test.go
+  h_e3804906c674bd 35-49,55,86,92-103,113
+internal/api/repo_page_cache.go
+  h_e3804906c674bd 29-30,121-125,131-133,139,524-529,537,550-552,556-558,561-562,565-569,572-582,603-607,774-781,784
+internal/api/repo_page_cache_routes_test.go
+  h_e3804906c674bd 85-90,97-100,106-111,124-127,245-246,259-262
+internal/api/repo_page_cache_test.go
+  h_e3804906c674bd 697-699,736-742,750-763,847,850-851,870-874,917-921,1121-1152
+internal/api/repo_route.go
+  h_e3804906c674bd 1-131
+internal/api/repo_route_test.go
+  h_e3804906c674bd 1-351
+internal/api/server.go
+  h_e3804906c674bd 20,27,75,77-80,140-150,217,272,347,358,362-363,371,381-387,415,424,430-431,511-512,518-523,533,556,560-561,589,599-600,640,646-647,657
+internal/api/server_error_body_test.go
+  h_e3804906c674bd 111,124-125,134-141,254,326,342-344,347-348,352-353,404,420-421,502,516,523-530
+internal/api/server_test.go
+  h_e3804906c674bd 7,13-15,18-39,47-63
+internal/api/session_token_recheck_db_test.go
+  h_e3804906c674bd 8,18-24,29-30,34-56
+internal/api/shared_with_me_authz_test.go
+  h_e3804906c674bd 313-314,318-319
+internal/api/stats_batch_ids_test.go
+  h_e3804906c674bd 4,9,13-23
+internal/api/supply_chain.go
+  h_e3804906c674bd 16,73-81,84,153,160-162,241,249-251
+internal/api/token_hardening_test.go
+  h_e3804906c674bd 97-98,104-108
+internal/api/token_scope_test.go
+  h_e3804906c674bd 26,460-461,471,476-477
+internal/api/top_contributors.go
+  h_e3804906c674bd 24-25,28-30,47-48
+internal/api/traffic.go
+  h_e3804906c674bd 11,15-16,24
+internal/api/traffic_test.go
+  h_e3804906c674bd 15,69-70,76-82,94-95,97-98,100-101
+internal/api/vulnerabilities.go
+  h_e3804906c674bd 118-119,201,398-399,424
+internal/api/vulnerabilities_test.go
+  h_e3804906c674bd 96-98,100
+internal/collector/analysis_missing_parsers_test.go
+  h_e3804906c674bd 7,9-10,261-263,265-268,270-272
+internal/collector/breadth.go
+  h_e3804906c674bd 96-97
+internal/collector/collector.go
+  h_e3804906c674bd 302-303
+internal/collector/collector_edge_test.go
+  h_e3804906c674bd 57,70
+internal/collector/collector_test.go
+  h_e3804906c674bd 26,45,64,83,94,104
+internal/collector/exec_cancel_test.go
+  h_e3804906c674bd 99
+internal/collector/refresh_open_test.go
+  h_e3804906c674bd 20
+internal/collector/sbom.go
+  h_e3804906c674bd 599-601,607-609
+internal/collector/sbom_compliance_test.go
+  h_e3804906c674bd 26-28
+internal/collector/spdx_license_list_test.go
+  h_e3804906c674bd 74-75
+internal/collector/staged.go
+  h_e3804906c674bd 1795,1874-1879,1891-1892
+internal/collector/staged_traffic_collect_test.go
+  h_e3804906c674bd 20,23-39,467-468,470-476
+internal/collector/staged_traffic_test.go
+  h_e3804906c674bd 149,168-169,186-189,212-213,237-238,263-264,288-289,298-323,328
+internal/collector/test_only_helpers_test.go
+  h_e3804906c674bd 1-104
+internal/collector/testmigrate_test.go
+  h_e3804906c674bd 22,65
+internal/collector/tools.go
+  h_e3804906c674bd 582
+internal/config/config.go
+  h_e3804906c674bd 18,29,43-44,231,233-242,245-248,254-259,279-284,334-350,1616,1620-1640,1647-1661,1666-1705,2077,2081
+internal/config/example_defaults_test.go
+  h_e3804906c674bd 252-256,434
+internal/config/mail_block_test.go
+  h_e3804906c674bd 1-114
+internal/config/removed_keys_test.go
+  h_e3804906c674bd 4,8,11-12,15-24,26-32,34,38-40,42,46-47,51-58,61-63,65-67
+internal/config/web_gitlab_base_test.go
+  h_e3804906c674bd 1-83
+internal/db/activity_bounds_db_test.go
+  h_e3804906c674bd 156-161
+internal/db/add_paths_sr5_test.go
+  h_e3804906c674bd 36-42,47-48,50-51,57-58,100,109,153,211,221,237,247-376
+internal/db/add_request_detached_pass_log_test.go
+  h_e3804906c674bd 79
+internal/db/add_request_failed_count_test.go
+  h_e3804906c674bd 75
+internal/db/add_request_reapprove_test.go
+  h_e3804906c674bd 72,79,86,91,100,103,254,258,269,273,286,295,308,319,394,408,415,483,489,567,662,666,679,764,876,883,902,925,978
+internal/db/add_request_retry_db_test.go
+  h_e3804906c674bd 109,115,125,182,185,216
+internal/db/add_requests.go
+  h_e3804906c674bd 91-94,101,137,235,249,258,271,365-368,373-431,441,450-454,469,471,525,537,557-571,578,591-593,599-617,620,622-630,636-655,670,686-687,776-777,830,893,959-967,1002,1131-1153
+internal/db/add_requests_test.go
+  h_e3804906c674bd 236,246,260,267,284,289,295,299,313,323,334,344,358,368-377,379
+internal/db/add_url_limit_test.go
+  h_e3804906c674bd 133,137,140,144,147,150,153,157,170,178,182,186,190,194,198
+internal/db/add_url_userinfo_test.go
+  h_e3804906c674bd 96,100,104,108,112,182,198
+internal/db/allocation_bounds_test.go
+  h_e3804906c674bd 9-10,38-40,42,45-50,52
+internal/db/analytics_store.go
+  h_e3804906c674bd 35,251,254-255,293-328,330,333-334,347-348,350,352-361,363
+internal/db/api_token_settings_seed_db_test.go
+  h_e3804906c674bd 1-101
+internal/db/api_tokens.go
+  h_e3804906c674bd 147-149,151,154,162
+internal/db/breadth_batch_mark_test.go
+  h_e3804906c674bd 49-52
+internal/db/breadth_cooldown_test.go
+  h_e3804906c674bd 48-51,56-60
+internal/db/breadth_store.go
+  h_e3804906c674bd 131-133
+internal/db/capacity_admin_store.go
+  h_e3804906c674bd 89,105,113,122,133,139
+internal/db/capacity_alloc_db_test.go
+  h_e3804906c674bd 29-33,41-52,129-212,214,249,256,277,281,287,325,431,441,538,584
+internal/db/capacity_day_rule_pin_test.go
+  h_e3804906c674bd 25-27
+internal/db/capacity_links_db_test.go
+  h_e3804906c674bd 105,138-139
+internal/db/capacity_signups_empty_db_test.go
+  h_e3804906c674bd 1-25
+internal/db/capacity_store.go
+  h_e3804906c674bd 34-71,318-319,322,364-377,391,1326-1327,1442
+internal/db/capacity_store_test.go
+  h_e3804906c674bd 1-46
+internal/db/capacity_v02991_db_test.go
+  h_e3804906c674bd 177,183,244,251,335,351,393,401,419,444,454
+internal/db/capacity_writer_pin_test.go
+  h_e3804906c674bd 178,223-226,229,249-258
+internal/db/catalog_scope_db_test.go
+  h_e3804906c674bd 1-182
+internal/db/collections_store.go
+  h_e3804906c674bd 42-61,88-91,121-123,136-138,143,151,155-157,167-169,189-192,205-210,212,284-286,311-316,318-319,321,330,334,338,359-361
+internal/db/column_write_policy_test.go
+  h_e3804906c674bd 73,78,80,82,84,86,88,90,92,94,96,100,102,104,106,108,110
+internal/db/commit_bounds_db_test.go
+  h_e3804906c674bd 232
+internal/db/commit_count_backfill.go
+  h_e3804906c674bd 13-22
+internal/db/commit_count_backfill_test.go
+  h_e3804906c674bd 10,13-20,22-26,28-31,35-61
+internal/db/dashboard_alignment_test.go
+  h_e3804906c674bd 10-11,46-57,155-160,162
+internal/db/email_confirmation.go
+  h_e3804906c674bd 47-48,51-52,56,97
+internal/db/email_confirmation_test.go
+  h_e3804906c674bd 10-11,75-76,93,116-118,123-124
+internal/db/email_message_store_test.go
+  h_e3804906c674bd 162-168
+internal/db/fk_constraints_extra.go
+  h_e3804906c674bd 16,27,102,174
+internal/db/fk_extra_test.go
+  h_e3804906c674bd 23,145
+internal/db/fk_indexes_extra.go
+  h_e3804906c674bd 30,109,120
+internal/db/github_uuid_test.go
+  h_e3804906c674bd 63-64,66,80-81
+internal/db/group_access_store.go
+  h_e3804906c674bd 1-46
+internal/db/group_approval_test.go
+  h_e3804906c674bd 20
+internal/db/history_series_test.go
+  h_e3804906c674bd 24-26
+internal/db/home_store.go
+  h_e3804906c674bd 283
+internal/db/license_test.go
+  h_e3804906c674bd 25-27,86-89
+internal/db/like.go
+  h_e3804906c674bd 1-28
+internal/db/metric_window_pins_test.go
+  h_e3804906c674bd 1-63
+internal/db/metric_window_readers_db_test.go
+  h_e3804906c674bd 1-230
+internal/db/metrics.go
+  h_e3804906c674bd 16-28,63-106,109-113,117,120-122,124,126-127,131,134-137,139,141-142,146-178,180-201,203,208,216-221,223,225-233,240,247-258,269,274,282,288,296,302,352,357,386,401-412,420,424,432,437,445,451,475,480,497,503,511,517,533,540,546-548,550-553,587,594,601,611,619,628,639,643,645,656,665-683,686,689,693-694,698,702-703,705,710,716,814,852,874,878,932,944-946,948-951
+internal/db/migrate.go
+  h_e3804906c674bd 789,860-891,3113,3174-3200,3663-3665,3700-3701,4149
+internal/db/migrate_column_order_test.go
+  h_e3804906c674bd 155-158,162-166,169,175,195,197-198,209,211-212,226-234
+internal/db/migrate_fastpath_test.go
+  h_e3804906c674bd 94
+internal/db/migrate_other_serve_test.go
+  h_e3804906c674bd 110,326,340,372,806
+internal/db/migrate_step_order_golden_test.go
+  h_e3804906c674bd 1-79
+internal/db/msg_kind_test.go
+  h_e3804906c674bd 46,53-57
+internal/db/msg_ref_metadata_test.go
+  h_e3804906c674bd 105-106
+internal/db/org_demand_probe_test.go
+  h_e3804906c674bd 86,99,110,127
+internal/db/org_github_host_gate_test.go
+  h_e3804906c674bd 101,104-105,125,132,149,163,171,187,195
+internal/db/org_ref_classifier_test.go
+  h_e3804906c674bd 1-85
+internal/db/org_refusal_advice_test.go
+  h_e3804906c674bd 25-26,28,34-47
+internal/db/org_registered_rejected_test.go
+  h_e3804906c674bd 71
+internal/db/org_url_normalize_test.go
+  h_e3804906c674bd 7-11,15,46,93,113-163
+internal/db/p4_operation_bans_test.go
+  h_e3804906c674bd 1-125
+internal/db/package_exposure_store.go
+  h_e3804906c674bd 728-734
+internal/db/package_exposure_store_test.go
+  h_e3804906c674bd 291-292,296-297
+internal/db/page_cache_writers_test.go
+  h_e3804906c674bd 45,83-84,87,106-107,170,174
+internal/db/pending_email_clear_test.go
+  h_e3804906c674bd 173,189
+internal/db/portal_store.go
+  h_e3804906c674bd 43-59,69-70,72-74,76-86,88,91-92,97-98,107-113,115,118,126,130-150
+internal/db/portal_store_integration_test.go
+  h_e3804906c674bd 6,20,62-66,68-69,71-72,75-76,88,90,92,148,155,192,222,232
+internal/db/postgres.go
+  h_e3804906c674bd 2536
+internal/db/pr184_review_test.go
+  h_e3804906c674bd 855
+internal/db/queue.go
+  h_e3804906c674bd 478-479
+internal/db/queue_order_test.go
+  h_e3804906c674bd 78-81,86-87
+internal/db/queue_test.go
+  h_e3804906c674bd 58-62,68-72
+internal/db/repo_case_integration_test.go
+  h_e3804906c674bd 272,276
+internal/db/repo_dedup.go
+  h_e3804906c674bd 309
+internal/db/repo_forge_id_changes.go
+  h_e3804906c674bd 159-163,168-169,174,181
+internal/db/repo_gone_test.go
+  h_e3804906c674bd 153,155-158,164-165,171-173,175-178,238,294,321,330
+internal/db/repo_stats.go
+  h_e3804906c674bd 103,107,114,125-129,131,133-137,142-156,159,161,168,183,186,190,194-195,212-221,283,285,289,306-307,321,325,338,342-388
+internal/db/repo_stats_fork_test.go
+  h_e3804906c674bd 26,28,34-36,38-41
+internal/db/repo_stats_one_reader_db_test.go
+  h_e3804906c674bd 1-185
+internal/db/repo_status_activity_test.go
+  h_e3804906c674bd 29,31,52-54,56
+internal/db/repo_url_suffix_variant_test.go
+  h_e3804906c674bd 145
+internal/db/scancode_store.go
+  h_e3804906c674bd 211,250
+internal/db/schema.sql
+  h_e3804906c674bd 2764-2773
+internal/db/schema_version_test.go
+  h_e3804906c674bd 55-59,65-69
+internal/db/session_tokens.go
+  h_e3804906c674bd 11-16,40-46,48-58,60-65,68,70-78,80-105,122
+internal/db/shared_with_me_test.go
+  h_e3804906c674bd 263,309
+internal/db/snapshot_series_db_test.go
+  h_e3804906c674bd 1-55
+internal/db/test_only_helpers_test.go
+  h_e3804906c674bd 1-52
+internal/db/testexec_test.go
+  h_e3804906c674bd 92,144
+internal/db/timeseries.go
+  h_e3804906c674bd 54-61,133,175-178,213
+internal/db/traffic_integration_test.go
+  h_e3804906c674bd 277-278,313,364,374,479
+internal/db/traffic_store.go
+  h_e3804906c674bd 34
+internal/db/users_email_writers_test.go
+  h_e3804906c674bd 1-61
+internal/db/ux_fixes_2026_08_05_test.go
+  h_e3804906c674bd 85,93,125,245-250
+internal/db/v025_6_matview_rewrite_test.go
+  h_e3804906c674bd 309-310
+internal/db/v02818_l10_integration_test.go
+  h_e3804906c674bd 314
+internal/db/version.go
+  h_e3804906c674bd 9
+internal/db/web_sessions.go
+  h_e3804906c674bd 1-141
+internal/db/web_sessions_test.go
+  h_e3804906c674bd 4,8,16,19-20,26,31-34,37-44,46-55,59-63,66-67,69-71,73-74,76-77,79-80,82-83,85-88,92-98,101-107,109-117,121-122,125,129-131,133-134,136-137,139-142,144-145,147-150,152-153,155-157,161-162,165-166,168,171-186,190-191,194-195,197-198,200,203-210,214-228,230-241,243-254,258-279,282-285,287-291,293-296,300,304-305,308-322,325,328-337
+internal/db/web_store.go
+  h_e3804906c674bd 79-85,89,424-428,430,501,507,529,542,548,578-584,671,693,718-719,759,777,839-842,858,942,946-953,958-961,980,1007-1024,1026-1033,1036-1037,1044,1047-1056
+internal/db/web_store_addrepo_test.go
+  h_e3804906c674bd 18-19,42-63
+internal/mailer/mailer.go
+  h_e3804906c674bd 63-65,317-318
+internal/mailer/mailer_test.go
+  h_e3804906c674bd 18
+internal/mailer/send_capture_test.go
+  h_e3804906c674bd 488-490,493,495,497-498
+internal/mailer/spa_links_test.go
+  h_e3804906c674bd 12-16,18-21,26,28
+internal/mailer/validate.go
+  h_e3804906c674bd 114-118,126-127,132-141,167,170-174
+internal/mailer/validate_test.go
+  h_e3804906c674bd 187-189,226-231,238-254
+internal/model/instance_web_base.go
+  h_e3804906c674bd 1-146
+internal/model/instance_web_base_test.go
+  h_e3804906c674bd 1-114
+internal/model/repoinfo.go
+  h_e3804906c674bd 137-149
+internal/monitor/monitor.go
+  h_e3804906c674bd 426-428
+internal/monitor/monitor_test.go
+  h_e3804906c674bd 13-16,19-20,24-28,30-37,39-40,44,46,48,58-65,69-71,73-103
+internal/platform/any_repo_hints_test.go
+  h_e3804906c674bd 1-50
+internal/platform/default_scheme.go
+  h_e3804906c674bd 1-21
+internal/platform/default_scheme_test.go
+  h_e3804906c674bd 1-52
+internal/platform/etag_bare_get_tripwire_test.go
+  h_e3804906c674bd 109-112
+internal/platform/github/fill_audit_a_test.go
+  h_e3804906c674bd 26,35,45,99,132
+internal/platform/github/fill_audit_b_test.go
+  h_e3804906c674bd 20,31,40
+internal/platform/github/owner_repos.go
+  h_e3804906c674bd 1-72
+internal/platform/github/owner_repos_test.go
+  h_e3804906c674bd 1-119
+internal/platform/github_host.go
+  h_e3804906c674bd 102-110
+internal/platform/github_host_test.go
+  h_e3804906c674bd 150-166
+internal/platform/gitlab/client.go
+  h_e3804906c674bd 32-36,48-50,65,1514,1576-1581,1591-1592,1597-1599,1603
+internal/platform/gitlab/clone_stats_test.go
+  h_e3804906c674bd 270-276
+internal/platform/gitlab/commit_count_fallback_test.go
+  h_e3804906c674bd 71
+internal/platform/gitlab/community_files_test.go
+  h_e3804906c674bd 24
+internal/platform/gitlab/fill_audit_b_test.go
+  h_e3804906c674bd 32,42,105
+internal/platform/gitlab/group_projects.go
+  h_e3804906c674bd 4,7-10,12,18-20,22-34,36-39,41-82
+internal/platform/gitlab/group_projects_test.go
+  h_e3804906c674bd 1-100
+internal/platform/gitlab/parse_repo_url_hint_test.go
+  h_e3804906c674bd 1-36
+internal/platform/gitlab/types.go
+  h_e3804906c674bd 28-32,35-36
+internal/platform/gitlab_api_suffix_test.go
+  h_e3804906c674bd 1-53
+internal/platform/gitlab_host.go
+  h_e3804906c674bd 8-9,12-66,69-70,73-85,88-101
+internal/platform/gitlab_host_test.go
+  h_e3804906c674bd 8-16,18-19,21-46,49,51-57
+internal/platform/gitlab_keyed_client_tripwire_test.go
+  h_e3804906c674bd 52,115,129,236,481,513-514
+internal/platform/org_ref.go
+  h_e3804906c674bd 1-114
+internal/platform/org_ref_test.go
+  h_e3804906c674bd 1-94
+internal/platform/owner_repo.go
+  h_e3804906c674bd 1-21
+internal/platform/repourl.go
+  h_e3804906c674bd 27-32,63-64,69-76,94-108,119,124,129,166-176,206-216,222,237-239,250-252
+internal/platform/repourl_any_test.go
+  h_e3804906c674bd 124-127
+internal/platform/repourl_test.go
+  h_e3804906c674bd 134-137,151-171
+internal/platform/truncate_log.go
+  h_e3804906c674bd 1-37
+internal/platform/truncate_log_test.go
+  h_e3804906c674bd 1-34
+internal/platform/url_userinfo.go
+  h_e3804906c674bd 153-178
+internal/platform/url_userinfo_test.go
+  h_e3804906c674bd 216-279
+internal/safego/adoption_test.go
+  h_e3804906c674bd 16-17,48-54
+internal/scheduler/add_request_retry.go
+  h_e3804906c674bd 48
+internal/scheduler/analysis_github_host_test.go
+  h_e3804906c674bd 179-182,184,186-187,191-193,197-202,206-207,209,211,218,220,225-229,232,396-397
+internal/scheduler/h7_logged_failures_test.go
+  h_e3804906c674bd 15-19,22-24,26-28,31,40,47-48,50-53,55,58-60
+internal/scheduler/mailinglist_wiring_test.go
+  h_e3804906c674bd 12,87-94
+internal/scheduler/org_demand_scan_test.go
+  h_e3804906c674bd 58-66
+internal/scheduler/org_scan_contract_db_test.go
+  h_e3804906c674bd 1-111
+internal/scheduler/org_scan_forge_id_test.go
+  h_e3804906c674bd 8-15,27-29,31-33,36,38-39,42-60
+internal/scheduler/org_scan_github_host_test.go
+  h_e3804906c674bd 17,19-22,26,28,138,142-207
+internal/scheduler/org_scan_gitlab_db_test.go
+  h_e3804906c674bd 1-197
+internal/scheduler/org_scan_newcount_test.go
+  h_e3804906c674bd 10-11,43-49,53-57,59-63
+internal/scheduler/orgscan.go
+  h_e3804906c674bd 1-184
+internal/scheduler/refresh_org_user_repos_test.go
+  h_e3804906c674bd 10-11,13-44
+internal/scheduler/repo_url_userinfo_test.go
+  h_e3804906c674bd 17-19
+internal/scheduler/scheduler.go
+  h_e3804906c674bd 32,124-131,2386-2389,2392-2395,2408-2411,2415,2423,2425,2430-2432,2435-2437,2439-2440,2446-2451,2453,2455-2456,2467,2469,2474,2477-2479,2481-2482,2610-2624,2697-2698,2739-2755,2759-2775,2778,2787-2797,2814-2827,2829-2833,2835-2838,2840-2842,2844-2845,2847-2850,2852-2853,2856-2876,2878-2879,2881-2886,2890-2906,2931
+internal/scheduler/ticker_cancel_structural_test.go
+  h_e3804906c674bd 34
+internal/srctest/exec_order.go
+  h_e3804906c674bd 1-133
+internal/srctest/exec_order_test.go
+  h_e3804906c674bd 1-113
+internal/srctest/package_func.go
+  h_e3804906c674bd 1-220
+internal/srctest/site_key.go
+  h_e3804906c674bd 1-31
+internal/srctest/srctest.go
+  h_e3804906c674bd 26-28,39-64,170-185,187-188
+internal/srctest/srctest_test.go
+  h_e3804906c674bd 7-8,336,524-659
+internal/srctest/testdata/pkgfunc/a.go
+  h_e3804906c674bd 1-14
+internal/srctest/testdata/pkgfunc/a_test.go
+  h_e3804906c674bd 1-7
+internal/srctest/testdata/pkgfunc_dup/a.go
+  h_e3804906c674bd 1-6
+internal/srctest/testdata/pkgfunc_dup/b.go
+  h_e3804906c674bd 1-6
+internal/srctest/testdata/pkgfunc_tags/clock_linux.go
+  h_e3804906c674bd 1-8
+internal/srctest/testdata/pkgfunc_tags/clock_other.go
+  h_e3804906c674bd 1-8
+internal/static/app.css
+  h_e3804906c674bd 1-93
+internal/static/avx.js
+  h_e3804906c674bd 1-27
+internal/static/compare.js
+  h_e3804906c674bd 1-229
+internal/static/monitor.js
+  h_e3804906c674bd 1-2
+internal/static/repo-detail.js
+  h_e3804906c674bd 1-213
+internal/static/repo-search.js
+  h_e3804906c674bd 1-83
+internal/static/static.go
+  h_e3804906c674bd 4-9,12-20,24-114
+internal/static/vendor/README.md
+  h_e3804906c674bd 1-12
+internal/static/vendor/chart.js-LICENSE.md
+  h_e3804906c674bd 1-9
+internal/static/vendor/chart.umd.js
+  h_e3804906c674bd 1-14
+internal/web/account_email.go
+  h_e3804906c674bd 1-81
+internal/web/add_notices_db_test.go
+  h_e3804906c674bd 89-90,93,167
+internal/web/add_repo_error_db_test.go
+  h_e3804906c674bd 88-89,92,105,142,154-156,162-163
+internal/web/add_url_credentials_db_test.go
+  h_e3804906c674bd 74-75,82,91,175-176
+internal/web/admin.go
+  h_e3804906c674bd 8,24-30,33-34,37-39,43-45,52-57,66-67,81,94,108-110,117,119,122,125-127,131-134,140-141,150-151,170,172,183,185,187,194,197-199,207-211,214-221
+internal/web/admin_adapter.go
+  h_e3804906c674bd 1-156
+internal/web/admin_per_request_test.go
+  h_e3804906c674bd 1-159
+internal/web/admin_routes_test.go
+  h_e3804906c674bd 7-10,23-24,29-32,36-41,43-44,46,53,61,74-75,77,82-83
+internal/web/admin_store_errors_db_test.go
+  h_e3804906c674bd 40,42,47
+internal/web/api_proxy_bound_test.go
+  h_e3804906c674bd 59-60,74,111
+internal/web/api_proxy_forwarding_test.go
+  h_e3804906c674bd 41
+internal/web/api_proxy_test.go
+  h_e3804906c674bd 31,41,82,85,111,115,137,148,151-152
+internal/web/approval_mail_db_test.go
+  h_e3804906c674bd 68,72,93-98,101,123,127,132,144-150,189,200-205,210,217-223,231-233,240-259,261-264
+internal/web/approve_refusals_db_test.go
+  h_e3804906c674bd 59-62,75-76,80
+internal/web/capacity_notice_db_test.go
+  h_e3804906c674bd 54
+internal/web/compare_integration_test.go
+  h_e3804906c674bd 15,47-50,117-118,154-155,193-196,205,208
+internal/web/cookie_house_rule_test.go
+  h_e3804906c674bd 1-57
+internal/web/csrf.go
+  h_e3804906c674bd 1-236
+internal/web/csrf_headers_test.go
+  h_e3804906c674bd 1-154
+internal/web/dashboard_email_gate_db_test.go
+  h_e3804906c674bd 64,68-70,74,160-161,170,243-245,259,329
+internal/web/dashboard_test.go
+  h_e3804906c674bd 50,67,85-86,91-92,94
+internal/web/due_at_format_test.go
+  h_e3804906c674bd 9-10,18,22
+internal/web/errors.go
+  h_e3804906c674bd 1-112
+internal/web/groups.go
+  h_e3804906c674bd 1-295
+internal/web/last_admin_refusal_db_test.go
+  h_e3804906c674bd 24-32,57-75,81,85-86,88-90,95-105
+internal/web/login_admin_lookup_runtime_db_test.go
+  h_e3804906c674bd 8-9,16,22-30,55-57,62,65-83,85-94,96-99,102-106,109-112,115-118,120-127,129-130,132-133,135-136,138-147,149-152,155-160,162-167,170-177,179-181,183-184,186-187,189-190,192-193,195-199
+internal/web/login_clear_cookies_test.go
+  h_e3804906c674bd 7-9,17,29-30,32-33,60,64,101
+internal/web/login_welcome_identity_db_test.go
+  h_e3804906c674bd 55,131,177,210
+internal/web/logsink_test.go
+  h_e3804906c674bd 11
+internal/web/lookup_errors_db_test.go
+  h_e3804906c674bd 97-98,103,122-125,127-128,168,180,200
+internal/web/membership_db_test.go
+  h_e3804906c674bd 1-88
+internal/web/monitor_admin_gate_db_test.go
+  h_e3804906c674bd 61-82,87,116
+internal/web/monitor_draining_test.go
+  h_e3804906c674bd 15
+internal/web/monitor_page.go
+  h_e3804906c674bd 1-184
+internal/web/monitor_pagination_render_test.go
+  h_e3804906c674bd 18-20,23
+internal/web/monitor_search_test.go
+  h_e3804906c674bd 10-11,16,40,62,83
+internal/web/monitor_test.go
+  h_e3804906c674bd 17-18,24,34,44,49,74-76
+internal/web/oauth.go
+  h_e3804906c674bd 1-475
+internal/web/oauth_callback_bound_test.go
+  h_e3804906c674bd 35
+internal/web/oauth_callback_error_log_test.go
+  h_e3804906c674bd 70,80
+internal/web/oauth_callback_validation_test.go
+  h_e3804906c674bd 35-44,46-49,107-109,112
+internal/web/oauth_email_fallback_test.go
+  h_e3804906c674bd 10-11,23-24,41,43-44,50-53,61-65,85-90,99
+internal/web/oauth_github_bound_runtime_test.go
+  h_e3804906c674bd 133,208
+internal/web/oauth_gitlab_base_test.go
+  h_e3804906c674bd 1-57
+internal/web/oauth_gitlab_bound_runtime_test.go
+  h_e3804906c674bd 55
+internal/web/oauth_user_body_stall_test.go
+  h_e3804906c674bd 66,74
+internal/web/oauth_user_size_test.go
+  h_e3804906c674bd 53,62
+internal/web/org_off_instance_notice_db_test.go
+  h_e3804906c674bd 4,8-9,12-14,16,18-21,24-41,45-51,57-58,63-69,71-74,77,81-123,126-135
+internal/web/page_assets_test.go
+  h_e3804906c674bd 1-195
+internal/web/pagination_nav_test.go
+  h_e3804906c674bd 20-21,148,168,192
+internal/web/path_id_width_test.go
+  h_e3804906c674bd 7,11-12,14-54,57-60,62-71
+internal/web/per_add_approval_test.go
+  h_e3804906c674bd 13-14,21-39,47,54-64,71,77,83-85,87-89,91-93,95
+internal/web/remove_repo_error_db_test.go
+  h_e3804906c674bd 37-38,42
+internal/web/repo_pages.go
+  h_e3804906c674bd 1-223
+internal/web/review_106_web_test.go
+  h_e3804906c674bd 1-340
+internal/web/route_matrix_test.go
+  h_e3804906c674bd 1-174
+internal/web/routes_method_path_test.go
+  h_e3804906c674bd 1-95
+internal/web/scancode_dashboard_test.go
+  h_e3804906c674bd 38
+internal/web/server.go
+  h_e3804906c674bd 18,38-41,49-74,82,85-87,89-93,100,143-150,198,208,210,214-230,233,239,256-258,265-270,274-281,286,290-292,295-308,314,317-320,326,329-330,336-338,341-343,351-356
+internal/web/session.go
+  h_e3804906c674bd 1-208
+internal/web/signup_refusal_test.go
+  h_e3804906c674bd 53,57,60
+internal/web/spa_redirect_test.go
+  h_e3804906c674bd 18-19,91-96,98-101,106,109-112
+internal/web/template_xss_test.go
+  h_e3804906c674bd 22-24,28-29,301-302,325-329,331,333-334,337-338,398-399,401,403
+internal/web/templates.go
+  h_e3804906c674bd 6-80
+internal/web/templates/account_email.html
+  h_e3804906c674bd 1-26
+internal/web/templates/compare.html
+  h_e3804906c674bd 1-65
+internal/web/templates/compareSearchWidget.html
+  h_e3804906c674bd 1-14
+internal/web/templates/dashboard.html
+  h_e3804906c674bd 1-55
+internal/web/templates/group.html
+  h_e3804906c674bd 1-129
+internal/web/templates/head.html
+  h_e3804906c674bd 1-11
+internal/web/templates/login.html
+  h_e3804906c674bd 1-24
+internal/web/templates/monitor.html
+  h_e3804906c674bd 1-89
+internal/web/templates/paginationNav.html
+  h_e3804906c674bd 1-63
+internal/web/templates/remove_confirm.html
+  h_e3804906c674bd 1-28
+internal/web/templates/repo_detail.html
+  h_e3804906c674bd 1-85
+internal/web/templates_render_golden_test.go
+  h_e3804906c674bd 1-138
+internal/web/templates_set_test.go
+  h_e3804906c674bd 8,12-18,22-24,26-30,32-36,38-39,41-46,48-49,51-53
+internal/web/testdata/render_golden/account_email.html
+  h_e3804906c674bd 1-33
+internal/web/testdata/render_golden/compare.html
+  h_e3804906c674bd 1-72
+internal/web/testdata/render_golden/compareSearchWidget.html
+  h_e3804906c674bd 1-12
+internal/web/testdata/render_golden/dashboard.html
+  h_e3804906c674bd 1-72
+internal/web/testdata/render_golden/group.html
+  h_e3804906c674bd 1-170
+internal/web/testdata/render_golden/head.html
+  h_e3804906c674bd 1-10
+internal/web/testdata/render_golden/login.html
+  h_e3804906c674bd 1-31
+internal/web/testdata/render_golden/monitor.html
+  h_e3804906c674bd 1-124
+internal/web/testdata/render_golden/paginationNav.html
+  h_e3804906c674bd 1-36
+internal/web/testdata/render_golden/remove_confirm.html
+  h_e3804906c674bd 1-36
+internal/web/testdata/render_golden/repo_detail.html
+  h_e3804906c674bd 1-92
+internal/web/vuln_unknown_version_tile_test.go
+  h_e3804906c674bd 15
+internal/web/withmailer_warn_test.go
+  h_e3804906c674bd 1-46
+scripts/admin_lookup_errors_test.go
+  h_e3804906c674bd 17-18,24-25
+scripts/admin_service_pins_test.go
+  h_e3804906c674bd 4,11-13,20-50,53-59,61-62,66-68,70-72,74,76-87,90-92,95-96,98-99,101-116,118-119,122-126,128-130,135-173,175,177,179,181-182,184,186-189,193-194,196,198-200,202-205,211-228,230-231,233-239,241-286,288,293-305,308-310,312-321,324-361,363-365,367-368,372-375,378-381,383-384,386-387,390-397,399-406,408-409,411-413,416-421,424-428,433-437,439-442,445-474,476-478,480-483,485-489,491-494
+scripts/ci-process-contracts.sh
+  h_e3804906c674bd 1-129
+scripts/ci-upgrade-path.sh
+  h_e3804906c674bd 1-86
+scripts/ci_workflows_test.go
+  h_e3804906c674bd 1-71
+scripts/email_log_redaction_test.go
+  h_e3804906c674bd 72-74
+scripts/gitlab_web_base_default_test.go
+  h_e3804906c674bd 1-31
+scripts/migrate_step_order.txt
+  h_e3804906c674bd 1-221
+scripts/openapi_routes_test.go
+  h_e3804906c674bd 156-174
+scripts/prioritize_callers_test.go
+  h_e3804906c674bd 28-29,31-34,52,63,90-91
+scripts/request_log_classification_test.go
+  h_e3804906c674bd 29-31,33-54,59,77-79,122,168,173,244
+scripts/request_path_deadlines_test.go
+  h_e3804906c674bd 29-31,33-34,37,42,49-51,57,68-69,105-106,111-112,118,129-130,150-164
+scripts/response_body_read_test.go
+  h_e3804906c674bd 46,69-77,180-181,187-196,198-204,206-207,212-213,219-225,238,240-252,254
+scripts/session_secret_removed_test.go
+  h_e3804906c674bd 1-55
+scripts/skip-census.sh
+  h_e3804906c674bd 74-76,78,158
+scripts/source_file_reads_baseline.txt
+  h_e3804906c674bd 1-1061
+scripts/source_file_reads_test.go
+  h_e3804906c674bd 7-9,11,13-14,21-27,29-30,32-44,46-53,55,58-69,71-80,83-134,137-139,141-144,146-149,151,153-158,160-163,166-177
+scripts/unused-ratchet.sh
+  h_e3804906c674bd 1-62
+scripts/unused_baseline.txt
+  h_e3804906c674bd 1-8
+scripts/url_log_redaction_test.go
+  h_e3804906c674bd 499-500
+scripts/vendored_assets_test.go
+  h_e3804906c674bd 4,7-8,10,17-25,29-31,33-34,36-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f7a23932ce1a76a520454025da563cbf3c63d648",
+  "prompts": {},
+  "humans": {
+    "h_e3804906c674bd": {
+      "author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
