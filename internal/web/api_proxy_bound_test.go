@@ -5,7 +5,6 @@ package web
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -57,8 +56,8 @@ func TestAPIProxyUnderTheBound(t *testing.T) {
 	webLogs := &syncBuf{}
 	run := func(apiURL string) (*http.Response, time.Duration) {
 		logger := slog.New(slog.NewTextHandler(webLogs, nil))
-		s := New(nil, config.WebConfig{APIInternalURL: apiURL}, nil, "", logger)
-		s.sessions["proxy-test"] = &Session{UserID: 1, LoginName: "proxy-test", ExpiresAt: time.Now().Add(time.Hour)}
+		s := New(nil, config.WebConfig{APIInternalURL: apiURL}, "", logger)
+		plantSession(t, s, "proxy-test", &Session{UserID: 1, LoginName: "proxy-test", ExpiresAt: time.Now().Add(time.Hour)})
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
@@ -72,6 +71,7 @@ func TestAPIProxyUnderTheBound(t *testing.T) {
 			t.Fatal(err)
 		}
 		req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "proxy-test"})
+		csrf(req) // the session's form token (stage 2f)
 		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -108,7 +108,7 @@ func TestAPIProxyUnderTheBound(t *testing.T) {
 // 15 s ResponseHeaderTimeout survived, because the chain test's 500 ms bound
 // never let a 15 s wait race it. The proxy's transport must set none.
 func TestAPIProxyHasNoWaitOfItsOwn(t *testing.T) {
-	s := New(nil, config.WebConfig{APIInternalURL: "http://127.0.0.1:8383"}, nil, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := New(nil, config.WebConfig{APIInternalURL: "http://127.0.0.1:8383"}, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rp, ok := s.apiProxy.(*httputil.ReverseProxy)
 	if !ok {
 		t.Fatalf("apiProxy is %T; this pin reads its transport", s.apiProxy)
@@ -139,60 +139,6 @@ func TestOAuthFailureOnAnEndedRequest(t *testing.T) {
 	s.logOAuthFailure(context.Background(), "github", "exchange", fmt.Errorf("x: %w", context.DeadlineExceeded))
 	if !strings.Contains(logs.String(), "level=ERROR") || !strings.Contains(logs.String(), "bound=30s") {
 		t.Errorf("the callback bound's own expiry must stay ERROR naming it:\n%s", logs.String())
-	}
-}
-
-// errEmailLookup answers every lookup with one error.
-type errEmailLookup struct{ err error }
-
-func (e errEmailLookup) GetUserEmail(context.Context, int) (string, error) { return "", e.err }
-func (e errEmailLookup) GetUserLivePendingEmail(context.Context, int) (string, error) {
-	return "", e.err
-}
-
-// TestDashboardEmailGateOnAnEndedRequest — NET-6 review r5 F2: the gate
-// logs through a `logger` parameter, which the handler-logging ratchet did
-// not see; a request ended by http_timeout_seconds logged WARN "could not
-// read the user's email … context deadline exceeded". The request's end is
-// Debug; the same error on a live request is still WARN (r5 F1).
-func TestDashboardEmailGateOnAnEndedRequest(t *testing.T) {
-	err := fmt.Errorf("q: %w", context.DeadlineExceeded)
-	for _, tc := range []struct {
-		name     string
-		ended    bool
-		wantWarn bool
-	}{{"ended request", true, false}, {"live request", false, true}} {
-		var logs strings.Builder
-		ctx := context.Background()
-		if tc.ended {
-			c, cancel := context.WithCancel(ctx)
-			cancel()
-			ctx = c
-		}
-		r := httptest.NewRequest(http.MethodGet, "/dashboard", nil).WithContext(ctx)
-		dashboardEmailGate(ctx, errEmailLookup{err}, confirmationPolicy{}, slog.New(slog.NewTextHandler(&logs, nil)), r, 7)
-		if got := strings.Contains(logs.String(), "level=WARN"); got != tc.wantWarn {
-			t.Errorf("%s: WARN logged = %v; want %v:\n%s", tc.name, got, tc.wantWarn, logs.String())
-		}
-	}
-}
-
-// TestConfirmationSendFailureIsLoggedAfterTheClientLeft — NET-6 review r6
-// F2: the SMTP send takes no context, so its failure can never be the
-// request's end; wrapped in LogFailure it dropped to Debug whenever nginx
-// had already given up on the request (an SMTP dial can outlast nginx's
-// 60 s). It is a WARN regardless.
-func TestConfirmationSendFailureIsLoggedAfterTheClientLeft(t *testing.T) {
-	gone, cancel := context.WithCancel(context.Background())
-	cancel()
-	var logs strings.Builder
-	r := httptest.NewRequest("POST", "/account/email", strings.NewReader("email=user%40example.com")).WithContext(gone)
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	st := &fakeEmailStore{}
-	m := &fakeConfirmMailer{site: "https://aveloxis.io", enabled: true, sendErr: errors.New("dial tcp: i/o timeout")}
-	submitAccountEmail(gone, st, confirmationPolicy{mailer: m}, slog.New(slog.NewTextHandler(&logs, nil)), r, &Session{UserID: 7, LoginName: "alice"})
-	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "failed to send confirmation email") {
-		t.Errorf("an SMTP failure must be a WARN even after the client left:\n%s", logs.String())
 	}
 }
 
@@ -233,35 +179,3 @@ func rewriteTo(base string, next http.RoundTripper) http.RoundTripper {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-
-// ctxClearStore fails the clean-up when its context is done, like a real
-// store call on a cancelled context.
-type ctxClearStore struct{ *fakeEmailStore }
-
-func (c ctxClearStore) ClearUserPendingEmailIf(ctx context.Context, userID int, email string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return c.fakeEmailStore.ClearUserPendingEmailIf(ctx, userID, email)
-}
-
-// TestPendingEmailIsClearedAfterTheClientLeft — NET-6 review r7 F1: when
-// the confirmation send fails after the request ended (an SMTP dial can
-// outlast nginx and the bound), the clean-up ran on the cancelled request
-// context, failed at once, and was logged at Debug — leaving the pending
-// address set, so the dashboard kept announcing a link that was never
-// sent. The clean-up belongs to a write that already committed: it runs
-// detached from the request, bounded on its own.
-func TestPendingEmailIsClearedAfterTheClientLeft(t *testing.T) {
-	gone, cancel := context.WithCancel(context.Background())
-	cancel()
-	var logs strings.Builder
-	r := httptest.NewRequest("POST", "/account/email", strings.NewReader("email=user%40example.com")).WithContext(gone)
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	st := ctxClearStore{&fakeEmailStore{}}
-	m := &fakeConfirmMailer{site: "https://aveloxis.io", enabled: true, sendErr: errors.New("dial tcp: i/o timeout")}
-	submitAccountEmail(gone, st, confirmationPolicy{mailer: m}, slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})), r, &Session{UserID: 7, LoginName: "alice"})
-	if len(st.clears) != 1 || strings.Contains(logs.String(), "failed to clear the pending email") {
-		t.Errorf("the pending address must be cleared even after the client left (clears %v):\n%s", st.clears, logs.String())
-	}
-}

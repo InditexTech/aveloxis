@@ -25,11 +25,11 @@ func TestWebTrustedProxyDecidesTheSignupAddress(t *testing.T) {
 		return r
 	}
 	set := loadConfigJSON(t, `{"web": {"trusted_proxy": "127.0.0.1"}}`)
-	if got := newWebServer(nil, set, nil, logger).SignupAddress(req()).String(); got != "198.51.100.1" {
+	if got := newWebServer(nil, set, logger).SignupAddress(req()).String(); got != "198.51.100.1" {
 		t.Errorf("web.trusted_proxy 127.0.0.1: the sign-up quota counts %q; want 198.51.100.1", got)
 	}
 	empty := loadConfigJSON(t, `{"web": {"trusted_proxy": ""}}`)
-	if got := newWebServer(nil, empty, nil, logger).SignupAddress(req()).String(); got != "127.0.0.1" {
+	if got := newWebServer(nil, empty, logger).SignupAddress(req()).String(); got != "127.0.0.1" {
 		t.Errorf("web.trusted_proxy empty: the sign-up quota counts %q; want the peer 127.0.0.1", got)
 	}
 }

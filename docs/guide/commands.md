@@ -85,7 +85,6 @@ The `web` command has no CLI flags. All settings come from the `web` section of 
 |---|---|---|---|
 | `web.addr` | string | `":8082"` | Listen address for the web server. |
 | `web.base_url` | string | `"http://localhost:8082"` | External URL used to construct OAuth callback URLs. |
-| `web.session_secret` | string | `""` | Reserved; not read today (sessions are random in-process tokens). Set a random string anyway. |
 | `web.dev_mode` | bool | `false` | Local HTTP development: cookies without `Secure`, loopback confirmation links. Never in production. |
 | `web.api_internal_url` | string | `"http://127.0.0.1:8383"` | Where `web` proxies `/api/*`; must follow `api.addr`. |
 | `web.spa_url` | string | `""` | The origin of a separate front end whose `?next=` the login flow may honor; empty otherwise. |
@@ -109,7 +108,7 @@ The `web` command has no CLI flags. All settings come from the `web` section of 
 - Group detail pages display repos 25 per page with pagination controls. A case-insensitive search box filters by repo name, owner, or URL.
 - Repos added through the web GUI are inserted into the same collection queue used by `aveloxis add-repo`.
 - When a user adds a GitHub org or GitLab group, a `user_org_requests` row is created. A background task scans tracked orgs every 4 hours to discover and queue new repos.
-- Sessions are stored in-memory with a 24-hour expiry. Restarting the process clears all sessions.
+- Sessions are rows of `aveloxis_ops.user_session_tokens` (hashed; 24-hour expiry, since 0.29.102). Restarting the process signs nobody out.
 - Runs as a separate process from `aveloxis serve`. Both share the database.
 
 ### Examples
@@ -306,7 +305,8 @@ aveloxis add-repo https://github.com/chaoss/augur
 # Single GitLab repo (including nested subgroups)
 aveloxis add-repo https://gitlab.com/group/subgroup/project
 
-# GitHub organization (adds all repos in the org)
+# GitHub organization: registered as an org group; serve lists its
+# repositories on its next org refresh (collection.org_refresh_hours)
 aveloxis add-repo https://github.com/chaoss
 
 # Multiple repos at once
@@ -325,7 +325,7 @@ aveloxis add-repo --from-augur
 
 - URLs containing `github.com` are treated as GitHub
 - URLs containing `gitlab` in the hostname are treated as GitLab
-- Hostnames listed in `gitlab.gitlab_hosts` in the config are treated as GitLab
+- A URL under the configured GitLab instance's web URL (`gitlab.base_url` without its `/api/v4`, an install under a sub-path included) is treated as GitLab; the `gitlab_hosts` key of releases before 0.29.100 was never read and is reported as ignored at start
 
 ---
 

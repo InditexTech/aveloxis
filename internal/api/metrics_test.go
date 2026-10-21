@@ -6,7 +6,9 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 // All metric endpoint tests verify parameter validation and route registration.
@@ -238,33 +240,46 @@ func TestParsePeriod_Valid(t *testing.T) {
 	}
 }
 
+// The Augur window (stage 1b): day-aligned defaults — the year before
+// today's UTC midnight through the end of today — so hi is always a UTC
+// midnight and the store's `< hi` is exact.
 func TestParseDateRange_Defaults(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
-	begin, end := parseDateRange(r)
-	if begin.IsZero() || end.IsZero() {
-		t.Error("default dates should not be zero")
+	begin, end, err := parseDateRange(r)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !begin.Before(end) {
-		t.Error("begin should be before end")
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	if !begin.Equal(today.AddDate(-1, 0, 0)) && !begin.Equal(today.AddDate(0, 0, -1).AddDate(-1, 0, 0)) { // a test running across midnight
+		t.Errorf("default begin = %v, want a year before today's UTC midnight", begin)
+	}
+	if !end.Equal(today.AddDate(0, 0, 1)) && !end.Equal(today.AddDate(0, 0, 2)) {
+		t.Errorf("default end = %v, want the midnight after today (UTC)", end)
 	}
 }
 
+// A given end_date is inclusive (D4): the bound handed to the store is the
+// midnight after it.
 func TestParseDateRange_Custom(t *testing.T) {
 	r := httptest.NewRequest("GET", "/?begin_date=2023-01-01&end_date=2023-12-31", nil)
-	begin, end := parseDateRange(r)
-	if begin.Year() != 2023 || begin.Month() != 1 || begin.Day() != 1 {
+	begin, end, err := parseDateRange(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !begin.Equal(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("begin = %v, want 2023-01-01", begin)
 	}
-	if end.Year() != 2023 || end.Month() != 12 || end.Day() != 31 {
-		t.Errorf("end = %v, want 2023-12-31", end)
+	if !end.Equal(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("end = %v, want 2024-01-01 (the midnight after the inclusive 2023-12-31)", end)
 	}
 }
 
+// D7: a date that does not parse is an error (a 400), never a default.
 func TestParseDateRange_InvalidDates(t *testing.T) {
-	r := httptest.NewRequest("GET", "/?begin_date=not-a-date&end_date=also-bad", nil)
-	begin, end := parseDateRange(r)
-	// Should fall back to defaults (not zero).
-	if begin.IsZero() || end.IsZero() {
-		t.Error("invalid dates should use defaults, not zero")
+	for _, q := range []string{"begin_date=not-a-date", "end_date=also-bad", "begin_date=2023-02-30", "end_date=2023-1-1"} {
+		r := httptest.NewRequest("GET", "/?"+q, nil)
+		if _, _, err := parseDateRange(r); err == nil || !strings.Contains(err.Error(), "want YYYY-MM-DD") {
+			t.Errorf("?%s: err = %v; want the date refusal", q, err)
+		}
 	}
 }

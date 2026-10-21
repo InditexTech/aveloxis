@@ -1,0 +1,170 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aveloxis - Golden group</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/avx.js"></script>
+</head>
+<body>
+<div class="nav">
+<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
+<div class="nav-user">
+<img src="https://avatars.example/7.png" alt="">
+<span>golden</span>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value=""><button type="submit" class="nav-link">Logout</button></form>
+</div>
+</div>
+<div class="breadcrumb">
+<a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">/</span><span class="current">Golden group</span>
+</div>
+<div class="container">
+<div class="card">
+<h2>Golden group</h2>
+
+
+
+
+
+
+<p style="color:#735c0f;background:#fffbdd;padding:8px;border-radius:4px;margin:12px 0">1 repository is waiting for an administrator&#39;s approval, and will be added to the group and queued for collection when approved.</p>
+<p style="color:#735c0f;background:#fffbdd;padding:8px;border-radius:4px;margin:12px 0">That organization is waiting for an administrator&#39;s approval; its repositories are added to the group when approved.</p>
+
+<div class="section">
+<h3>Add Repositories</h3>
+<p style="color:#586069;font-size:13px;margin-bottom:8px">Paste one or more repository URLs, one per line.</p>
+<form method="POST" action="/groups/add-repo">
+<input type="hidden" name="csrf_token" value="">
+<input type="hidden" name="group_id" value="1">
+<textarea name="repo_urls" rows="4" placeholder="https://github.com/owner/repo1
+https://github.com/owner/repo2
+https://gitlab.com/group/project" style="width:100%;padding:8px 12px;border:1px solid #d1d5da;border-radius:6px;font-size:14px;font-family:inherit;resize:vertical"></textarea>
+<div style="margin-top:8px"><button type="submit" class="btn btn-primary">Add Repos</button></div>
+</form>
+</div>
+
+<div class="section">
+<h3>Add a GitHub Organization or GitLab Group</h3>
+<p style="color:#586069;font-size:13px;margin-bottom:8px">All repos in the org will be added and automatically updated when new repos appear.</p>
+<form method="POST" action="/groups/add-org" class="form-row">
+<input type="hidden" name="csrf_token" value="">
+<input type="hidden" name="group_id" value="1">
+<input type="url" name="org_url" placeholder="https://github.com/chaoss" required>
+<button type="submit" class="btn btn-primary">Add Org</button>
+</form>
+</div>
+
+
+<div class="section">
+<h3>Tracked Organizations</h3>
+<table>
+<tr><th>Organization</th><th>Platform</th><th>Last Scanned</th></tr>
+
+<tr>
+<td><a href="https://github.com/example">example</a></td>
+<td><span class="badge badge-github">GitHub</span></td>
+<td>2026-10-17 12:30</td>
+</tr>
+
+</table>
+</div>
+
+
+<div class="section" id="grp-compare-card">
+<h3>Compare Repositories</h3>
+<p style="color:#586069;font-size:13px;margin-bottom:8px">Search and select up to 5 repositories to compare activity charts side-by-side.</p>
+
+<form id="grp-compare-form" action="/compare" method="GET" data-search-widget data-prefix="grp" style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
+<div style="position:relative;flex:1;min-width:250px">
+<input type="text" id="grp-repo-search" placeholder="Type to search repositories..." autocomplete="off" style="width:100%">
+<div id="grp-search-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid #d1d5da;border-top:none;border-radius:0 0 6px 6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto;z-index:100"></div>
+</div>
+<input type="hidden" id="grp-repo-ids" name="repos" value="">
+<button type="submit" class="btn btn-primary">Compare</button>
+</form>
+<div id="grp-selected" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
+<div id="grp-search-msg" class="form-msg" hidden></div>
+<script src="/static/repo-search.js"></script>
+
+</div>
+
+<div class="section">
+<h3>Repositories (1)</h3>
+
+<form method="GET" action="/groups/1" class="search-form">
+<input type="search" name="q" placeholder="Search repositories..." value="gold">
+<button type="submit" class="btn btn-primary">Search</button>
+<a href="/groups/1" class="btn" style="border:1px solid #d1d5da">Clear</a>
+</form>
+
+
+<p class="result-info">Showing 1 of 1 repositories matching "gold"</p>
+
+
+
+<div>
+<table class="tbl-stack" style="table-layout:auto;width:100%">
+<thead>
+<tr><th style="min-width:200px">Repository</th><th>Owner</th>
+<th style="text-align:right">Issues</th><th style="text-align:right;color:#999">Meta</th>
+<th style="text-align:right">PRs</th><th style="text-align:right;color:#999">Meta</th>
+<th style="text-align:right">Commits</th><th style="text-align:right;color:#999">Meta</th>
+<th>SBOM</th><th>Remove</th></tr>
+</thead>
+<tbody>
+
+<tr>
+<td data-label="Repository"><a href="/groups/1/repos/2" title="example/golden">golden</a></td>
+<td data-label="Owner">example</td>
+<td data-label="Issues" style="text-align:right">3</td><td data-label="Issues (meta)" style="text-align:right;color:#999;font-size:0.85em">3</td>
+<td data-label="PRs" style="text-align:right">4</td><td data-label="PRs (meta)" style="text-align:right;color:#999;font-size:0.85em">4</td>
+<td data-label="Commits" style="text-align:right">10</td><td data-label="Commits (meta)" style="text-align:right;color:#999;font-size:0.85em">10</td>
+<td data-label="SBOM">
+<a href="/groups/1/repos/2/sbom?format=cyclonedx" class="btn" style="font-size:11px;padding:2px 6px" title="Download CycloneDX SBOM">CDX</a>
+<a href="/groups/1/repos/2/sbom?format=spdx" class="btn" style="font-size:11px;padding:2px 6px" title="Download SPDX SBOM">SPDX</a>
+</td>
+<td data-label="Remove">
+<a href="/groups/1/repos/2/remove" class="btn btn-danger">Remove</a>
+</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+
+
+<div class="pagination">
+
+<a href="/groups/1?page=1&q=gold" title="First page">First</a>
+<a href="/groups/1?page=1&q=gold">Previous</a>
+
+
+
+
+<a href="/groups/1?page=1&q=gold">1</a>
+
+
+
+<span class="current-page">2</span>
+
+
+
+<a href="/groups/1?page=3&q=gold">3</a>
+
+
+
+
+<a href="/groups/1?page=3&q=gold">Next</a>
+<a href="/groups/1?page=3&q=gold" title="Last page">Last</a>
+
+</div>
+
+
+
+</div>
+</div>
+</div>
+</body></html>

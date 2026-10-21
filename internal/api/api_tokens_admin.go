@@ -20,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/db"
 )
 
@@ -53,7 +54,7 @@ func (s *Server) handleAdminAPITokens(w http.ResponseWriter, r *http.Request) {
 	if tokens == nil {
 		tokens = []db.APIToken{}
 	}
-	jsonResponse(w, map[string]any{"tokens": tokens, "settings": settings})
+	s.writeJSON(w, r, map[string]any{"tokens": tokens, "settings": settings})
 }
 
 // POST /api/v1/admin/api-tokens {user_id, label, lifetime_days?, rate_limit_per_hour?, rate_limit_per_day?}
@@ -71,11 +72,11 @@ func (s *Server) handleAdminAPITokenGrant(w http.ResponseWriter, r *http.Request
 		RateLimitPerHour *int64 `json:"rate_limit_per_hour"`
 		RateLimitPerDay  *int64 `json:"rate_limit_per_day"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {user_id, label, lifetime_days?, rate_limit_per_hour?, rate_limit_per_day?}")
 		return
 	}
-	if body.UserID <= 0 {
+	if body.UserID <= 0 || body.UserID > admin.MaxUserID { // users.user_id is int4 (58 §7 item 19: a larger value was a 500)
 		writeAuthError(w, http.StatusBadRequest, "user_id names the account the token authenticates as")
 		return
 	}
@@ -120,7 +121,7 @@ func (s *Server) handleAdminAPITokenGrant(w http.ResponseWriter, r *http.Request
 		UserID: body.UserID, Label: body.Label, CreatedBy: info.UserID,
 		Lifetime: time.Duration(days) * 24 * time.Hour, RateLimitPerHour: int(limit), RateLimitPerDay: int(daily),
 	})
-	if errors.Is(err, db.ErrAPITokenOwnerNotFound) {
+	if errors.Is(err, db.ErrUserNotFound) {
 		writeAuthError(w, http.StatusBadRequest, "no account with that user_id")
 		return
 	}
@@ -166,7 +167,7 @@ func (s *Server) handleAdminAPITokenRevoke(w http.ResponseWriter, r *http.Reques
 		s.auth.invalidateAll()
 	}
 	s.logger.Info("API token revoked", "token_id", id, "by", info.UserID)
-	jsonResponse(w, map[string]any{"token_id": id, "revoked": true})
+	s.writeJSON(w, r, map[string]any{"token_id": id, "revoked": true})
 }
 
 // GET /api/v1/admin/api-token-settings
@@ -179,7 +180,7 @@ func (s *Server) handleAdminAPITokenSettings(w http.ResponseWriter, r *http.Requ
 		s.serverError(w, r, "handleAdminAPITokenSettings", err)
 		return
 	}
-	jsonResponse(w, settings)
+	s.writeJSON(w, r, settings)
 }
 
 // POST /api/v1/admin/api-token-settings {default_rate_limit_per_hour, default_rate_limit_per_day?, default_lifetime_days}
@@ -196,7 +197,7 @@ func (s *Server) handleAdminAPITokenSettingsUpdate(w http.ResponseWriter, r *htt
 		DefaultRateLimitPerDay  *int64 `json:"default_rate_limit_per_day"`
 		DefaultLifetimeDays     *int64 `json:"default_lifetime_days"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {default_rate_limit_per_hour, default_rate_limit_per_day?, default_lifetime_days}")
 		return
 	}
@@ -232,7 +233,7 @@ func (s *Server) handleAdminAPITokenSettingsUpdate(w http.ResponseWriter, r *htt
 	}
 	s.logger.Info("API token defaults changed", "default_rate_limit_per_hour", saved.DefaultRateLimitPerHour,
 		"default_rate_limit_per_day", saved.DefaultRateLimitPerDay, "default_lifetime_days", saved.DefaultLifetimeDays, "by", info.UserID)
-	jsonResponse(w, map[string]any{"default_rate_limit_per_hour": saved.DefaultRateLimitPerHour,
+	s.writeJSON(w, r, map[string]any{"default_rate_limit_per_hour": saved.DefaultRateLimitPerHour,
 		"default_rate_limit_per_day": saved.DefaultRateLimitPerDay, "default_lifetime_days": saved.DefaultLifetimeDays})
 }
 

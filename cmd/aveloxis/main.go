@@ -8,7 +8,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,7 +26,6 @@ import (
 	"time"
 
 	"github.com/aveloxis/aveloxis/internal/api"
-	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/collector"
 	"github.com/aveloxis/aveloxis/internal/config"
 	"github.com/aveloxis/aveloxis/internal/db"
@@ -235,6 +233,7 @@ func runServe(cfgPath, monitorAddr string, workers int, useAugurKeys, allowSecon
 	if err := store.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrating database: %w", err)
 	}
+	seedCapacityContact(ctx, store, cfg, logger)
 	store.LogCapacityInForce(ctx, "serve")
 
 	ghKeys, glKeys, err := loadKeys(ctx, cfg, store, useAugurKeys, logger)
@@ -255,7 +254,9 @@ func runServe(cfgPath, monitorAddr string, workers int, useAugurKeys, allowSecon
 		// (v0.27.12 operator vulnerability digest).
 		Mail: &cfg.Mail,
 		// The gitlab block: its base_url names the one instance the
-		// GitLab keys (glKeys, above) may be sent to (v0.29.11).
+		// GitLab keys (glKeys, above) may be sent to (v0.29.11) and, since
+		// 0.29.100, the instance whose URLs classify as GitLab (the web
+		// base is the classifiers' hint).
 		GitLab: &cfg.GitLab,
 		// The github block, for the same reason (v0.29.57): its base_url
 		// names the host ghKeys may be sent to. Without it the scheduler's
@@ -518,7 +519,7 @@ func runCollect(cfgPath string, repoURLs []string, full, useAugurKeys bool) erro
 	glClient := gitlab.New(cfg.GitLab.BaseURL, glKeys, logger)
 
 	for _, repoURL := range repoURLs {
-		client, owner, repo, err := collector.ClientForRepo(repoURL, ghClient, glClient)
+		client, owner, repo, err := collector.ClientForRepo(repoURL, platform.GitLabHints(cfg.GitLab.BaseURL), ghClient, glClient)
 		if err != nil {
 			logger.Error("skipping repo", "url", platform.RedactURLUserinfo(repoURL), "error", err)
 			continue
@@ -668,15 +669,10 @@ func runAddRepo(cfgPath string, repoURLs []string, priority int) error {
 	// add-repo trusts that the operator has already run
 	// `aveloxis migrate` once for this database.
 
-	ghKeys, glKeys, err := loadKeys(ctx, cfg, store, false, logger)
-	if err != nil {
-		return fmt.Errorf("loading API keys: %w", err)
-	}
-
 	refusedURLs := 0
 	for _, repoURL := range repoURLs {
 		// Check if this is an org/group URL instead of a repo URL.
-		if isOrg, host, orgName, plat := isOrgURL(repoURL, cfg.GitHub.GitHubAPIBase()); isOrg {
+		if isOrg, _, orgName, plat := isOrgURL(repoURL, cfg.GitHub.GitHubAPIBase()); isOrg {
 			logger.Info("expanding organization", "org", orgName, "platform", plat)
 
 			// Create a repo_group for this org so the refresh job can re-scan it later.
@@ -700,71 +696,22 @@ func runAddRepo(cfgPath string, repoURLs []string, priority int) error {
 				continue
 			}
 			if err != nil {
-				logger.Warn("failed to create repo group for org", "org", orgName, "error", err)
-			}
-
-			var repos []orgRepo
-			switch plat {
-			case model.PlatformGitHub:
-				// The configured host, not a literal: these are the
-				// deployment's keys, and add-repo on an org is the CLI half
-				// of the same leak the scheduler's clients had (v0.29.57).
-				ghHTTP := platform.NewHTTPClient(cfg.GitHub.GitHubAPIBase(), ghKeys, logger, platform.AuthGitHub)
-				repos, err = listGitHubOrgRepos(ctx, ghHTTP, orgName)
-			case model.PlatformGitLab:
-				// v0.29.11: GitLab keys only ever go to the configured
-				// instance (platform.GitLabAPIBaseForHost). isOrgURL does not
-				// currently classify any URL as a GitLab group, so this arm
-				// is unreachable today; it is guarded like the scheduler's
-				// group refresh so enabling it cannot leak keys.
-				apiBase, ok := platform.GitLabAPIBaseForHost(cfg.GitLab.BaseURL, host)
-				if !ok {
-					err = fmt.Errorf("GitLab group %q is on %s, not the configured GitLab instance (gitlab.base_url %q) — GitLab API keys are only sent to that instance's host", orgName, host, cfg.GitLab.BaseURL)
-					break
-				}
-				glHTTP := platform.NewHTTPClient(apiBase, glKeys, logger, platform.AuthGitLab)
-				repos, err = listGitLabGroupRepos(ctx, glHTTP, orgName)
-			}
-			if err != nil {
-				logger.Error("failed to list org repos", "org", orgName, "error", err)
+				logger.Error("organization not registered", "org", orgName, "error", err)
 				continue
 			}
-			logger.Info("found repos in organization", "org", orgName, "count", len(repos))
-
-			// Bridge legacy repo_groups discovery into modern
-			// aveloxis_ops.user_repos so any user_group tracking this
-			// org (via user_org_requests.org_url) gets every repo
-			// (including forks — listGitHub/GitLab use ?type=all)
-			// linked. Hoisted out of the per-repo loop so the lookup
-			// runs once per scan.
-			userGroupIDs, ugErr := store.GetUserGroupIDsForOrgURL(ctx, repoURL)
-			if ugErr != nil {
-				logger.Warn("failed to look up user_groups for org", "org_url", platform.RedactURLUserinfo(repoURL), "error", ugErr)
-			}
-			for _, r := range repos {
-				addOneRepoWithGroup(ctx, store, logger, r, plat, priority, groupID)
-				if len(userGroupIDs) == 0 {
-					continue
-				}
-				repoID, ferr := store.FindRepoByURL(ctx, r.URL)
-				if ferr != nil || repoID == 0 {
-					continue
-				}
-				for _, gid := range userGroupIDs {
-					if _, err := store.AddOrgRepoToGroupByID(ctx, gid, repoID); err != nil {
-						if _, capped := capacity.AsExceeded(err); capped {
-							continue // the account's repository quota: the store logs it once a day
-						}
-						logger.Warn("failed to link repo into user_repos",
-							"group_id", gid, "repo_id", repoID, "error", err)
-					}
-				}
-			}
+			// Registered only (stage 1 of summary/59, N13: the CLI lists
+			// nothing itself; serve's org refresh enumerates every registered
+			// organization through the one lister on its interval, exactly
+			// as the foundation loaders are picked up). Its repositories
+			// reach the queue then, at the default priority.
+			logger.Info("organization registered — serve lists its repositories on its next org refresh", "org", orgName, "platform", plat, "repo_group_id", groupID)
 			continue
 		}
 
-		// Regular repo URL.
-		parsed, err := platform.ParseRepoURL(repoURL)
+		// Regular repo URL — under the configured GitLab instance's web URL
+		// it is a GitLab repository whatever its host name says (the
+		// classifier's hint; round-3 review of 0.29.100).
+		parsed, err := platform.ParseRepoURLWithHints(repoURL, platform.GitLabHints(cfg.GitLab.BaseURL))
 		if errors.Is(err, platform.ErrURLUserinfo) {
 			// Same refusal as the organisation arm above, same exit (round 7:
 			// a refused repo URL exited 0 while a refused org URL did not).
@@ -785,29 +732,6 @@ func runAddRepo(cfgPath string, repoURLs []string, priority int) error {
 	return nil
 }
 
-func addOneRepoWithGroup(ctx context.Context, store *db.PostgresStore, logger *slog.Logger, r orgRepo, plat model.Platform, priority int, groupID int64) {
-	repoID, err := store.UpsertRepo(ctx, &model.Repo{
-		Platform: plat,
-		GitURL:   r.URL,
-		Name:     r.Name,
-		Owner:    r.Owner,
-		GroupID:  groupID,
-		// v0.27.103: the forge numeric ID enables UpsertRepo's
-		// rename-heal (untracked URL + forge-ID hit) and backfills
-		// already-tracked rows via the prefer-nonempty conflict clause.
-		PlatformID: r.ForgeID,
-	})
-	if err != nil {
-		logger.Error("failed to register repo", "url", platform.RedactURLUserinfo(r.URL), "error", err)
-		return
-	}
-	if err := store.EnqueueRepo(ctx, repoID, priority); err != nil {
-		logger.Error("failed to enqueue repo", "url", platform.RedactURLUserinfo(r.URL), "error", err)
-		return
-	}
-	logger.Info("repo added to queue", "url", platform.RedactURLUserinfo(r.URL), "repo_id", repoID, "priority", priority)
-}
-
 func addOneRepo(ctx context.Context, store *db.PostgresStore, logger *slog.Logger, repoURL, owner, name string, plat model.Platform, priority int) {
 	repoID, err := store.UpsertRepo(ctx, &model.Repo{
 		Platform: plat,
@@ -824,101 +748,6 @@ func addOneRepo(ctx context.Context, store *db.PostgresStore, logger *slog.Logge
 		return
 	}
 	logger.Info("repo added to queue", "url", platform.RedactURLUserinfo(repoURL), "repo_id", repoID, "priority", priority)
-}
-
-type orgRepo struct {
-	URL   string
-	Owner string
-	Name  string
-	// ForgeID is the forge's numeric repository ID from the listing
-	// JSON (v0.27.103 — this path was the one org-scan site the
-	// v0.27.102 rename-dedup fix missed). UpsertRepo dedups on it.
-	ForgeID string
-}
-
-// listGitHubOrgRepos calls GET /orgs/{org}/repos to list all public repos.
-func listGitHubOrgRepos(ctx context.Context, http *platform.HTTPClient, org string) ([]orgRepo, error) {
-	var repos []orgRepo
-	page := 1
-	for {
-		path := fmt.Sprintf("/orgs/%s/repos?per_page=100&type=all&page=%d", org, page)
-		resp, err := http.Get(platform.WithoutETag(ctx), path)
-		if err != nil {
-			return repos, err
-		}
-		var items []struct {
-			ID       int64  `json:"id"` // v0.27.103 — rename-proof numeric identity
-			FullName string `json:"full_name"`
-			HTMLURL  string `json:"html_url"`
-			Name     string `json:"name"`
-			Owner    struct {
-				Login string `json:"login"`
-			} `json:"owner"`
-			Archived bool `json:"archived"`
-			Fork     bool `json:"fork"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
-			resp.Body.Close()
-			return repos, err
-		}
-		resp.Body.Close()
-
-		if len(items) == 0 {
-			break
-		}
-		for _, item := range items {
-			repos = append(repos, orgRepo{
-				URL:     item.HTMLURL,
-				Owner:   item.Owner.Login,
-				Name:    item.Name,
-				ForgeID: model.ForgeIDString(item.ID),
-			})
-		}
-		page++
-	}
-	return repos, nil
-}
-
-// listGitLabGroupRepos calls GET /groups/{group}/projects to list all projects.
-func listGitLabGroupRepos(ctx context.Context, http *platform.HTTPClient, group string) ([]orgRepo, error) {
-	var repos []orgRepo
-	page := 1
-	encodedGroup := url.PathEscape(group)
-	for {
-		path := fmt.Sprintf("/groups/%s/projects?per_page=100&include_subgroups=true&page=%d", encodedGroup, page)
-		resp, err := http.Get(platform.WithoutETag(ctx), path)
-		if err != nil {
-			return repos, err
-		}
-		var items []struct {
-			ID                int64  `json:"id"` // v0.27.103 — rename-proof numeric identity
-			PathWithNamespace string `json:"path_with_namespace"`
-			WebURL            string `json:"web_url"`
-			Name              string `json:"name"`
-			Namespace         struct {
-				FullPath string `json:"full_path"`
-			} `json:"namespace"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
-			resp.Body.Close()
-			return repos, err
-		}
-		resp.Body.Close()
-
-		if len(items) == 0 {
-			break
-		}
-		for _, item := range items {
-			repos = append(repos, orgRepo{
-				URL:     item.WebURL,
-				Owner:   item.Namespace.FullPath,
-				Name:    item.Name,
-				ForgeID: model.ForgeIDString(item.ID),
-			})
-		}
-		page++
-	}
-	return repos, nil
 }
 
 func runImportFromAugur(cfgPath string, priority int) error {
@@ -948,8 +777,9 @@ func runImportFromAugur(cfgPath string, priority int) error {
 	var imported, skipped, failed int
 
 	for _, ar := range augurRepos {
-		// Parse the URL to determine platform and owner/repo.
-		parsed, err := platform.ParseRepoURL(ar.RepoGit)
+		// Parse the URL to determine platform and owner/repo (the configured
+		// GitLab instance's URLs are GitLab, by the classifier's hint).
+		parsed, err := platform.ParseRepoURLWithHints(ar.RepoGit, platform.GitLabHints(cfg.GitLab.BaseURL))
 		if err != nil {
 			logger.Warn("skipping unparseable URL", "url", platform.RedactURLUserinfo(ar.RepoGit), "augur_repo_id", ar.RepoID, "error", err)
 			skipped++
@@ -1192,7 +1022,7 @@ func runPrioritize(cfgPath, target string) error {
 	defer store.Close()
 
 	// Parse as a repo URL, then look up the tracked row (never create one).
-	_, parseErr := platform.ParseRepoURL(target)
+	_, parseErr := platform.ParseRepoURLWithHints(target, platform.GitLabHints(cfg.GitLab.BaseURL))
 	if parseErr == nil {
 		repoID, err := trackedRepoID(ctx, store, target)
 		if err != nil {
@@ -1262,7 +1092,7 @@ func runRecollect(cfgPath string, targets []string) error {
 
 	var firstErr error
 	for _, target := range targets {
-		if _, parseErr := platform.ParseRepoURL(target); parseErr != nil {
+		if _, parseErr := platform.ParseRepoURLWithHints(target, platform.GitLabHints(cfg.GitLab.BaseURL)); parseErr != nil {
 			logger.Error("could not parse repo URL — skipping", "url", platform.RedactURLUserinfo(target), "error", parseErr)
 			if firstErr == nil {
 				firstErr = parseErr
@@ -1341,7 +1171,11 @@ running migrations.`,
 			// only path that applies a changed definition of theirs.
 			store.SetSupplyChainViewMode(db.MatviewsRebuild)
 			store.SetMigrateNoWait(noWait)
-			return store.Migrate(ctx)
+			if err := store.Migrate(ctx); err != nil {
+				return err
+			}
+			seedCapacityContact(ctx, store, cfg, logger)
+			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&skipViews, "skip-views", false,
@@ -1560,21 +1394,11 @@ Create a GitLab OAuth app at: https://gitlab.com/-/profile/applications`,
 				logger.Info("sign-up escrow: off (web.signup_escrow_recipient is empty); no address is kept past its UTC day")
 			}
 
-			// Load GitHub keys for immediate org scanning (non-fatal for web — it
-			// can still serve the GUI without keys, just can't scan orgs). A
-			// failed read is logged (worklist item 55, review round 1): it is
-			// not "no keys", and org scans stay off until the next start.
-			ghKeys, _, kerr := loadKeys(ctx, cfg, store, false, logger)
-			if kerr != nil && ctx.Err() != nil {
-				return nil // a stop during startup, not a failure
-			}
-			if kerr != nil {
-				logger.Error("API keys could not be loaded — web serves without them (no org scans)", "error", kerr)
-			}
-
+			// The web process loads no forge keys (stage 1 of summary/59,
+			// C2): an org added or approved in the GUI is listed by serve.
 			warnAPIPortMismatch(cfg, logger)
 
-			webServer := newWebServer(store, cfg, ghKeys, logger)
+			webServer := newWebServer(store, cfg, logger)
 			// GitLab accounts from before 0.29.69 carry no instance and
 			// match none at sign-in until this stamps them with the
 			// configured one (final review round 3).
@@ -2259,20 +2083,23 @@ func testMailCmd(cfgPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "test-mail <recipient>",
 		Short: "Send a test email to verify Gmail SMTP credentials",
-		Long: `Reads the mail block from aveloxis.json, runs the same
-ValidateConfig that aveloxis web uses at startup, and attempts a
-single test send to the supplied recipient. Useful immediately
-after configuring Gmail to confirm credentials work before the
-first user signs up.
+		Long: `Reads the mail block from aveloxis.json and attempts a single
+test send to the supplied recipient. Useful immediately after
+configuring Gmail to confirm credentials work before the first user
+signs up. The block's shape was already checked when aveloxis.json
+loaded: a half-filled block, a gmail_user that is not an address, a
+password that is not a 16-letter App Password or a site_url that is
+not a URL stops every command with "invalid config: mail: …" naming
+the field (0.29.100).
 
 Common failures and what they mean:
-  - "mail.gmail_user is not an email address" — gmail_user must
-    be a full address (you@gmail.com or you@yourdomain.com),
-    not a bare domain.
-  - "Google App Passwords are exactly 16 lowercase letters" —
-    you pasted a regular password. Generate an App Password at
-    https://myaccount.google.com/apppasswords (2-Step
-    Verification must be on first).
+  - "invalid config: mail: mail.gmail_user ... is not an email address"
+    — gmail_user must be a full address (you@gmail.com or
+    you@yourdomain.com), not a bare domain.
+  - "invalid config: mail: ... Google App Passwords are exactly 16
+    lowercase letters" — you pasted a regular password. Generate an App Password
+    at https://myaccount.google.com/apppasswords (2-Step Verification
+    must be on first).
   - "535 5.7.8 Username and Password not accepted" from Gmail
     itself — credentials are syntactically valid but Gmail
     rejected them. Most likely an App Password from the wrong
@@ -2284,10 +2111,9 @@ Common failures and what they mean:
 			cfg := loadConfig(*cfgPath, bootLog)
 			logger := newLogger(cfg)
 
+			// No second validation: loadConfig refused an invalid mail block
+			// already (config.Load runs mailer.ValidateConfig, 0.29.100).
 			mc := mailerConfigFrom(cfg)
-			if err := mailer.ValidateConfig(mc); err != nil {
-				return fmt.Errorf("mail config invalid — fix aveloxis.json and try again: %w", err)
-			}
 			m := mailer.New(mc, logger)
 			logger.Info("sending test email", "to", platform.RedactEmail(recipient), "from", platform.RedactEmail(mc.GmailUser))
 			if err := m.Send(recipient, "Aveloxis SMTP test",
@@ -2315,6 +2141,9 @@ func versionCmd() *cobra.Command {
 func loadConfig(cfgPath string, logger *slog.Logger) *config.Config {
 	cfg, err := config.Load(cfgPath)
 	if err == nil {
+		for _, w := range cfg.LoadWarnings() { // a removed key the file still carries (N15)
+			logger.Warn(w, "path", cfgPath)
+		}
 		db.SetProcessCapacitySources(cfg.CapacitySources()) // v0.29.89: every store this process opens
 		return cfg
 	}
@@ -2414,21 +2243,12 @@ func loadKeys(ctx context.Context, cfg *config.Config, store *db.PostgresStore, 
 // process — serve digest, web, api, test-mail — carries the same fields,
 // including OperatorEmail for add-request notifications).
 // TestMailerConfigFromCarriesEveryField checks every field.
-func mailerConfigFrom(cfg *config.Config) mailer.Config {
-	return mailer.Config{
-		GmailUser:        cfg.Mail.GmailUser,
-		GmailAppPassword: cfg.Mail.GmailAppPassword,
-		FromName:         cfg.Mail.FromName,
-		SiteURL:          cfg.Mail.SiteURL,
-		OperatorEmail:    cfg.Mail.OperatorEmail,
-		SPAURL:           cfg.Web.SPAURL,
-	}
-}
+func mailerConfigFrom(cfg *config.Config) mailer.Config { return cfg.MailerConfig() }
 
 // newWebServer builds `aveloxis web`'s server with its mailer attached.
 // TestProcessMailWiring checks the mailer it carries.
-func newWebServer(store *db.PostgresStore, cfg *config.Config, ghKeys *platform.KeyPool, logger *slog.Logger) *web.Server {
-	return web.New(store, cfg.Web, ghKeys, cfg.GitHub.GitHubAPIBase(), logger).WithMailer(mailer.New(mailerConfigFrom(cfg), logger))
+func newWebServer(store *db.PostgresStore, cfg *config.Config, logger *slog.Logger) *web.Server {
+	return web.New(store, cfg.Web, cfg.GitHub.GitHubAPIBase(), logger).WithMailer(mailer.New(mailerConfigFrom(cfg), logger)).WithGitLabAPIBase(cfg.GitLab.BaseURL)
 }
 
 // newMonitorServer, newAPIServer and newWebHTTPServer build the three
@@ -2462,6 +2282,7 @@ func apiOptions(cfg *config.Config, logger *slog.Logger) api.Options {
 		Mailer:              mailer.New(mailerConfigFrom(cfg), logger),
 		AutoApproveAddLimit: cfg.Web.AutoApproveAddLimitValue(),
 		GitHubAPIBase:       cfg.GitHub.GitHubAPIBase(),
+		GitLabAPIBase:       cfg.GitLab.BaseURL,
 		// O11 option 4 (v0.29.71): a per-repository answer is reused within
 		// its collection generation for at most one enrichment interval.
 		ResponseCacheMaxAge: cfg.Collection.EnrichIntervalDuration(),
@@ -2514,3 +2335,20 @@ func (a digestMailerAdapter) SendVulnerabilityDigest(to string, since time.Time,
 // Deliverable forwards the mailer's up-front check so the scheduler can
 // refuse to start a digest that could never be delivered (v0.29.29).
 func (a digestMailerAdapter) Deliverable(to string) error { return a.m.Deliverable(to) }
+
+// seedCapacityContact fills the capacity refusal contact from
+// mail.operator_email on a deployment whose contact was never set (C6,
+// stage 1f of summary/59: new installs take the operator's address or stay
+// empty; the migrate no longer seeds the Aveloxis project's). Runs after
+// every migrate, in serve and `aveloxis migrate`; a failure is logged, the
+// start goes on (the contact is a message's courtesy, not a gate).
+func seedCapacityContact(ctx context.Context, store *db.PostgresStore, cfg *config.Config, logger *slog.Logger) {
+	seeded, err := store.SeedCapacityContact(ctx, cfg.Mail.OperatorEmail)
+	if err != nil {
+		logger.Warn("capacity contact not seeded from mail.operator_email", "error", err)
+		return
+	}
+	if seeded {
+		logger.Info("capacity contact seeded from mail.operator_email — change it on the Capacity page (or POST /api/v1/admin/capacity/contact) if refusals should name another address")
+	}
+}

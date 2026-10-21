@@ -24,6 +24,12 @@ type RepoURL struct {
 	Owner    string // e.g. "torvalds" or "group/subgroup" for GitLab
 	Repo     string // e.g. "linux"
 	Raw      string // original URL
+	// WebBase is the forge instance's web base URL
+	// (model.NormalizeInstanceWebBase): the matched GitLab web base for a
+	// hinted URL, otherwise scheme://host. v0.30.0's field, carried here
+	// since stage 1 of summary/59 so the rebase keeps one shape; the
+	// platform above is only the family (1/2/3).
+	WebBase string
 }
 
 // APIURL returns the base API URL for this repository's platform instance.
@@ -54,14 +60,20 @@ func (r RepoURL) GitLabProjectPath() string {
 //   - GitLab:  https://gitlab.com/group[/subgroup...]/project[.git]
 //   - Self-hosted GitLab: https://gitlab.example.com/group/project
 //
-// For self-hosted instances, use ParseRepoURLWithHints to specify known GitLab hosts.
+// For self-hosted instances, use ParseRepoURLWithHints with the configured
+// GitLab instance's web URL.
 func ParseRepoURL(rawURL string) (RepoURL, error) {
 	return ParseRepoURLWithHints(rawURL, nil)
 }
 
-// ParseRepoURLWithHints parses a repo URL, using gitlabHosts to identify
-// self-hosted GitLab instances that don't have "gitlab" in their hostname.
-func ParseRepoURLWithHints(rawURL string, gitlabHosts map[string]bool) (RepoURL, error) {
+// ParseRepoURLWithHints parses a repo URL, using gitlabWebBases — the
+// configured GitLab instance's web URL (on this release the one derived
+// from gitlab.base_url by GitLabWebBaseForAPI; v0.30 passes every
+// configured instance) — to recognize a self-hosted GitLab whose hostname
+// lacks "gitlab" and an install under a sub-path. A URL under a web base
+// (host and path prefix, longest match) is GitLab with owner/repo taken
+// from the path after the prefix (v0.30.0's rule, stage 1 of summary/59).
+func ParseRepoURLWithHints(rawURL string, gitlabWebBases []string) (RepoURL, error) {
 	rawURL = model.NormalizeRepoGitURL(rawURL) // the stored spelling (follow-up 8)
 
 	// Before url.Parse: its error quotes the input, credential included, and
@@ -79,6 +91,21 @@ func ParseRepoURLWithHints(rawURL string, gitlabHosts map[string]bool) (RepoURL,
 	}
 
 	host := strings.ToLower(u.Host)
+	if base, rest, ok := model.MatchInstanceWebBase(rawURL, gitlabWebBases); ok {
+		parts := strings.Split(rest, "/")
+		if rest == "" || len(parts) < 2 {
+			return RepoURL{}, fmt.Errorf("%w: need at least owner/repo after the GitLab instance URL %s", ErrInvalidRepoURL, base)
+		}
+		return RepoURL{
+			Platform: model.PlatformGitLab,
+			Host:     host,
+			Owner:    strings.Join(parts[:len(parts)-1], "/"),
+			Repo:     parts[len(parts)-1],
+			Raw:      rawURL,
+			WebBase:  base,
+		}, nil
+	}
+
 	path := strings.Trim(u.Path, "/")
 	if path == "" {
 		return RepoURL{}, fmt.Errorf("%w: empty path", ErrInvalidRepoURL)
@@ -89,15 +116,17 @@ func ParseRepoURLWithHints(rawURL string, gitlabHosts map[string]bool) (RepoURL,
 		return RepoURL{}, fmt.Errorf("%w: need at least owner/repo in path", ErrInvalidRepoURL)
 	}
 
-	plat := detectPlatform(host, gitlabHosts)
+	plat := detectPlatform(host)
 	if plat == 0 {
 		return RepoURL{}, fmt.Errorf("%w: host %q", ErrUnknownPlatform, host)
 	}
 
+	webBase, _ := model.NormalizeInstanceWebBase(u.Scheme + "://" + u.Host)
 	result := RepoURL{
 		Platform: plat,
 		Host:     host,
 		Raw:      rawURL,
+		WebBase:  webBase,
 	}
 
 	switch plat {
@@ -134,7 +163,17 @@ func ParseRepoURLWithHints(rawURL string, gitlabHosts map[string]bool) (RepoURL,
 // strings.Contains(url, "github.com") checks it replaces: a URL like
 // https://mirror.example/github.com/x now classifies as generic git.
 func ParseAnyRepoURL(rawURL string) (RepoURL, error) {
-	parsed, err := ParseRepoURLWithHints(rawURL, nil)
+	return ParseAnyRepoURLWithHints(rawURL, nil)
+}
+
+// ParseAnyRepoURLWithHints is ParseAnyRepoURL with the configured GitLab
+// instance's web base(s) (GitLabWebHints): a URL under one is a GitLab
+// repository whatever its host name says — the rule the org scan already
+// applies (round-3 review of 0.29.100: a paste of code.example.org/g/p
+// stored a git-only row while the scan of that instance ingested the same
+// project as GitLab, and a stored row's platform is never rewritten).
+func ParseAnyRepoURLWithHints(rawURL string, gitlabWebBases []string) (RepoURL, error) {
+	parsed, err := ParseRepoURLWithHints(rawURL, gitlabWebBases)
 	if err == nil {
 		return parsed, nil
 	}
@@ -164,18 +203,23 @@ func ParseAnyRepoURL(rawURL string) (RepoURL, error) {
 
 // ParseOrgURL extracts the host and org/group name from an org URL like
 // https://github.com/torvalds or https://gitlab.com/gitlab-org. The org
-// name is the FIRST path segment only (top-level org/group) — matching the
-// historical inline parsers in AddOrgToGroup and scanOrgRepos this
-// consolidates. Schemeless input ("github.com/chaoss") is tolerated
-// because the web org-add path historically accepted it.
+// name is the FIRST path segment only (top-level org/group), the grammar of
+// the legacy repo_groups org rows and the stored user_org_requests.org_name
+// column it was consolidated from (the historical inline parser of
+// AddOrgToGroup; the scan it also served is gone). Schemeless input
+// ("github.com/chaoss") is tolerated because the web org-add path
+// historically accepted it. ParseOrgRef is the classifier (the forge, the
+// instance's web base, GitLab's full group path); this parser is kept apart
+// on purpose (0.29.106 whole-branch review P5): it answers OrgOnGitHubHost
+// for every stored org_url, including rows written under the old grammar,
+// and v0.30's forge-instances design replaces both. The scheme rule is
+// ParseOrgRef's: http or https, nothing a browser or the API cannot reach.
 func ParseOrgURL(rawURL string) (host, orgName string, err error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return "", "", fmt.Errorf("%w: empty URL", ErrInvalidRepoURL)
 	}
-	if !strings.Contains(rawURL, "://") {
-		rawURL = "https://" + rawURL
-	}
+	rawURL = WithDefaultScheme(rawURL)
 	// Refused before url.Parse (whose error quotes the input): this is the
 	// ONE parser behind OrgOnGitHubHost, so both periodic org refreshes and
 	// the eligibility predicate refuse a registered URL carrying credentials
@@ -190,6 +234,9 @@ func ParseOrgURL(rawURL string) (host, orgName string, err error) {
 	if perr != nil {
 		return "", "", fmt.Errorf("%w: %v", ErrInvalidRepoURL, perr)
 	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", "", fmt.Errorf("%w: scheme must be http or https, got %q", ErrInvalidRepoURL, u.Scheme)
+	}
 	if u.Host == "" {
 		return "", "", fmt.Errorf("%w: missing host", ErrInvalidRepoURL)
 	}
@@ -200,15 +247,13 @@ func ParseOrgURL(rawURL string) (host, orgName string, err error) {
 	return strings.ToLower(u.Host), parts[0], nil
 }
 
-// detectPlatform identifies the platform from the hostname.
-func detectPlatform(host string, gitlabHosts map[string]bool) model.Platform {
+// detectPlatform identifies the platform from the hostname (a configured
+// GitLab instance is matched by its web base before this runs).
+func detectPlatform(host string) model.Platform {
 	if host == "github.com" || strings.HasSuffix(host, ".github.com") {
 		return model.PlatformGitHub
 	}
 	if host == "gitlab.com" || strings.Contains(host, "gitlab") {
-		return model.PlatformGitLab
-	}
-	if gitlabHosts != nil && gitlabHosts[host] {
 		return model.PlatformGitLab
 	}
 	// GitHub Enterprise instances don't typically have "github" in the hostname,

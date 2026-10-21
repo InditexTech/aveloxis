@@ -59,22 +59,10 @@ type Config struct {
 	SPAURL string `json:"spa_url"`
 }
 
-// groupPageLink is the link a group email carries to the group's page:
-// the front end's group.html when web.spa_url is set, the web process's
-// /groups/{id} otherwise; with no site configured at all, the placeholder
-// the body always showed (no path: there is nothing to append it to).
-func (m *Mailer) groupPageLink(groupID int64) string {
-	if spa := m.cfg.SPAURL; spa != "" {
-		return fmt.Sprintf("%s/group.html?group=%d", spa, groupID)
-	}
-	if m.cfg.SiteURL != "" {
-		return fmt.Sprintf("%s/groups/%d", m.cfg.SiteURL, groupID)
-	}
-	return "(your Aveloxis site URL)"
-}
-
 // pendingApprovalsLink is the link the operator's add-request notification
-// carries to the approvals queue (groupPageLink's rule).
+// carries to the approvals queue: the front end's page when web.spa_url is
+// set, the web process's /admin/groups/pending otherwise; with no site
+// configured at all, the placeholder the body always showed.
 func (m *Mailer) pendingApprovalsLink() string {
 	if spa := m.cfg.SPAURL; spa != "" {
 		return spa + "/pending-groups.html"
@@ -326,8 +314,8 @@ func sanitizeBodyURL(s string) string { return scrubRunes(s) }
 // scrubUntrusted is the normalizer for untrusted LABEL text in this
 // package, used for header values and body values alike: scrubRunes'
 // filter, then the bodyValueMax cap. Subjects need it as much as bodies:
-// SendGroupApproved puts the same group name in both, and the subject is
-// the first thing the admin reads. A link skips only the cap
+// SendAddRequestDecided puts the same group name in both, and the subject
+// is the first thing the requester reads. A link skips only the cap
 // (sanitizeBodyURL); the To: address skips both, because ParseRecipient
 // validates it instead.
 func scrubUntrusted(s string) string {
@@ -562,26 +550,6 @@ ignore this email — your account email won't change without confirming.
 
 — Aveloxis
 `, sanitizeBodyValue(login), sanitizeBodyURL(confirmURL), DurationPhrase(lifetime))
-	return m.Send(toEmail, subject, body)
-}
-
-// SendGroupApproved is the email sent to the requesting user when
-// an admin approves their pending group. Tells them collection has
-// started and points at the group's detail page.
-func (m *Mailer) SendGroupApproved(toEmail, login, groupName string, groupID int64) error {
-	subject := fmt.Sprintf("Your Aveloxis group '%s' has been approved", sanitizeBodyValue(groupName))
-	link := m.groupPageLink(groupID)
-	body := fmt.Sprintf(`Hello %s,
-
-An administrator has approved your group '%s'. Aveloxis will begin
-collecting data for the repositories you added — first results
-typically appear within an hour, full collection of issues and pull
-requests can take longer for large repos.
-
-View your group: %s
-
-— Aveloxis
-`, sanitizeBodyValue(login), sanitizeBodyValue(groupName), link)
 	return m.Send(toEmail, subject, body)
 }
 

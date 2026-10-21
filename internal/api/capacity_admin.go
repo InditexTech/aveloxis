@@ -12,11 +12,11 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"math"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
@@ -67,7 +67,7 @@ func (s *Server) handleAdminCapacity(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "handleAdminCapacity", err)
 		return
 	}
-	jsonResponse(w, map[string]any{
+	s.writeJSON(w, r, map[string]any{
 		"quotas": list, "contact_email": contact, "signups_per_day": signups, "signup_allowlist": allow,
 		"overrides": overrides, "busiest_today": busiest,
 	})
@@ -84,7 +84,7 @@ func (s *Server) handleAdminCapacityLargest(w http.ResponseWriter, r *http.Reque
 		s.serverError(w, r, "handleAdminCapacityLargest", err)
 		return
 	}
-	jsonResponse(w, map[string]any{"accounts": out})
+	s.writeJSON(w, r, map[string]any{"accounts": out})
 }
 
 // POST /api/v1/admin/capacity/quotas/{name} {allowed, mode} — only a quota
@@ -95,16 +95,18 @@ func (s *Server) handleAdminCapacityQuota(w http.ResponseWriter, r *http.Request
 		return
 	}
 	name := r.PathValue("name")
+	// The route's own existence first (58 §7 item 12: a bad body to an
+	// unknown quota answered 400).
+	if _, known := capacity.Shipped[name]; !known {
+		writeAuthError(w, http.StatusNotFound, "no quota named "+strconv.Quote(name))
+		return
+	}
 	var body struct {
 		Allowed *int64 `json:"allowed"`
 		Mode    string `json:"mode"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {allowed, mode}")
-		return
-	}
-	if _, known := capacity.Shipped[name]; !known {
-		writeAuthError(w, http.StatusNotFound, "no quota named "+strconv.Quote(name))
 		return
 	}
 	mode, err := capacity.ParseMode(body.Mode)
@@ -121,7 +123,7 @@ func (s *Server) handleAdminCapacityQuota(w http.ResponseWriter, r *http.Request
 		return
 	}
 	s.logger.Info("capacity quota changed", "quota", name, "allowed", *body.Allowed, "mode", string(mode), "by", info.UserID)
-	jsonResponse(w, map[string]any{"name": name, "allowed": *body.Allowed, "mode": mode})
+	s.writeJSON(w, r, map[string]any{"name": name, "allowed": *body.Allowed, "mode": mode})
 }
 
 // POST /api/v1/admin/capacity/contact {contact_email}
@@ -131,13 +133,14 @@ func (s *Server) handleAdminCapacityContact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var body struct {
-		ContactEmail string `json:"contact_email"`
+		ContactEmail *string `json:"contact_email"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
-		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {contact_email}")
+	// The field is required (58 §7 item 18: `{}` cleared the address).
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil || body.ContactEmail == nil {
+		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {contact_email} (an empty string clears it)")
 		return
 	}
-	err := s.store.SetCapacityContact(r.Context(), body.ContactEmail, info.UserID)
+	err := s.store.SetCapacityContact(r.Context(), *body.ContactEmail, info.UserID)
 	if errors.Is(err, db.ErrInvalidCapacitySettings) {
 		writeAuthError(w, http.StatusBadRequest, "contact_email must be an email address of at most "+strconv.Itoa(db.MaxContactEmailBytes)+" bytes, or empty")
 		return
@@ -147,7 +150,7 @@ func (s *Server) handleAdminCapacityContact(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.logger.Info("capacity contact address changed", "by", info.UserID)
-	jsonResponse(w, map[string]any{"saved": true})
+	s.writeJSON(w, r, map[string]any{"saved": true})
 }
 
 // GET /api/v1/admin/capacity/accounts?login=… or ?user_id=… — one
@@ -162,8 +165,8 @@ func (s *Server) handleAdminCapacityAccount(w http.ResponseWriter, r *http.Reque
 	var a db.CapacityAccount
 	var err error
 	if raw := r.URL.Query().Get("user_id"); raw != "" {
-		id, perr := strconv.Atoi(raw)
-		if perr != nil || id <= 0 || id > math.MaxInt32 { // users.user_id is int4 (round 6 R6-d)
+		id, perr := admin.ParseUserID(raw) // users.user_id is int4 (round 6 R6-d); the one rule since 0.29.103
+		if perr != nil {
 			writeAuthError(w, http.StatusBadRequest, "user_id must be a positive integer")
 			return
 		}
@@ -171,7 +174,7 @@ func (s *Server) handleAdminCapacityAccount(w http.ResponseWriter, r *http.Reque
 	} else {
 		a, err = s.store.CapacityAccountByLogin(r.Context(), r.URL.Query().Get("login"))
 	}
-	if errors.Is(err, db.ErrNoSuchUser) {
+	if errors.Is(err, db.ErrUserNotFound) {
 		writeAuthError(w, http.StatusNotFound, "no such account")
 		return
 	}
@@ -195,7 +198,7 @@ func (s *Server) handleAdminCapacityAccount(w http.ResponseWriter, r *http.Reque
 		s.serverError(w, r, "handleAdminCapacityAccount", err)
 		return
 	}
-	jsonResponse(w, a)
+	s.writeJSON(w, r, a)
 }
 
 // POST /api/v1/admin/capacity/accounts/{userID} {repos_allowed?,
@@ -207,8 +210,8 @@ func (s *Server) handleAdminCapacityOverride(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	userID, err := strconv.Atoi(r.PathValue("userID"))
-	if err != nil || userID <= 0 || userID > math.MaxInt32 { // users.user_id is int4 (round 6 R6-d)
+	userID, err := admin.ParseUserID(r.PathValue("userID")) // users.user_id is int4 (round 6 R6-d); the one rule since 0.29.103
+	if err != nil {
 		writeAuthError(w, http.StatusBadRequest, "user id must be a positive integer")
 		return
 	}
@@ -219,7 +222,7 @@ func (s *Server) handleAdminCapacityOverride(w http.ResponseWriter, r *http.Requ
 		LinksPerDay     *int   `json:"links_per_day"`
 		Note            string `json:"note"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {repos_allowed?, requests_per_hour?, requests_per_day?, links_per_day?, note}")
 		return
 	}
@@ -229,7 +232,7 @@ func (s *Server) handleAdminCapacityOverride(w http.ResponseWriter, r *http.Requ
 	case errors.Is(err, db.ErrInvalidCapacitySettings):
 		writeAuthError(w, http.StatusBadRequest, "each value must be a positive number (or null for the quota's value); the note is at most "+strconv.Itoa(db.MaxCapacityNoteLength)+" characters")
 		return
-	case errors.Is(err, db.ErrNoSuchUser):
+	case errors.Is(err, db.ErrUserNotFound):
 		writeAuthError(w, http.StatusNotFound, "no account with that user id")
 		return
 	case err != nil:
@@ -237,7 +240,7 @@ func (s *Server) handleAdminCapacityOverride(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	s.logger.Info("capacity override changed", "user_id", userID, "by", info.UserID)
-	jsonResponse(w, map[string]any{"user_id": userID, "saved": true})
+	s.writeJSON(w, r, map[string]any{"user_id": userID, "saved": true})
 }
 
 // POST /api/v1/admin/capacity/signup-allowlist {cidr, note}
@@ -250,7 +253,7 @@ func (s *Server) handleAdminSignupAllowlistAdd(w http.ResponseWriter, r *http.Re
 		CIDR string `json:"cidr"`
 		Note string `json:"note"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {cidr, note}")
 		return
 	}
@@ -264,7 +267,7 @@ func (s *Server) handleAdminSignupAllowlistAdd(w http.ResponseWriter, r *http.Re
 		return
 	}
 	s.logger.Info("sign-up allowlist entry added", "cidr", cidr, "by", info.UserID)
-	jsonResponse(w, map[string]any{"cidr": cidr})
+	s.writeJSON(w, r, map[string]any{"cidr": cidr})
 }
 
 // POST /api/v1/admin/capacity/signup-allowlist/remove {cidr}
@@ -276,7 +279,7 @@ func (s *Server) handleAdminSignupAllowlistRemove(w http.ResponseWriter, r *http
 	var body struct {
 		CIDR string `json:"cidr"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, adminJSONBodyLimit, &body); err != nil {
 		writeAuthError(w, http.StatusBadRequest, "body must be JSON: {cidr}")
 		return
 	}
@@ -294,7 +297,7 @@ func (s *Server) handleAdminSignupAllowlistRemove(w http.ResponseWriter, r *http
 		return
 	}
 	s.logger.Info("sign-up allowlist entry removed", "cidr", body.CIDR, "by", info.UserID)
-	jsonResponse(w, map[string]any{"removed": true})
+	s.writeJSON(w, r, map[string]any{"removed": true})
 }
 
 // POST /api/v1/groups/{groupID}/repos/{repoID}/remove — removes a
@@ -305,19 +308,22 @@ func (s *Server) handleGroupRemoveRepo(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Both ids are judged together in one message (a group route, not a
+	// repository route: the group's ownership decides, N11); stage 1 moves
+	// the decision into the service.
 	groupID, gerr := strconv.ParseInt(r.PathValue("groupID"), 10, 64)
 	repoID, rerr := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
 	if gerr != nil || rerr != nil || groupID <= 0 || repoID <= 0 {
 		writeAuthError(w, http.StatusBadRequest, "group and repository ids must be positive integers")
 		return
 	}
-	removed, err := s.store.RemoveRepoFromGroup(r.Context(), info.UserID, groupID, repoID)
-	if errors.Is(err, db.ErrGroupNotOwned) {
-		writeAuthError(w, http.StatusNotFound, "no group of yours with that id")
-		return
-	}
+	// The service's ScopeChanged hook drops only the caller's cached scope
+	// after a removal.
+	removed, err := s.admin.RemoveFromGroup(r.Context(), s.actor(info), groupID, repoID)
 	if err != nil {
-		s.serverError(w, r, "handleGroupRemoveRepo", err)
+		if !s.refuse(w, info, err) {
+			s.serverError(w, r, "handleGroupRemoveRepo", err)
+		}
 		return
 	}
 	if !removed {
@@ -326,10 +332,7 @@ func (s *Server) handleGroupRemoveRepo(w http.ResponseWriter, r *http.Request) {
 		writeAuthError(w, http.StatusNotFound, "that repository is not in that group")
 		return
 	}
-	// The caller's scope may have narrowed: drop only their cached scope.
-	s.auth.invalidateUser(info.UserID)
-	s.homeCache.invalidate(info.UserID)
-	jsonResponse(w, map[string]any{"group_id": groupID, "repo_id": repoID, "removed": true})
+	s.writeJSON(w, r, map[string]any{"group_id": groupID, "repo_id": repoID, "removed": true})
 }
 
 // meCapacity is /me's capacity object: the account's repositories against

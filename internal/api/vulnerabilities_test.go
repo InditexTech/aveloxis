@@ -93,8 +93,11 @@ func TestStarRequiresIdentityAndScope(t *testing.T) {
 	// COLLECTION only, and stars can only target collected repos).
 	// Pin the source contract; the full flow is covered by the
 	// AVELOXIS_TEST_DB integration test.
+	// The auto-add settles through settleAutoAdd (the caller's own cache,
+	// 0.29.82); the legacy decision handler's invalidateAll() went with
+	// the pending-group approval (0.29.100).
 	src := mustReadFile(t, "portal.go")
-	for _, needle := range []string{"FindOrCreateStarredGroup", "AddRepoToGroupByID", "invalidateAll()"} {
+	for _, needle := range []string{"FindOrCreateStarredGroup", "AddRepoToGroupByID", "settleAutoAdd("} {
 		if !strings.Contains(src, needle) {
 			t.Errorf("handleStarRepo's out-of-scope branch must auto-add via %s, not 403", needle)
 		}

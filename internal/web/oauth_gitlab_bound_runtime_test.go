@@ -52,7 +52,7 @@ func TestGitLabCallbackUserReadIsBounded(t *testing.T) {
 	}))
 	defer forge.Close()
 
-	s := New(nil, config.WebConfig{DevMode: true, GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: forge.URL}, nil, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := New(nil, config.WebConfig{DevMode: true, GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: forge.URL}, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/auth/gitlab/callback?code=c&state=st", nil)
 	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "st"})

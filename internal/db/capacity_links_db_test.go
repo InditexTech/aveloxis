@@ -102,7 +102,7 @@ func TestRepoLinksPerDayShadowAndBulk(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Two counted already (shadow still counts): a paste of two more fails whole.
-	_, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[2:4], 0)
+	_, err := f.store.AddReposToGroup(f.ctx, f.user, f.group, f.urls[2:4], 0, "")
 	if ex, ok := capacity.AsExceeded(err); !ok || ex.Quota != capacity.QuotaRepoLinksPerDay {
 		t.Fatalf("a paste past the daily value = %v; want the refusal", err)
 	}
@@ -135,8 +135,8 @@ func TestAccountByLoginRefusesAmbiguity(t *testing.T) {
 	if a, err := store.AccountByLogin(ctx, "_avsolo"); err != nil || a.Login != "_avSolo" || a.Provider != "github" {
 		t.Errorf("one case-insensitive match = %+v, %v; want it, with its provider", a, err)
 	}
-	if _, err := store.AccountByLogin(ctx, "_avnobody"); !errors.Is(err, ErrNoSuchUser) {
-		t.Errorf("no account = %v; want ErrNoSuchUser", err)
+	if _, err := store.AccountByLogin(ctx, "_avnobody"); !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("no account = %v; want ErrUserNotFound", err)
 	}
 }
 

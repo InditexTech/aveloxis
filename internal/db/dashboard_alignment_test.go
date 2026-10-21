@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // TestGetRepoStatsReadsFromQueueCache pins the v0.27.85 contract for
@@ -41,7 +43,18 @@ func TestGetRepoStatsReadsFromQueueCache(t *testing.T) {
 	}
 	rest := src[fnIdx:]
 	end := strings.Index(rest[1:], "\nfunc ")
-	body := rest[:end+1]
+	single := rest[:end+1]
+	// Stage 1b: the single reader IS the batch reader for one id (the two
+	// were hand-kept twins); the queue read lives in the batch's body.
+	if !strings.Contains(single, "s.GetRepoStatsBatch(ctx, []int64{repoID})") || strings.Contains(single, "SELECT") {
+		t.Fatal("GetRepoStats must be the batch's answer for its id, with no query of its own")
+	}
+	fnIdx = strings.Index(src, "func (s *PostgresStore) GetRepoStatsBatch(")
+	rest = src[fnIdx:]
+	body := rest
+	if end = strings.Index(rest[1:], "\nfunc "); end >= 0 {
+		body = rest[:end+1]
+	}
 
 	for _, needle := range []string{"last_issues", "last_prs", "last_commits", "last_collected"} {
 		if !strings.Contains(body, needle) {
@@ -139,17 +152,14 @@ func TestStagedCollectorFetchesRepoInfo(t *testing.T) {
 // refactor adds a parallel commit-counting query in the API or
 // monitor layer, the alignment property breaks silently.
 func TestDashboardsConvergeOnRepoStats(t *testing.T) {
-	files := []string{
-		"../api/server.go",
-		"../monitor/monitor.go",
-		"../web/server.go",
+	files := map[string]string{
+		"../api/server.go":      srctest.Read(t, "internal/api/server.go"),
+		"../monitor/monitor.go": srctest.Read(t, "internal/monitor/monitor.go"),
+		// The web GUI's pages live in several files since v0.29.98 (P-2);
+		// the property is the package's.
+		"internal/web": srctest.PackageSource(t, "internal/web", 4),
 	}
-	for _, path := range files {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("cannot read %s: %v", path, err)
-		}
-		src := string(data)
+	for path, src := range files {
 		// Each dashboard-rendering source must call at least one of
 		// GetRepoStats / GetRepoStatsBatch. The web GUI uses both
 		// (group page = batch, repo detail = single); the api uses

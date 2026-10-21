@@ -36,19 +36,16 @@ import (
 const elsewhereWindowDays = 180 // the v0.27.58 default history window
 
 func (s *Server) handleContributorsElsewhere(w http.ResponseWriter, r *http.Request) {
-	repoID, err := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid repo_id", http.StatusBadRequest)
-		return
-	}
-	if !s.authorizeRepo(w, r, repoID) {
+	repoID, ok := s.repoFromPath(w, r)
+	if !ok {
 		return
 	}
 	since := db.UTCDay(time.Now()).AddDate(0, 0, -elsewhereWindowDays) // a UTC midnight: the daily commit table serves it (summary/49)
-	if sp := r.URL.Query().Get("since"); sp != "" {
-		if t, err := time.Parse("2006-01-02", sp); err == nil {
-			since = t
-		}
+	if t, given, err := queryDay("since", r.URL.Query().Get("since")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest) // D7 (stage 1b); before the cache, so a bad date is never a key
+		return
+	} else if given {
+		since = t
 	}
 	limit := 10
 	if lp := r.URL.Query().Get("limit"); lp != "" {
@@ -74,8 +71,7 @@ func (s *Server) handleContributorsElsewhere(w http.ResponseWriter, r *http.Requ
 			s.serverError(w, r, "handleContributorsElsewhere", err)
 			return
 		}
-		if body, err = json.Marshal(elsewhereAnswer{Since: since.Format("2006-01-02"), Limit: limit, Contributors: rows}); err != nil {
-			s.serverError(w, r, "handleContributorsElsewhere", err)
+		if body, ok = s.marshalBody(w, r, "handleContributorsElsewhere", elsewhereAnswer{Since: since.Format("2006-01-02"), Limit: limit, Contributors: rows}); !ok {
 			return
 		}
 		s.respCache.put(key, body)
@@ -87,9 +83,7 @@ func (s *Server) handleContributorsElsewhere(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		a.Contributors = scopeElsewhere(a.Contributors, info.Scope)
-		var err error
-		if body, err = json.Marshal(a); err != nil {
-			s.serverError(w, r, "handleContributorsElsewhere", err)
+		if body, ok = s.marshalBody(w, r, "handleContributorsElsewhere", a); !ok {
 			return
 		}
 	}
@@ -142,9 +136,8 @@ func (s *Server) handleContributorActivity(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "contributor activity lookup failed", http.StatusInternalServerError)
 		return
 	}
-	body, err := json.Marshal(view)
-	if err != nil {
-		s.serverError(w, r, "handleContributorActivity", err)
+	body, ok := s.marshalBody(w, r, "handleContributorActivity", view)
+	if !ok {
 		return
 	}
 	s.respCache.put(key, body)
@@ -167,9 +160,8 @@ func (s *Server) writeActivity(w http.ResponseWriter, r *http.Request, info auth
 			s.serverError(w, r, "handleContributorActivity", err)
 			return
 		}
-		var err error
-		if body, err = json.Marshal(scopeActivity(&v, info.Scope)); err != nil {
-			s.serverError(w, r, "handleContributorActivity", err)
+		var ok bool
+		if body, ok = s.marshalBody(w, r, "handleContributorActivity", scopeActivity(&v, info.Scope)); !ok {
 			return
 		}
 	}

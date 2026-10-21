@@ -4,52 +4,34 @@
 package main
 
 import (
-	"os"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
-// TestAddRepoOrgExpansionBridgesToUserRepos pins that
-// `aveloxis add-repo <orgURL>` (the runAddRepo CLI path that expands an
-// org URL into per-repo upserts) calls GetUserGroupIDsForOrgURL and
-// AddRepoToGroupByID for every discovered repo. Without this, CLI-added
-// orgs land in aveloxis_data.repos with the legacy repo_group_id set
-// but never reach aveloxis_ops.user_repos for any user_group tracking
-// the same org_url — the fork-clustering drift the operator diagnosed
-// on 2026-05-07.
-//
-// Source-contract test (no DB needed): reads main.go and asserts the
-// runAddRepo expansion loop contains both calls.
-func TestAddRepoOrgExpansionBridgesToUserRepos(t *testing.T) {
-	data, err := os.ReadFile("main.go")
-	if err != nil {
-		t.Fatal(err)
+// Stage 1 of summary/59 (N13, C2): `aveloxis add-repo <orgURL>` registers
+// the organization and lists nothing itself — serve's org refresh lists it
+// through the one lister and the one ingest, which links every repository
+// (forks included) into every user group tracking the org (the bridge the
+// operator diagnosed missing on 2026-05-07 now lives in one place,
+// scheduler.ingestDiscovered). Source-contract test: the CLI's org arm
+// registers (UpsertRepoGroup) and builds no forge client; cmd has no
+// listing loop of its own.
+func TestAddRepoRegistersAnOrganizationAndListsNothing(t *testing.T) {
+	body := srctest.StripGoComments(srctest.PackageFunc(t, "cmd/aveloxis", "func runAddRepo("))
+	if !strings.Contains(body, "store.UpsertRepoGroup(") {
+		t.Error("runAddRepo's organization arm must register the org group (UpsertRepoGroup) — serve's org refresh lists it")
 	}
-	src := string(data)
-
-	fnStart := strings.Index(src, "func runAddRepo(")
-	if fnStart < 0 {
-		t.Fatal("cannot find runAddRepo in main.go")
+	for _, banned := range []string{"platform.NewHTTPClient(", "loadKeys(", "ListOwnerRepos(", "ListGroupProjects(", "AddOrgRepoToGroupByID("} {
+		if strings.Contains(body, banned) {
+			t.Errorf("runAddRepo calls %s: the CLI lists and links nothing itself (N13)", banned)
+		}
 	}
-	rest := src[fnStart:]
-	nextFn := strings.Index(rest[1:], "\nfunc ")
-	if nextFn < 0 {
-		t.Fatal("cannot find end of runAddRepo function")
-	}
-	body := rest[:nextFn+1]
-
-	if !strings.Contains(body, "GetUserGroupIDsForOrgURL") {
-		t.Error("runAddRepo's org-expansion branch must call " +
-			"GetUserGroupIDsForOrgURL(ctx, repoURL) so user_groups tracking " +
-			"this org get every discovered repo (including forks) linked " +
-			"into user_repos. Without this bridge, `aveloxis add-repo " +
-			"<orgURL>` is a one-shot legacy-only insert.")
-	}
-	// v0.29.89: through the organization variant (within the allocation,
-	// not counted as the account's daily additions).
-	if !strings.Contains(body, "AddOrgRepoToGroupByID") {
-		t.Error("runAddRepo's org-expansion branch must call " +
-			"AddOrgRepoToGroupByID for every discovered repo so user_repos " +
-			"linkage stays in sync with the catalog.")
+	src := srctest.StripGoComments(srctest.PackageSource(t, "cmd/aveloxis", 20))
+	for _, banned := range []string{`"/orgs/`, "/projects?per_page", "listGitHubOrgRepos", "listGitLabGroupRepos"} {
+		if strings.Contains(src, banned) {
+			t.Errorf("cmd/aveloxis spells %q: the forge listers live in internal/platform", banned)
+		}
 	}
 }

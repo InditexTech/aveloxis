@@ -71,14 +71,15 @@ func TestAddURLWithCredentialsIsRefusedAndNotLogged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := New(store, config.WebConfig{}, nil, "", logger)
-	s.sessions["probe"] = &Session{UserID: uid, LoginName: login, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
+	s := New(store, config.WebConfig{}, "", logger)
+	plantSession(t, s, "probe", &Session{UserID: uid, LoginName: login, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
 	post := func(path string, form url.Values) *httptest.ResponseRecorder {
 		t.Helper()
 		form.Set("group_id", fmt.Sprint(gid))
 		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w
@@ -87,6 +88,7 @@ func TestAddURLWithCredentialsIsRefusedAndNotLogged(t *testing.T) {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodGet, path, nil)
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w
@@ -170,7 +172,8 @@ func TestAddURLWithCredentialsIsRefusedAndNotLogged(t *testing.T) {
 		if strings.Contains(logs.String(), secret) {
 			t.Errorf("%s: the log carries the credential: %s", name, logs.String())
 		}
-		if !strings.Contains(logs.String(), "org not added") {
+		// The service's one refusal line (stage 1 of summary/59).
+		if !strings.Contains(logs.String(), "add organization refused") {
 			t.Errorf("%s: the refusal was not logged: %s", name, logs.String())
 		}
 	}

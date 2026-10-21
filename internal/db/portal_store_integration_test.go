@@ -3,7 +3,7 @@
 
 package db
 
-// v0.27.3 — integration coverage for GetPortalGroupReposForUser's
+// v0.27.3 — integration coverage for GetPortalGroupRepos's
 // ownership gate; v0.27.14 adds pagination (limit/offset + total).
 // Gated on AVELOXIS_TEST_DB (scratch DB only).
 
@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-func TestGetPortalGroupReposForUserOwnership(t *testing.T) {
+func TestGetPortalGroupReposRoundTrip(t *testing.T) {
 	dsn := os.Getenv("AVELOXIS_TEST_DB")
 	if dsn == "" {
 		t.Skip("AVELOXIS_TEST_DB not set")
@@ -59,22 +59,21 @@ func TestGetPortalGroupReposForUserOwnership(t *testing.T) {
 		_, _ = store.pool.Exec(ctx, `DELETE FROM aveloxis_ops.user_groups WHERE group_id = $1`, groupID)
 	})
 
-	// Owner reads own (empty) group fine.
-	if _, _, err := store.GetPortalGroupReposForUser(ctx, ownerID, groupID, false, 1, 50, "", ""); err != nil {
-		t.Errorf("owner must be able to read own group: %v", err)
+	// The ownership rule moved to admin.Service.GroupAccess (stage 1 of
+	// summary/59; its DB-tier test is internal/admin's); the store's
+	// primitive answers the owner.
+	if owner, name, err := store.GroupOwner(ctx, groupID); err != nil || owner != ownerID || name == "" {
+		t.Errorf("GroupOwner = %d, %q, %v; want %d", owner, name, err, ownerID)
 	}
-	// Stranger is refused.
-	if _, _, err := store.GetPortalGroupReposForUser(ctx, strangerID, groupID, false, 1, 50, "", ""); err == nil {
-		t.Error("non-owner non-admin must NOT be able to read another user's group")
+	if _, _, err := store.GetPortalGroupRepos(ctx, ownerID, groupID, 1, 50, "", ""); err != nil {
+		t.Errorf("reading the (empty) group: %v", err)
 	}
-	// Admin bypasses ownership.
-	if _, _, err := store.GetPortalGroupReposForUser(ctx, strangerID, groupID, true, 1, 50, "", ""); err != nil {
-		t.Errorf("admin must be able to read any group: %v", err)
+	if _, _, err := store.GetPortalGroupRepos(ctx, strangerID, groupID, 1, 50, "", ""); err != nil {
+		t.Errorf("the read takes no caller; a stranger's star state is read like anyone's: %v", err)
 	}
 
-	// 2026-07-21 — GetPortalGroupOrgsForUser shares the exact same
-	// ownership gate, plus a seeded round-trip so the org listing's
-	// SQL executes against the real schema.
+	// 2026-07-21 — a seeded round-trip so the org listing's SQL executes
+	// against the real schema.
 	orgURL := fmt.Sprintf("https://github.com/_avportal_org_%d", suffix)
 	if _, err := store.pool.Exec(ctx, `
 		INSERT INTO aveloxis_ops.user_org_requests (user_id, group_id, org_url, org_name, platform)
@@ -86,17 +85,11 @@ func TestGetPortalGroupReposForUserOwnership(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = store.pool.Exec(ctx, `DELETE FROM aveloxis_ops.user_org_requests WHERE group_id = $1`, groupID)
 	})
-	orgs, err := store.GetPortalGroupOrgsForUser(ctx, ownerID, groupID, false)
+	orgs, err := store.GetGroupOrgs(ctx, groupID)
 	if err != nil {
-		t.Errorf("owner must be able to read own group's orgs: %v", err)
+		t.Errorf("reading the group's orgs: %v", err)
 	} else if len(orgs) != 1 || orgs[0].OrgURL != orgURL {
-		t.Errorf("owner org listing: want the 1 seeded org (%s), got %+v", orgURL, orgs)
-	}
-	if _, err := store.GetPortalGroupOrgsForUser(ctx, strangerID, groupID, false); err == nil {
-		t.Error("non-owner non-admin must NOT be able to read another user's group orgs")
-	}
-	if orgs, err := store.GetPortalGroupOrgsForUser(ctx, strangerID, groupID, true); err != nil || len(orgs) != 1 {
-		t.Errorf("admin must be able to read any group's orgs: err=%v orgs=%d", err, len(orgs))
+		t.Errorf("org listing: want the 1 seeded org (%s), got %+v", orgURL, orgs)
 	}
 }
 
@@ -152,14 +145,14 @@ func TestGetPortalGroupReposPagination(t *testing.T) {
 		}
 	})
 
-	page1, total, err := store.GetPortalGroupReposForUser(ctx, userID, groupID, false, 1, 2, "", "")
+	page1, total, err := store.GetPortalGroupRepos(ctx, userID, groupID, 1, 2, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(page1) != 2 || total != 3 {
 		t.Errorf("page 1: want 2 repos of total 3, got %d of %d", len(page1), total)
 	}
-	page2, total, err := store.GetPortalGroupReposForUser(ctx, userID, groupID, false, 2, 2, "", "")
+	page2, total, err := store.GetPortalGroupRepos(ctx, userID, groupID, 2, 2, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +189,7 @@ func TestGetPortalGroupReposPagination(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = store.pool.Exec(ctx, `DELETE FROM aveloxis_ops.user_repo_stars WHERE user_id = $1`, userID)
 	})
-	sorted, _, err := store.GetPortalGroupReposForUser(ctx, userID, groupID, false, 1, 50, "issues", "desc")
+	sorted, _, err := store.GetPortalGroupRepos(ctx, userID, groupID, 1, 50, "issues", "desc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +219,7 @@ func TestGetPortalGroupReposPagination(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = store.pool.Exec(ctx, `DELETE FROM aveloxis_ops.users WHERE user_id = $1`, adminID)
 	})
-	adminView, _, err := store.GetPortalGroupReposForUser(ctx, adminID, groupID, true, 1, 50, "", "")
+	adminView, _, err := store.GetPortalGroupRepos(ctx, adminID, groupID, 1, 50, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +229,7 @@ func TestGetPortalGroupReposPagination(t *testing.T) {
 		}
 	}
 	// A hostile sort key falls back to the default order, no SQL error.
-	if _, _, err := store.GetPortalGroupReposForUser(ctx, userID, groupID, false, 1, 50, "evil; DROP TABLE x", "desc"); err != nil {
+	if _, _, err := store.GetPortalGroupRepos(ctx, userID, groupID, 1, 50, "evil; DROP TABLE x", "desc"); err != nil {
 		t.Errorf("unknown sort key must fall back to the default, got error: %v", err)
 	}
 }

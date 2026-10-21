@@ -1,0 +1,36 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aveloxis - Remove repository</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/avx.js"></script>
+</head>
+<body>
+<div class="nav">
+<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
+<div class="nav-user">
+<img src="https://avatars.example/7.png" alt="">
+<span>golden</span>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value=""><button type="submit" class="nav-link">Logout</button></form>
+</div>
+</div>
+<div class="breadcrumb">
+<a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">/</span><a href="/groups/7">Golden group</a><span class="sep">/</span><span class="current">Remove repository</span>
+</div>
+<div class="container">
+<div class="card confirm-box">
+<h2>Remove example/golden?</h2>
+<p>The repository leaves the group <strong>Golden group</strong>. It is still collected by Aveloxis, and it can be added again later.</p>
+<form method="POST" action="/groups/remove-repo" style="display:flex;gap:8px;margin-top:16px">
+<input type="hidden" name="csrf_token" value="">
+<input type="hidden" name="group_id" value="7">
+<input type="hidden" name="repo_id" value="2">
+<button type="submit" class="btn btn-danger">Remove</button>
+<a href="/groups/7" class="btn">Cancel</a>
+</form>
+</div>
+</div>
+</body></html>

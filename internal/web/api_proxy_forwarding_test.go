@@ -38,7 +38,7 @@ func TestWebAPIProxyForwardsTheClientItResolved(t *testing.T) {
 	t.Cleanup(api.Close)
 
 	through := func(webTrusted string, logs *strings.Builder) (string, []string) {
-		s := New(nil, config.WebConfig{TrustedProxy: webTrusted, APIInternalURL: api.URL}, nil, "", slog.New(slog.NewTextHandler(logs, nil)))
+		s := New(nil, config.WebConfig{TrustedProxy: webTrusted, APIInternalURL: api.URL}, "", slog.New(slog.NewTextHandler(logs, nil)))
 		if s.apiProxy == nil {
 			t.Fatal("the /api proxy was not built")
 		}

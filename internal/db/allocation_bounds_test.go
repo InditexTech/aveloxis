@@ -6,6 +6,8 @@ package db
 import (
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // v0.27.65 — store-layer allocation backstops (CodeQL
@@ -33,13 +35,21 @@ func TestTopContributorsClampsUpperLimitInStore(t *testing.T) {
 }
 
 func TestGetCollectionReposClampsPageSizeWithBareGuards(t *testing.T) {
-	body := extractStoreFunc(t, "collections_store.go", "func (s *PostgresStore) GetCollectionRepos(")
+	// The clamp lives in the one normaliser both listings call (DBS-2,
+	// stage 1f of summary/59); the readers must reach it.
+	body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/db", "func NormalizeListingPage("))
 	if !strings.Contains(body, "pageSize > 100") {
-		t.Error("GetCollectionRepos must clamp pageSize with a bare `pageSize > 100` guard (scanner-recognizable upper bound)")
+		t.Error("NormalizeListingPage must clamp pageSize with a bare `pageSize > 100` guard (scanner-recognizable upper bound)")
 	}
 	if strings.Contains(body, "pageSize < 1 || pageSize > 100") {
-		t.Error("GetCollectionRepos must NOT combine the clamps into one compound condition — CodeQL's upper-bound barrier misses that shape (2026-07-31 finding)")
+		t.Error("NormalizeListingPage must NOT combine the clamps into one compound condition — CodeQL's upper-bound barrier misses that shape (2026-07-31 finding)")
 	}
+	for _, sig := range []string{"func (s *PostgresStore) GetCollectionRepos(", "func (s *PostgresStore) GetPortalGroupRepos("} {
+		if !strings.Contains(srctest.StripGoComments(srctest.PackageFunc(t, "internal/db", sig)), "NormalizeListingPage(") {
+			t.Errorf("%s must take its page through NormalizeListingPage", sig)
+		}
+	}
+	body = srctest.StripGoComments(srctest.PackageFunc(t, "internal/db", "func (s *PostgresStore) listRepos("))
 	// Round 2: constant capacity, never the user-derived pageSize.
 	if strings.Contains(body, "make([]CollectionRepo, 0, pageSize)") {
 		t.Error("GetCollectionRepos allocation capacity must be a constant, not `pageSize` — the taint path to make() is what CodeQL flags (2026-07-31 round 2)")

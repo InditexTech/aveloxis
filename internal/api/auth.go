@@ -86,8 +86,10 @@ func resolutionOf(r *http.Request) (resolution, bool) {
 var errLookupDeferred = errors.New("token lookup deferred: the address is over its limit")
 
 // identify resolves the request's Bearer token once and records the answer
-// for the layers after it. It refuses nothing itself. A session token in
-// the cache costs nothing and a cached API token one recheck; an UNCACHED
+// for the layers after it. It refuses nothing itself. A cached token costs
+// one recheck of its row (a session token since 0.29.102 review round 2:
+// a web sign-out deletes it and the next request must be the 401; an API
+// token since 0.29.82); its owner's role and scope stay cached. An UNCACHED
 // token from an address over its limit that recently sent an invalid token
 // is not looked up (rl.deferLookup). A cached API token is never deferred
 // (Copilot review 5475865946 on PR #228): it was valid within authCacheTTL,
@@ -100,14 +102,12 @@ func (a *authenticator) identify(rl *rateLimiter, next http.Handler) http.Handle
 			res.presented = true
 			info, cached := a.cached(tok)
 			switch {
-			case cached && info.APITokenID == 0:
-				res.info = info
 			case cached && rl != nil && rl.tokenSpent(info):
 				// An enforced quota is spent: the limiter answers 429 with no store
 				// lookup (ASVS review G4); a revoked token is rechecked when
 				// its window opens again.
 				res.info = info
-			case cached: // an API token: rechecked, never deferred
+			case cached: // rechecked against its row (session or API token), never deferred
 				res.info, res.err = a.resolveToken(r.Context(), tok)
 			case rl != nil && rl.deferLookup(r):
 				res.err = errLookupDeferred
@@ -198,6 +198,18 @@ func (a *authenticator) resolveToken(ctx context.Context, token string) (authInf
 	if c, ok := a.cache[token]; ok && now.Before(c.expires) {
 		a.mu.Unlock()
 		if c.info.APITokenID == 0 {
+			// A session token is rechecked on every call too (one PK read;
+			// 0.29.102 review A1): a web sign-out deletes the tokens the
+			// session minted, and the GUI's next request must be the 401
+			// the docs promise — not up to authCacheTTL of cached identity.
+			// Its owner's role and scope stay cached.
+			if _, err := a.store.ValidateSessionToken(ctx, token); err != nil {
+				if errors.Is(err, db.ErrInvalidSessionToken) {
+					a.forget(token)
+					return authInfo{}, errInvalidToken
+				}
+				return authInfo{}, fmt.Errorf("recheck session token: %w", err)
+			}
 			return c.info, nil
 		}
 		// An API token is rechecked on every call (one indexed lookup;
@@ -290,12 +302,11 @@ func (a *authenticator) refuseStoreError(w http.ResponseWriter, r *http.Request,
 
 // invalidateAll drops every cached token validation so role and scope
 // changes take effect immediately instead of after authCacheTTL.
-// Called from the admin mutation handlers (promote/demote, group
-// approve/reject) — without this, a freshly promoted user's own
-// /api/v1/me kept answering is_admin=false for up to 60s, and a user
-// whose group was just approved kept an empty scope — and, since
-// v0.29.68, from a non-admin's add that linked or queued repositories
-// (the caller's own scope changed). Both are human-paced, so
+// Called from the API-token revoke only (stage 1 of summary/59): role and
+// scope changes go through the admin service's hooks, which drop the one
+// affected user's entry (RoleChanged, ScopeChanged) — without a flush a
+// freshly promoted user's own /api/v1/me kept answering is_admin=false
+// for up to 60s. A revoke is human-paced, so
 // re-validating every active token once is cheap.
 func (a *authenticator) invalidateAll() {
 	a.mu.Lock()
@@ -421,7 +432,7 @@ func writeAuthError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	// Deliberate manual encode: WriteHeader already ran (non-200), so
-	// jsonResponse's header set would be ineffective here.
+	// writeJSON's header set would be ineffective here.
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
@@ -463,7 +474,7 @@ func (s *Server) authorizeRepo(w http.ResponseWriter, r *http.Request, repoID in
 	// again would reserve a second auto-add slot — at the last slot, a 429
 	// for a request that did add the repository (v0.29.91 whole-PR
 	// follow-up). The mark names one repository id.
-	if id, ok := r.Context().Value(repoAuthorizedKey{}).(int64); ok && id == repoID {
+	if id, ok := repoAuthorizedFor(r); ok && id == repoID {
 		return true
 	}
 	// An API token reads only its owner's groups: refused, never
@@ -531,6 +542,14 @@ func (s *Server) authorizeRepo(w http.ResponseWriter, r *http.Request, repoID in
 // wrapper already decided (servePageCached): the repository id it was
 // decided for.
 type repoAuthorizedKey struct{}
+
+// repoAuthorizedFor is the one reader of the mark: the repository id a
+// wrapper decided this request for, if any (authorizeRepo honours it for
+// that id; repoFromPath skips its existence read for it).
+func repoAuthorizedFor(r *http.Request) (int64, bool) {
+	id, ok := r.Context().Value(repoAuthorizedKey{}).(int64)
+	return id, ok
+}
 
 // withRepoAuthorized returns r marked as authorized for repoID. The mark
 // lives in this request's context only (it never outlives the request) and

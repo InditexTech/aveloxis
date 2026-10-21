@@ -39,11 +39,14 @@ func TestAuthorizeRepoAtTheAllocationAnswersTheCapacityBody(t *testing.T) {
 	}
 }
 
-// Every API function that calls a writer of a group link answers the
-// allocation's refusal through refuseCapacity (the denominator: every call
-// site is examined, so a new one cannot skip the rule).
+// Every API function that calls a writer of a group link — the store's
+// link writers, or the admin service's AddToGroup / AddOrgToGroup (stage
+// 1 of summary/59), which return the store's capacity refusal — answers
+// the allocation's refusal through refuseCapacity, directly or through
+// Server.refuse (the denominator: every call site is examined, so a new
+// one cannot skip the rule).
 func TestEveryGroupLinkSiteRendersTheCapacityRefusal(t *testing.T) {
-	writers := []string{".AddRepoToGroupByID(", ".AddRepoIDsToGroup(", ".AddReposToGroup(", ".CopyCollectionToGroup(", ".EnsureRepoSharedWithUser("}
+	writers := []string{".AddRepoToGroupByID(", ".AddRepoIDsToGroup(", ".AddReposToGroup(", ".CopyCollectionToGroup(", ".EnsureRepoSharedWithUser(", ".AddToGroup(", ".AddOrgToGroup("}
 	files := srctest.PackageFiles(t, "internal/api", 20)
 	examined := 0
 	for name, src := range files {
@@ -59,12 +62,17 @@ func TestEveryGroupLinkSiteRendersTheCapacityRefusal(t *testing.T) {
 				continue
 			}
 			examined++
-			if !strings.Contains(fn, "s.refuseCapacity(w, info, ") {
-				t.Errorf("%s: func %s calls a group-link writer without refuseCapacity", name, strings.SplitN(fn, "{", 2)[0])
+			if !strings.Contains(fn, "s.refuseCapacity(w, info, ") && !strings.Contains(fn, "s.refuse(w, info, ") {
+				t.Errorf("%s: func %s calls a group-link writer without refuseCapacity or refuse", name, strings.SplitN(fn, "{", 2)[0])
 			}
 		}
 	}
 	srctest.MinCount(t, "API functions calling a group-link writer", examined, 5)
+	// refuse renders a capacity refusal through refuseCapacity itself.
+	refuse := srctest.StripGoComments(srctest.PackageFunc(t, "internal/api", "func (s *Server) refuse("))
+	if !strings.Contains(refuse, "ref.Kind == admin.Capacity") || !strings.Contains(refuse, "s.refuseCapacity(w, info, err)") {
+		t.Error("Server.refuse must route admin.Capacity to refuseCapacity")
+	}
 }
 
 // Review round 1 F3 (L18): the auto-add cap is a capacity quota, and its

@@ -94,14 +94,18 @@ func TestRevokedAPITokenStopsAtOnceWithoutACacheBust(t *testing.T) {
 	if c := call(); c != http.StatusUnauthorized {
 		t.Fatalf("a revoked token's next call = %d; it must stop at once (no identity)", c)
 	}
-	// A session is not rechecked per call (its cache stands for 60 s).
+	// A session token is rechecked per call too (0.29.102 review: a web
+	// sign-out deletes it); its identity (role, scope) stands for 60 s.
 	sess := &fakeSessionStore{userID: 7, valid: map[string]bool{"sess": true}}
 	h2, _ := tokenChain(t, sess, tightLimits)
 	for i := 0; i < 3; i++ {
 		h2.ServeHTTP(httptest.NewRecorder(), tokenReq("198.51.100.41:1", "sess"))
 	}
-	if n := sess.validates.Load(); n != 1 {
-		t.Fatalf("a cached session was looked up %d times in three calls, want 1", n)
+	if n := sess.validates.Load(); n != 3 {
+		t.Fatalf("a session token was validated %d times in three calls, want 3 (one recheck per call)", n)
+	}
+	if n := sess.identities.Load(); n != 2 {
+		t.Fatalf("a session's identity was read %d times in three calls, want 2 (cached)", n)
 	}
 }
 

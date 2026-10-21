@@ -56,6 +56,10 @@ func TestApproveRefusalsAreNotServerErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The admin service reads the administrator's row (stage 1 of summary/59).
+	if _, err := store.Pool().Exec(ctx, `UPDATE aveloxis_ops.users SET admin = TRUE WHERE user_id = $1`, auid); err != nil {
+		t.Fatal(err)
+	}
 	gid, err := store.CreateUserGroup(ctx, muid, "over-long org probe")
 	if err != nil {
 		t.Fatal(err)
@@ -68,11 +72,12 @@ func TestApproveRefusalsAreNotServerErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	var logs strings.Builder
-	s := New(store, config.WebConfig{}, nil, "", slog.New(slog.NewTextHandler(&logs, nil)))
-	s.sessions["admin"] = &Session{UserID: auid, LoginName: admin, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)}
+	s := New(store, config.WebConfig{}, "", slog.New(slog.NewTextHandler(&logs, nil)))
+	plantSession(t, s, "admin", &Session{UserID: auid, LoginName: admin, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
 	decide := func(id int64, decision string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/admin/add-requests/"+strconv.FormatInt(id, 10)+"/"+decision, nil)
 		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin"})
+		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
 		return w

@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // Source-contract tests for the v0.25.4 NumFocus import commands.
@@ -60,15 +62,20 @@ func TestLoadNumfocusOrgsCmdSurface(t *testing.T) {
 	}
 }
 
-// TestLoadNumfocusProjectsUsesAddRepoToGroup pins the load-projects
-// path goes through the same web-UI insert function (AddRepoToGroup)
-// so the v0.19.0 group-approval gate applies uniformly. A regression
-// that bypasses AddRepoToGroup would skip the gate and insert
-// repos for pending groups, breaking the approval workflow.
+// TestLoadNumfocusProjectsUsesAddRepoToGroup pins the load-projects path
+// through the admin service's one add (Service.AddToGroup: the per-add
+// approval rule, the URL classifier with the configured GitLab instance's
+// hint, the audit line) — never a store call of its own (round-3 review of
+// 0.29.100: the store's single-URL wrapper was a second add path).
 func TestLoadNumfocusProjectsUsesAddRepoToGroup(t *testing.T) {
-	src := readSource(t, "load_numfocus_projects.go")
-	if !strings.Contains(src, "store.AddRepoToGroup(") {
-		t.Error("load-numfocus-projects must call store.AddRepoToGroup so the v0.19.0 group-approval gate applies. A path that bypasses this function would let non-admin user_groups insert repos without approval.")
+	src := srctest.StripGoComments(readSource(t, "load_numfocus_projects.go"))
+	if !strings.Contains(src, "svc.AddToGroup(") {
+		t.Error("load-numfocus-projects must add each repository through admin.Service.AddToGroup so the per-add approval rule and the URL classifier apply")
+	}
+	for _, needle := range []string{"store.AddRepoToGroup(", "store.AddReposToGroup(", "store.UpsertRepo(", "store.EnqueueRepo("} {
+		if strings.Contains(src, needle) {
+			t.Errorf("load-numfocus-projects calls %s — a second add path outside the admin service", needle)
+		}
 	}
 }
 
@@ -80,8 +87,12 @@ func TestLoadNumfocusProjectsUsesAddRepoToGroup(t *testing.T) {
 // new repos within the org.
 func TestLoadNumfocusOrgsUsesAddOrgToGroup(t *testing.T) {
 	src := readSource(t, "load_numfocus_orgs.go")
-	if !strings.Contains(src, "store.AddOrgToGroup(") {
-		t.Error("load-numfocus-orgs must call store.AddOrgToGroup — this is what inserts into user_org_requests, which the v0.19.x refreshUserOrgs ticker reads. Without it, the 'pick up new repos in the org automatically' contract is broken.")
+	if !strings.Contains(src, "svc.AddOrgToGroup(") {
+		t.Error("load-numfocus-orgs must call admin.Service.AddOrgToGroup — the service's one store write into user_org_requests, which refreshUserOrgs reads. Without it, the 'pick up new repos in the org automatically' contract is broken.")
+	}
+	svc := srctest.StripGoComments(srctest.PackageFunc(t, "internal/admin", "func (s *Service) AddOrgToGroup("))
+	if strings.Count(svc, "s.st.AddOrgToGroup(") != 1 {
+		t.Error("admin.Service.AddOrgToGroup must make exactly one store.AddOrgToGroup call")
 	}
 }
 

@@ -304,22 +304,6 @@ func (s *PostgresStore) SetForceFullCollect(ctx context.Context, repoID int64, v
 	})
 }
 
-// MakeQueuedReposDue resets due_at to NOW() for all repos in 'queued' status
-// that have a future due_at. Called on scheduler startup so that repos from a
-// previous collection cycle (or migrated database) become immediately eligible
-// instead of sitting idle until their original due_at passes. Does NOT touch
-// repos that are currently being collected (status='collecting').
-func (s *PostgresStore) MakeQueuedReposDue(ctx context.Context) (int64, error) {
-	tag, err := s.pool.Exec(ctx, `
-		UPDATE aveloxis_ops.collection_queue
-		SET due_at = NOW(), updated_at = NOW()
-		WHERE status = 'queued' AND due_at > NOW()`)
-	if err != nil {
-		return 0, err
-	}
-	return tag.RowsAffected(), nil
-}
-
 // RealignDueDates recomputes due_at = last_collected + recollectAfter for
 // every 'queued' row whose last_collected is set. Called once on scheduler
 // startup so a changed days_until_recollect takes effect immediately on
@@ -443,39 +427,6 @@ func (s *PostgresStore) RecoverOtherWorkerLocks(ctx context.Context, currentWork
 	return tag.RowsAffected(), nil
 }
 
-// ListQueue returns all jobs in the queue, ordered by priority then due_at.
-func (s *PostgresStore) ListQueue(ctx context.Context) ([]QueueJob, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT repo_id, priority, status, due_at, locked_by, locked_at,
-			   last_collected, last_error,
-			   last_issues, last_prs, last_messages, last_events,
-			   last_releases, last_contributors, COALESCE(last_commits, 0),
-			   last_duration_ms, updated_at
-		FROM aveloxis_ops.collection_queue
-		ORDER BY
-			CASE status WHEN 'collecting' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,
-			priority, due_at, repo_id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var jobs []QueueJob
-	for rows.Next() {
-		var j QueueJob
-		if err := rows.Scan(
-			&j.RepoID, &j.Priority, &j.Status, &j.DueAt, &j.LockedBy, &j.LockedAt,
-			&j.LastCollected, &j.LastError,
-			&j.LastIssues, &j.LastPRs, &j.LastMessages, &j.LastEvents,
-			&j.LastReleases, &j.LastContributors, &j.LastCommits, &j.LastDurationMs, &j.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		jobs = append(jobs, j)
-	}
-	return jobs, rows.Err()
-}
-
 // queueSorts is the monitor queue's sort ALLOWLIST (the
 // collectionRepoSorts pattern, v0.27.74 — injection-proof by
 // construction: unknown keys fall back to the default composite).
@@ -524,8 +475,8 @@ func (s *PostgresStore) ListQueuePage(ctx context.Context, limit, offset int, se
 		// use the trigram index even when it existed.
 		whereClause = fmt.Sprintf(` WHERE q.repo_id IN (
 			SELECT repo_id FROM aveloxis_data.repos
-			WHERE (repo_owner || '/' || repo_name) ILIKE '%%' || $%d || '%%')`, argIdx)
-		args = append(args, search)
+			WHERE (repo_owner || '/' || repo_name) ILIKE $%d ESCAPE '\')`, argIdx)
+		args = append(args, LikeContains(search)) // % and _ in the term are literal (stage 1b)
 		argIdx++
 	}
 

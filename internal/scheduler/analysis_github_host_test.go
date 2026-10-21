@@ -176,41 +176,60 @@ func ghClientCallsIn(filename, src string) ([]ghClientCall, error) {
 	// (round 7): gofmt sorts a blank import after the named one, so a
 	// last-wins loop saw only "_" and skipped the file entirely.
 	const platformPath = "github.com/aveloxis/aveloxis/internal/platform"
+	// Stage 1 of summary/59: the org passes build their key-pooled client
+	// through the forge package's constructor (github.New), which is a
+	// GitHub client by construction.
+	const githubPath = "github.com/aveloxis/aveloxis/internal/platform/github"
 	locals := map[string]bool{}
+	ghLocals := map[string]bool{}
 	for _, imp := range f.Imports {
-		if strings.Trim(imp.Path.Value, `"`) != platformPath {
+		path := strings.Trim(imp.Path.Value, `"`)
+		if path != platformPath && path != githubPath {
 			continue
 		}
 		name := "platform"
+		if path == githubPath {
+			name = "github"
+		}
 		if imp.Name != nil {
 			name = imp.Name.Name
 		}
-		if name != "_" {
+		if name == "_" {
+			continue
+		}
+		if path == githubPath {
+			ghLocals[name] = true
+		} else {
 			locals[name] = true
 		}
 	}
-	if len(locals) == 0 {
-		return nil, nil // the file cannot call the constructor
+	if len(locals) == 0 && len(ghLocals) == 0 {
+		return nil, nil // the file cannot call a constructor
 	}
-	isPlatform := func(e ast.Expr, name string) bool {
+	isIn := func(set map[string]bool, e ast.Expr, name string) bool {
 		if id, ok := e.(*ast.Ident); ok {
-			return locals["."] && id.Name == name
+			return set["."] && id.Name == name
 		}
 		sel, ok := e.(*ast.SelectorExpr)
 		if !ok || sel.Sel.Name != name {
 			return false
 		}
 		id, ok := sel.X.(*ast.Ident)
-		return ok && locals[id.Name]
+		return ok && set[id.Name]
 	}
+	isPlatform := func(e ast.Expr, name string) bool { return isIn(locals, e, name) }
 
 	var calls []ghClientCall
 	ast.Inspect(f, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
-		if !ok || !isPlatform(call.Fun, "NewHTTPClient") {
+		if !ok {
 			return true
 		}
-		c := ghClientCall{Line: fset.Position(call.Pos()).Line}
+		viaForge := isIn(ghLocals, call.Fun, "New")
+		if !viaForge && !isPlatform(call.Fun, "NewHTTPClient") {
+			return true
+		}
+		c := ghClientCall{Line: fset.Position(call.Pos()).Line, GitHub: viaForge}
 		for _, a := range call.Args {
 			if isPlatform(a, "AuthGitHub") {
 				c.GitHub = true
@@ -374,8 +393,8 @@ func TestSchedulerGitHubClientsAllUseTheConfiguredHost(t *testing.T) {
 	if examinedFiles != want {
 		t.Fatalf("the guard examined %d files but %s has %d non-test files — it must examine every one, or a client in a skipped file escapes", examinedFiles, dir, want)
 	}
-	if examined < 3 {
-		t.Errorf("examined %d key-pooled GitHub clients; the package builds three (the analysis client, the user_groups org scan and the legacy repo_groups refresh) — a dropped site would weaken this guard silently", examined)
+	if examined < 2 {
+		t.Errorf("examined %d key-pooled GitHub clients; the package builds two (the analysis client, and the org passes' one hookless client in orgscan.go — stage 1 of summary/59 folded the user_groups scan's and the legacy refresh's clients into it) — a dropped site would weaken this guard silently", examined)
 	}
 }
 

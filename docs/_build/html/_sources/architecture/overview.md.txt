@@ -251,6 +251,11 @@ aveloxis/
     platform/             # Platform abstraction
       github/             # GitHub REST API client
       gitlab/             # GitLab API v4 client
+    admin/                # Administrative operations (groups, additions and their
+                          # approval, roles, forge-ID adoption, the account e-mail
+                          # flow): one service the web GUI, the REST API and the
+                          # CLI adapt; it decides administrator privilege from the
+                          # caller's credential and the users row, never from a flag
     api/                  # REST API server (:8383)
     web/                  # Web GUI (:8082) — OAuth, groups, monitor page
     showcase/             # Static public showcase generator

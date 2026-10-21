@@ -49,7 +49,7 @@ const (
 //   - s.ghAPIBase on a GitHub client (the org scan's base, a literal default);
 //   - the baseURL parameter of github.New / gitlab.New themselves;
 //   - on a GitLab client, a variable assigned exactly once, from
-//     GitLabAPIBaseForHost, in the enclosing function.
+//     GitLabAPIBaseForURL, in the enclosing function.
 //
 // Allowed pools: on a GitLab client only glKeys (bare or a field), or the
 // keys parameter inside gitlab.New — an allowlist, because a GitHub pool
@@ -112,7 +112,7 @@ func checkKeyedClients(fset *token.FileSet, f *ast.File) (examined int, findings
 		default:
 			continue
 		}
-		// Names assigned from GitLabAPIBaseForHost, and how often each name
+		// Names assigned from GitLabAPIBaseForURL, and how often each name
 		// is assigned at all: a helper result that is reassigned is data.
 		fromHelper, assigned := map[string]bool{}, map[string]int{}
 		ast.Inspect(body, func(n ast.Node) bool {
@@ -126,7 +126,7 @@ func checkKeyedClients(fset *token.FileSet, f *ast.File) (examined int, findings
 				}
 			}
 			if len(as.Rhs) == 1 && len(as.Lhs) > 0 {
-				if call, ok := as.Rhs[0].(*ast.CallExpr); ok && exprName(call.Fun) == "GitLabAPIBaseForHost" {
+				if call, ok := as.Rhs[0].(*ast.CallExpr); ok && exprName(call.Fun) == "GitLabAPIBaseForURL" {
 					if id, ok := as.Lhs[0].(*ast.Ident); ok {
 						fromHelper[id.Name] = true
 					}
@@ -233,7 +233,7 @@ func checkKeyedClients(fset *token.FileSet, f *ast.File) (examined int, findings
 				}
 			}
 			if !allowedBase(call.Args[0], forge, isConstructor, params, fromHelper, assigned) {
-				findings = append(findings, keyedClientFinding{line, "base URL is not a literal, the " + forge + " config block's BaseURL, s.ghAPIBase, a client constructor's baseURL parameter, or a single-assignment GitLabAPIBaseForHost result — a keyed client must never be pointed at a host taken from data"})
+				findings = append(findings, keyedClientFinding{line, "base URL is not a literal, the " + forge + " config block's BaseURL, s.ghAPIBase, a client constructor's baseURL parameter, or a single-assignment GitLabAPIBaseForURL result — a keyed client must never be pointed at a host taken from data"})
 			}
 			pool := exprName(call.Args[1])
 			switch forge {
@@ -478,7 +478,7 @@ func TestCheckKeyedClientsFixtures(t *testing.T) {
 		{name: "config GitHub accessor via an aliased import", body: `gh.New(cfg.GitHub.GitHubAPIBase(), ghKeys, logger)`, wantExamined: 1},
 		{name: "config GitHub accessor on NewHTTPClient", body: `platform.NewHTTPClient(cfg.GitHub.GitHubAPIBase(), ghKeys, logger, platform.AuthGitHub)`, wantExamined: 1},
 		{name: "org scan base", body: `platform.NewHTTPClient(s.ghAPIBase, s.ghKeys, s.logger, platform.AuthGitHub)`, wantExamined: 1},
-		{name: "helper result", body: "apiBase, ok := platform.GitLabAPIBaseForHost(cfg.GitLab.BaseURL, host)\n_ = ok\nplatform.NewHTTPClient(apiBase, glKeys, logger, platform.AuthGitLab)", wantExamined: 1},
+		{name: "helper result", body: "apiBase, ok := platform.GitLabAPIBaseForURL(cfg.GitLab.BaseURL, host)\n_ = ok\nplatform.NewHTTPClient(apiBase, glKeys, logger, platform.AuthGitLab)", wantExamined: 1},
 		{name: "GitHub client with a keys parameter", src: "package p\n\n" + imports + "func resolver(keys *platform.KeyPool) {\n\tplatform.NewHTTPClient(\"https://api.github.com\", keys, nil, platform.AuthGitHub)\n}\n", wantExamined: 1},
 		{name: "constructor parameters inside gitlab.New", src: "package gitlab\n\n" + imports + "func New(baseURL string, keys *platform.KeyPool, logger any) {\n\tplatform.NewHTTPClient(baseURL, keys, logger, platform.AuthGitLab)\n}\n", wantExamined: 1},
 		{name: "literal base inside package platform", src: "package platform\n\nfunc f(keys *KeyPool) {\n\tNewHTTPClient(\"https://api.github.com\", keys, nil, AuthGitHub)\n}\n", wantExamined: 1},
@@ -510,8 +510,8 @@ func TestCheckKeyedClientsFixtures(t *testing.T) {
 		{name: "a data-filled BaseURL field", body: `platform.NewHTTPClient(job.BaseURL, s.glKeys, s.logger, platform.AuthGitLab)`, wantExamined: 1, wantFindings: 1},
 		{name: "the other forge's config BaseURL", body: `platform.NewHTTPClient(s.cfg.GitHub.BaseURL, s.glKeys, s.logger, platform.AuthGitLab)`, wantExamined: 1, wantFindings: 1},
 		{name: "org scan base on a GitLab client", body: `platform.NewHTTPClient(s.ghAPIBase, s.glKeys, s.logger, platform.AuthGitLab)`, wantExamined: 1, wantFindings: 1},
-		{name: "helper result on a GitHub client", body: "apiBase, ok := platform.GitLabAPIBaseForHost(cfg.GitLab.BaseURL, host)\n_ = ok\ngh.New(apiBase, ghKeys, logger)", wantExamined: 1, wantFindings: 1},
-		{name: "helper variable reassigned from data", body: "apiBase, ok := platform.GitLabAPIBaseForHost(cfg.GitLab.BaseURL, host)\n_ = ok\napiBase = \"https://\" + host\nplatform.NewHTTPClient(apiBase, glKeys, logger, platform.AuthGitLab)", wantExamined: 1, wantFindings: 1},
+		{name: "helper result on a GitHub client", body: "apiBase, ok := platform.GitLabAPIBaseForURL(cfg.GitLab.BaseURL, host)\n_ = ok\ngh.New(apiBase, ghKeys, logger)", wantExamined: 1, wantFindings: 1},
+		{name: "helper variable reassigned from data", body: "apiBase, ok := platform.GitLabAPIBaseForURL(cfg.GitLab.BaseURL, host)\n_ = ok\napiBase = \"https://\" + host\nplatform.NewHTTPClient(apiBase, glKeys, logger, platform.AuthGitLab)", wantExamined: 1, wantFindings: 1},
 		{name: "baseURL parameter outside a client constructor", src: "package p\n\n" + imports + "func refresh(baseURL string) {\n\tplatform.NewHTTPClient(baseURL, glKeys, logger, platform.AuthGitLab)\n}\n", wantExamined: 1, wantFindings: 1},
 		{name: "a func New outside the client packages", src: "package p\n\n" + imports + "func New(baseURL string) {\n\tplatform.NewHTTPClient(baseURL, glKeys, nil, platform.AuthGitLab)\n}\n", wantExamined: 1, wantFindings: 1},
 		{name: "wrapper in package platform taking a base", src: "package platform\n\nfunc NewGitLabClientFor(base string, glKeys *KeyPool) {\n\tNewHTTPClient(base, glKeys, nil, AuthGitLab)\n}\n", wantExamined: 1, wantFindings: 1},

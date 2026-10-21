@@ -20,7 +20,7 @@ import (
 // The original 50 FKs: 11 PR children + 4 issues children + 3 messages
 // children + 2 PR-reviews children + 30 repos children (including
 // issue_assignees.repo_id per operator decision on 2026-05-17).
-// v0.29.97 added the five GitHub traffic tables' repo_id (55 total).
+// v0.29.108 added the five GitHub traffic tables' repo_id (55 total).
 //
 // Each row is (child_table, child_column, target_table, target_column,
 // index_name, constraint_name). The local fixture (not borrowed from
@@ -142,7 +142,7 @@ var fkExtraFixture = []fkExtraSpec{
 	{"topic_model_meta", "repo_id", "repos", "repo_id",
 		"idx_topic_model_meta_repo_id", "topic_model_meta_repo_id_fkey"},
 
-	// repos(repo_id) ← v0.29.97 GitHub traffic tables, shaped like repo_clones
+	// repos(repo_id) ← v0.29.108 GitHub traffic tables, shaped like repo_clones
 	{"repo_views", "repo_id", "repos", "repo_id",
 		"idx_repo_views_repo_id", "repo_views_repo_id_fkey"},
 	{"repo_traffic_paths", "repo_id", "repos", "repo_id",

@@ -17,7 +17,25 @@ import (
 
 	"github.com/aveloxis/aveloxis/internal/model"
 	"github.com/aveloxis/aveloxis/internal/platform"
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
+
+// parseFuncDecl returns the declaration of the single function in the
+// source srctest.PackageFunc returned for one signature.
+func parseFuncDecl(t *testing.T, fset *token.FileSet, src string) *ast.FuncDecl {
+	t.Helper()
+	f, err := parser.ParseFile(fset, "src.go", "package collector\n"+src, 0)
+	if err != nil {
+		t.Fatalf("parse the function source: %v", err)
+	}
+	for _, d := range f.Decls {
+		if fn, ok := d.(*ast.FuncDecl); ok {
+			return fn
+		}
+	}
+	t.Fatal("the function source declares no function")
+	return nil
+}
 
 // trafficFakeClient answers the two traffic reads of the collection
 // step and counts them. Every other platform.Client method panics
@@ -446,20 +464,16 @@ func TestCollectTrafficGitLabNilTrafficIsSilent(t *testing.T) {
 //   - processOne has a case for EntityTraffic.
 func TestTrafficStepWiring(t *testing.T) {
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "staged.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The subject is found through the package, not by naming staged.go:
+	// a split moves a function to a new file without breaking the pin.
 	funcs := map[string]*ast.FuncDecl{}
-	for _, d := range f.Decls {
-		if fn, ok := d.(*ast.FuncDecl); ok {
-			funcs[fn.Name.Name] = fn
-		}
-	}
-	for _, name := range []string{"CollectRepo", "collectTraffic", "ProcessRepo", "processOne"} {
-		if funcs[name] == nil {
-			t.Fatalf("staged.go has no func %s", name)
-		}
+	for name, sig := range map[string]string{
+		"CollectRepo":    "func (sc *StagedCollector) CollectRepo(",
+		"collectTraffic": "func (sc *StagedCollector) collectTraffic(",
+		"ProcessRepo":    "func (p *Processor) ProcessRepo(",
+		"processOne":     "func (p *Processor) processOne(",
+	} {
+		funcs[name] = parseFuncDecl(t, fset, srctest.PackageFunc(t, "internal/collector", sig))
 	}
 
 	if res := funcs["collectTraffic"].Type.Results; res != nil && len(res.List) > 0 {

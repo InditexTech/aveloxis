@@ -18,6 +18,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
 // bulkAddRequest builds a request that already carries a resolved
@@ -75,13 +77,16 @@ func TestGroupAddRepoBulkWiring(t *testing.T) {
 	body := extractFuncBody(t, src, "handleGroupAddRepo")
 	for _, needle := range []string{
 		"URLs []string", `json:"urls"`, // the array field
-		"req.URL",                     // legacy single-url fallback retained
-		"AddReposToGroup(",            // one batched store call
-		"urls, s.autoApproveAddLimit", // ... receiving the full slice
+		"req.URL",             // legacy single-url fallback retained
+		"s.admin.AddToGroup(", // one service call (stage 1 of summary/59)
+		"groupID, urls)",      // ... receiving the full slice
 	} {
 		if !strings.Contains(body, needle) {
-			t.Errorf("handleGroupAddRepo must contain %q — bulk body with backward-compatible single-url fallback, one AddReposToGroup call", needle)
+			t.Errorf("handleGroupAddRepo must contain %q — bulk body with backward-compatible single-url fallback, one AddToGroup call", needle)
 		}
+	}
+	if strings.Contains(srctest.StripGoComments(body), "AddReposToGroup(") {
+		t.Error("handleGroupAddRepo must not reach the store: the service owns the add")
 	}
 }
 
@@ -92,7 +97,7 @@ func TestGroupOrgsHandlerWiring(t *testing.T) {
 	src := mustReadFile(t, "portal.go")
 	body := extractFuncBody(t, src, "handleGroupOrgs")
 	for _, needle := range []string{
-		"requireUser(", "GetPortalGroupOrgsForUser(", `"orgs"`,
+		"requireUser(", "GroupAccess(", "GetGroupOrgs(", `"orgs"`,
 		`json:"last_scanned,omitempty"`,
 	} {
 		if !strings.Contains(body, needle) {

@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aveloxis/aveloxis/internal/config"
 	"github.com/aveloxis/aveloxis/internal/db"
@@ -43,8 +44,10 @@ func TestCompareSearchWidgetRendersRelativeFetch(t *testing.T) {
 	rendered := buf.String()
 
 	// Positive: the relative endpoint must appear in the rendered JS.
-	if !strings.Contains(rendered, "/api/v1/repos/search") {
-		t.Errorf("rendered widget missing /api/v1/repos/search fetch call:\n%s", rendered)
+	// The widget's script is the shared /static/repo-search.js (0.29.102);
+	// the fetch lives there.
+	if !strings.Contains(rendered, `/static/repo-search.js`) || !strings.Contains(pageScripts(t)["repo-search.js"], "/api/v1/repos/search") {
+		t.Errorf("rendered widget missing the repo-search script with its /api/v1/repos/search fetch:\n%s", rendered)
 	}
 	// Positive: widget-specific IDs (derived from Prefix) must appear.
 	for _, id := range []string{`id="dash-repo-search"`, `id="dash-search-results"`, `id="dash-repo-ids"`, `id="dash-selected"`} {
@@ -111,8 +114,8 @@ func TestDashboardFullRenderHasRelativeFetch(t *testing.T) {
 	if !strings.Contains(html, `id="dash-repo-search"`) {
 		t.Error("dashboard missing compare search input (dash-repo-search)")
 	}
-	if !strings.Contains(html, "/api/v1/repos/search") {
-		t.Error("dashboard JS does not call /api/v1/repos/search")
+	if !strings.Contains(html, `/static/repo-search.js`) || !strings.Contains(pageScripts(t)["repo-search.js"], "/api/v1/repos/search") {
+		t.Error("dashboard does not load the repo-search script that calls /api/v1/repos/search")
 	}
 	if strings.Contains(html, "http://localhost:8383") {
 		t.Error("dashboard rendered with hardcoded http://localhost:8383 — regression to pre-v0.18.18 bug")
@@ -148,8 +151,8 @@ func TestGroupFullRenderHasRelativeFetch(t *testing.T) {
 	if !strings.Contains(html, `id="grp-repo-search"`) {
 		t.Error("group page missing compare search input (grp-repo-search)")
 	}
-	if !strings.Contains(html, "/api/v1/repos/search") {
-		t.Error("group page JS does not call /api/v1/repos/search")
+	if !strings.Contains(html, `/static/repo-search.js`) || !strings.Contains(pageScripts(t)["repo-search.js"], "/api/v1/repos/search") {
+		t.Error("group page does not load the repo-search script that calls /api/v1/repos/search")
 	}
 	if strings.Contains(html, "http://localhost:8383") {
 		t.Error("group page rendered with hardcoded http://localhost:8383")
@@ -187,7 +190,10 @@ func TestFetchURLFromRenderedPageIsServedByProxy(t *testing.T) {
 	//    API + '/api/v1/repos/search?q=' + encodeURIComponent(q).
 	//    With API='' (same-origin), the effective URL is the suffix alone.
 	re := regexp.MustCompile(`'(/api/v1/repos/search\?q=)'`)
-	m := re.FindStringSubmatch(html)
+	if !strings.Contains(html, `/static/repo-search.js`) {
+		t.Fatal("the rendered dashboard does not load /static/repo-search.js")
+	}
+	m := re.FindStringSubmatch(pageScripts(t)["repo-search.js"])
 	if m == nil {
 		t.Fatalf("could not locate the fetch URL fragment in rendered dashboard JS; regex miss on /api/v1/repos/search")
 	}
@@ -196,9 +202,10 @@ func TestFetchURLFromRenderedPageIsServedByProxy(t *testing.T) {
 	// 3. Issue that exact URL against the web server's Handler with a
 	//    session cookie (what the browser would do automatically for a
 	//    same-origin fetch).
-	token := s.createSession(1, "tester", "", "github", false)
+	token := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: time.Now().Add(time.Hour)})
 	req := httptest.NewRequest(http.MethodGet, fetchURL, nil)
 	req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+	csrf(req) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
 

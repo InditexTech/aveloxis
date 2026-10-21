@@ -29,7 +29,11 @@ var _ platform.Client = (*Client)(nil)
 type Client struct {
 	http   *platform.HTTPClient
 	logger *slog.Logger
-	host   string // e.g. "gitlab.com"
+	// webHints: the instance's web base derived from the API base by the
+	// one rule (platform.GitLabWebBaseForAPI), for ParseRepoURL; nil when
+	// the base names no instance (0.29.101 — a host-only hint split an
+	// instance's path prefix off as the owner).
+	webHints []string
 	// userRefCache: username → glUserRefCacheEntry (v0.27.122) — see
 	// lookupGLUserRef. Zero value is ready to use.
 	userRefCache sync.Map
@@ -40,14 +44,10 @@ type Client struct {
 
 // New creates a GitLab client. baseURL should be like "https://gitlab.com/api/v4".
 func New(baseURL string, keys *platform.KeyPool, logger *slog.Logger) *Client {
-	host := "gitlab.com"
-	if u, err := url.Parse(baseURL); err == nil {
-		host = u.Host
-	}
 	return &Client{
-		http:   platform.NewHTTPClient(baseURL, keys, logger, platform.AuthGitLab),
-		logger: logger,
-		host:   host,
+		http:     platform.NewHTTPClient(baseURL, keys, logger, platform.AuthGitLab),
+		logger:   logger,
+		webHints: platform.GitLabHints(baseURL),
 	}
 }
 
@@ -62,7 +62,7 @@ func (c *Client) OnPermanentRedirect(hook func(from, to string)) {
 }
 
 func (c *Client) ParseRepoURL(rawURL string) (owner, repo string, err error) {
-	parsed, err := platform.ParseRepoURLWithHints(rawURL, map[string]bool{c.host: true})
+	parsed, err := platform.ParseRepoURLWithHints(rawURL, c.webHints)
 	if err != nil {
 		return "", "", err
 	}
@@ -1511,7 +1511,7 @@ func (c *Client) countGitLabResource(ctx context.Context, projectPath, resource,
 // closed 834 alongside the REST X-Totals. Fast-fail retry budget: this
 // is a fallback, not a place to spend a 10-retry chain.
 func (c *Client) mrCountsViaGraphQL(ctx context.Context, owner, repo string) (map[string]int, error) {
-	endpoint := strings.TrimSuffix(c.http.BaseURL(), "/api/v4") + "/api/graphql"
+	endpoint := strings.TrimSuffix(c.http.BaseURL(), platform.GitLabAPISuffix) + "/api/graphql"
 	const query = `query($fullPath: ID!) {
 		project(fullPath: $fullPath) {
 			opened: mergeRequests(state: opened) { count }

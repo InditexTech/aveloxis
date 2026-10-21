@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Collection Pipeline &mdash; Aveloxis 0.29.97 documentation</title>
+  <title>Collection Pipeline &mdash; Aveloxis 0.29.108 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=f3a56b38"></script>
+      <script src="../_static/documentation_options.js?v=ad0a0f70"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -332,6 +332,8 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
+<li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#endpoints">Endpoints</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="api.html#health-check">Health Check</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#public-fleet-stats">Public fleet stats</a></li>
@@ -344,7 +346,7 @@
 <li class="toctree-l3"><a class="reference internal" href="api.html#dependency-licenses">Dependency Licenses</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#repository-search">Repository Search</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#sbom-download">SBOM Download</a></li>
-<li class="toctree-l3"><a class="reference internal" href="api.html#traffic-v0-29-97">Traffic (v0.29.97)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="api.html#traffic-v0-29-108">Traffic (v0.29.108)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#contributor-identities-in-a-window">Contributor identities in a window</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#affiliation-breakdown-for-the-same-window">Affiliation breakdown for the same window</a></li>
 <li class="toctree-l3"><a class="reference internal" href="api.html#tweaks-you-can-make-on-the-client-side">Tweaks you can make on the client side</a></li>
@@ -1330,6 +1332,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#when-not-to-use-a-source-contract-test">When NOT to use a source-contract test</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#the-v0-21-1-lesson">The v0.21.1 lesson</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#shared-helpers-internal-srctest-v0-27-118">Shared helpers: <code class="docutils literal notranslate"><span class="pre">internal/srctest</span></code> (v0.27.118)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#finding-a-subject-across-a-package-v0-29-98-stage-0-5">Finding a subject across a package (v0.29.98, stage 0.5)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#sql-write-scanning-internal-srctest-sqlscan-v0-27-124">SQL write scanning: <code class="docutils literal notranslate"><span class="pre">internal/srctest/sqlscan</span></code> (v0.27.124)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#column-write-policy-registry-v0-27-126">Column write-policy registry (v0.27.126)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/testing.html#standing-rules-registry-v0-27-127">Standing-rules registry (v0.27.127)</a></li>
@@ -1406,7 +1409,10 @@
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#adding-a-foreign-key">Adding a foreign key</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#migration-ordering">Migration ordering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#migration-ordering">Migration ordering</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/schema-migrations.html#where-a-new-step-goes-stages-are-subjects-v0-29-98-n29">Where a new step goes: stages are subjects (v0.29.98, N29)</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#materialized-views">Materialized views</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#the-aveloxis-migrate-skip-views-flag">The <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">migrate</span> <span class="pre">--skip-views</span></code> flag</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/schema-migrations.html#version-bump-checklist-for-a-schema-touching-change">Version-bump checklist for a schema-touching change</a></li>
@@ -1503,7 +1509,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../contributing/adding-a-visualization.html#how-visualizations-work-today">How visualizations work today</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../contributing/adding-a-visualization.html#walkthrough-add-a-contributor-activity-chart">Walkthrough: add a “contributor activity” chart</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-1-make-sure-the-data-is-available">Step 1 — make sure the data is available</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-2-find-the-right-template">Step 2 — find the right template</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-2-find-the-right-template-and-its-script">Step 2 — find the right template and its script</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-3-add-the-canvas-the-fetch">Step 3 — add the canvas + the fetch</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../contributing/adding-a-visualization.html#step-4-handle-the-data-shape-mismatch">Step 4 — handle the data-shape mismatch</a></li>
 </ul>
@@ -1806,13 +1812,13 @@ Phase 3: Messages (sequential, after parallel phase)
 </pre></div>
 </div>
 <p>A 404 from <code class="docutils literal notranslate"><span class="pre">/releases</span></code> is treated as <em>zero releases</em> (non-fatal). Not every repo has cut a release, and legacy rows with a stray <code class="docutils literal notranslate"><span class="pre">.git</span></code> in their slug — though now prevented at write time by <code class="docutils literal notranslate"><span class="pre">model.NormalizeRepoName()</span></code> in <code class="docutils literal notranslate"><span class="pre">db.UpsertRepo</span></code> — used to cause this 404. The staged collector logs <code class="docutils literal notranslate"><span class="pre">no</span> <span class="pre">releases</span> <span class="pre">endpoint</span> <span class="pre">(404)</span> <span class="pre">—</span> <span class="pre">treating</span> <span class="pre">as</span> <span class="pre">zero</span> <span class="pre">releases</span></code> and continues. See the troubleshooting guide for the underlying fix.</p>
-<p>GitHub traffic (v0.29.97) is read after the releases. The daily clones read (<code class="docutils literal notranslate"><span class="pre">/traffic/clones</span></code>) comes first; unless it was skipped, five more reads follow: <code class="docutils literal notranslate"><span class="pre">/traffic/views?per=day</span></code>, <code class="docutils literal notranslate"><span class="pre">/traffic/views?per=week</span></code>, <code class="docutils literal notranslate"><span class="pre">/traffic/clones?per=week</span></code>, <code class="docutils literal notranslate"><span class="pre">/traffic/popular/paths</span></code> and <code class="docutils literal notranslate"><span class="pre">/traffic/popular/referrers</span></code>. GitHub serves traffic only to a key with push access to the repository (classic token) or with the “Administration” repository permission set to read (fine-grained token):</p>
+<p>GitHub traffic (v0.29.108) is read after the releases. The daily clones read (<code class="docutils literal notranslate"><span class="pre">/traffic/clones</span></code>) comes first; unless it was skipped, five more reads follow: <code class="docutils literal notranslate"><span class="pre">/traffic/views?per=day</span></code>, <code class="docutils literal notranslate"><span class="pre">/traffic/views?per=week</span></code>, <code class="docutils literal notranslate"><span class="pre">/traffic/clones?per=week</span></code>, <code class="docutils literal notranslate"><span class="pre">/traffic/popular/paths</span></code> and <code class="docutils literal notranslate"><span class="pre">/traffic/popular/referrers</span></code>. GitHub serves traffic only to a key with push access to the repository (classic token) or with the “Administration” repository permission set to read (fine-grained token):</p>
 <ul class="simple">
 <li><p>A <code class="docutils literal notranslate"><span class="pre">403</span></code> from a key without access, or any other routine skip such as a <code class="docutils literal notranslate"><span class="pre">404</span></code>, is skipped as for releases: one Info line <code class="docutils literal notranslate"><span class="pre">skipping</span> <span class="pre">traffic</span> <span class="pre">endpoints</span></code> with the owner, repository and reason, nothing recorded and no further traffic request, so a key without access spends one request per collection.</p></li>
 <li><p>Any other error is recorded as an error of the repository’s collection, as a releases error is (<code class="docutils literal notranslate"><span class="pre">clone</span> <span class="pre">stats:</span> <span class="pre">&lt;cause&gt;</span></code>, or <code class="docutils literal notranslate"><span class="pre">traffic</span> <span class="pre">&lt;endpoint&gt;:</span> <span class="pre">&lt;cause&gt;</span></code> naming the failed read), and the later phases still run. The first failing read of the five stops the rest, and nothing of that read is stored. A failed daily clones read does not stop the five: their read is stored with the views window only. An error caused by a shutdown is neither recorded nor logged.</p></li>
 <li><p>On GitLab only the daily clones read exists, <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/projects/:id/statistics</span></code>: the 30 UTC days ending on the collection day, days it omits stored as 0, with no unique counts. A key below the Reporter role gets a <code class="docutils literal notranslate"><span class="pre">403</span></code> (a project it cannot read, a <code class="docutils literal notranslate"><span class="pre">404</span></code>), skipped as above with the same Info line; any other error is recorded as <code class="docutils literal notranslate"><span class="pre">clone</span> <span class="pre">stats:</span> <span class="pre">&lt;cause&gt;</span></code>. Views, paths, referrers, windows and weeks are never read or stored for GitLab.</p></li>
 </ul>
-<p>A successful read is staged as one row (beside the daily clones rows) and written in one transaction: the daily views (<code class="docutils literal notranslate"><span class="pre">repo_views</span></code>), one 14-day window per kind with GitHub’s unique visitors or cloners (<code class="docutils literal notranslate"><span class="pre">repo_traffic_windows</span></code>), the complete Monday-to-Sunday weeks inside that window (<code class="docutils literal notranslate"><span class="pre">repo_traffic_weeks</span></code>), and the top paths and referrers (<code class="docutils literal notranslate"><span class="pre">repo_traffic_paths</span></code>, <code class="docutils literal notranslate"><span class="pre">repo_traffic_referrers</span></code>) as the snapshot of the UTC collection date, which replaces any earlier snapshot of that date. Days, windows and weeks take the latest read’s figures. Zeros are stored, never skipped, so a stored day was read even when nobody visited; no totals are stored, a period’s views or clones being the sum of its daily rows. The writer refuses a read without a snapshot date. See <a class="reference internal" href="../schema.html#repo-views"><span class="std std-ref">the schema</span></a> and <a class="reference internal" href="api.html#traffic-v0-29-97"><span class="std std-ref">the API</span></a>.</p>
+<p>A successful read is staged as one row (beside the daily clones rows) and written in one transaction: the daily views (<code class="docutils literal notranslate"><span class="pre">repo_views</span></code>), one 14-day window per kind with GitHub’s unique visitors or cloners (<code class="docutils literal notranslate"><span class="pre">repo_traffic_windows</span></code>), the complete Monday-to-Sunday weeks inside that window (<code class="docutils literal notranslate"><span class="pre">repo_traffic_weeks</span></code>), and the top paths and referrers (<code class="docutils literal notranslate"><span class="pre">repo_traffic_paths</span></code>, <code class="docutils literal notranslate"><span class="pre">repo_traffic_referrers</span></code>) as the snapshot of the UTC collection date, which replaces any earlier snapshot of that date. Days, windows and weeks take the latest read’s figures. Zeros are stored, never skipped, so a stored day was read even when nobody visited; no totals are stored, a period’s views or clones being the sum of its daily rows. The writer refuses a read without a snapshot date. See <a class="reference internal" href="../schema.html#repo-views"><span class="std std-ref">the schema</span></a> and <a class="reference internal" href="api.html#traffic-v0-29-108"><span class="std std-ref">the API</span></a>.</p>
 <p>The 3 extra goroutines claim parallel slots tracked by an atomic counter. The scheduler’s <code class="docutils literal notranslate"><span class="pre">fillWorkerSlots</span></code> pauses new job starts while the total active count (semaphore + parallel slots) exceeds the configured worker limit.</p>
 <p>The direct pipeline is simpler – it writes directly to relational tables with inline contributor resolution. Best for testing or collecting a small number of repos.</p>
 </section>

@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/aveloxis/aveloxis/internal/capacity"
@@ -40,6 +39,26 @@ var ErrGroupNotAdminOwned = errors.New("collection member groups must be admin-o
 // API can 404 instead of 500).
 var ErrCollectionNotFound = errors.New("collection not found")
 
+// ErrCollectionNameTaken is the refusal when another collection already
+// has that name (collections.name is unique). A refusal on the administrator's input
+// (58 §7 item 8), answered 409.
+var ErrCollectionNameTaken = errors.New("a collection with that name already exists")
+
+// collectionExists is the existence read behind the readers and writers
+// that must answer "no such collection" (58 §7 item 8: the detail and the
+// copy answered 200 for an unknown id). A lookup failure is returned,
+// never read as absent (SR-5).
+func (s *PostgresStore) collectionExists(ctx context.Context, collectionID int64) error {
+	var exists bool
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM aveloxis_ops.collections WHERE collection_id = $1)`, collectionID).Scan(&exists); err != nil {
+		return fmt.Errorf("collection %d: %w", collectionID, err)
+	}
+	if !exists {
+		return fmt.Errorf("collection %d: %w", collectionID, ErrCollectionNotFound)
+	}
+	return nil
+}
+
 // ErrNotGroupOwner is returned by CopyCollectionToGroup when the
 // target group does not belong to the calling user.
 var ErrNotGroupOwner = errors.New("target group is not owned by the calling user")
@@ -66,27 +85,10 @@ type CollectionGroup struct {
 	RepoCount int    `json:"repos"`
 }
 
-// CollectionRepo is one deduped repo row in a collection detail view.
-type CollectionRepo struct {
-	RepoID int64  `json:"repo_id"`
-	Owner  string `json:"owner"`
-	Name   string `json:"name"`
-	GitURL string `json:"git_url"`
-	// v0.27.74 — the collection detail table's data columns. Counts
-	// come from collection_queue's CACHED cumulative totals
-	// (v0.19.11/v0.21.2 — the same values the monitor renders), never
-	// per-request aggregation (the v0.27.4 nginx-timeout class).
-	// LastActivity is the FORGE's own last_updated from the latest
-	// repo_info snapshot — the deliberate cost/benefit balance: a real
-	// per-table MAX(created_at) sweep would scan issues/commits for
-	// every page render.
-	Issues        int64      `json:"issues"`
-	PRs           int64      `json:"prs"`
-	Commits       int64      `json:"commits"`
-	LastCollected *time.Time `json:"last_collected,omitempty"`
-	LastActivity  *time.Time `json:"last_activity,omitempty"`
-	Starred       bool       `json:"starred"`
-}
+// CollectionRepo is the repository-listing row: one shape for the
+// collection detail and the group page (v0.27.74 kept two identical
+// structs; DBS-2 keeps one).
+type CollectionRepo = PortalGroupRepo
 
 // CollectionRepoSortValid reports whether key is an allowlisted sort
 // for GetCollectionRepos (the API echoes the effective sort).
@@ -116,6 +118,9 @@ func (s *PostgresStore) CreateCollection(ctx context.Context, name, description 
 		INSERT INTO aveloxis_ops.collections (name, description, position, created_by)
 		VALUES ($1, $2, $3, $4) RETURNING collection_id`,
 		name, description, position, createdBy).Scan(&id)
+	if isUniqueViolation(err) {
+		return 0, fmt.Errorf("CreateCollection %q: %w", name, ErrCollectionNameTaken)
+	}
 	if err != nil {
 		return 0, fmt.Errorf("CreateCollection: %w", err)
 	}
@@ -128,11 +133,14 @@ func (s *PostgresStore) UpdateCollection(ctx context.Context, collectionID int64
 		UPDATE aveloxis_ops.collections
 		SET name = $2, description = $3, position = $4
 		WHERE collection_id = $1`, collectionID, name, description, position)
+	if isUniqueViolation(err) {
+		return fmt.Errorf("UpdateCollection %q: %w", name, ErrCollectionNameTaken)
+	}
 	if err != nil {
 		return fmt.Errorf("UpdateCollection: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("UpdateCollection: collection %d not found", collectionID)
+		return fmt.Errorf("UpdateCollection: collection %d: %w", collectionID, ErrCollectionNotFound)
 	}
 	return nil
 }
@@ -140,9 +148,12 @@ func (s *PostgresStore) UpdateCollection(ctx context.Context, collectionID int64
 // DeleteCollection removes the collection; collection_groups rows
 // cascade (ON DELETE CASCADE). Member user_groups are untouched.
 func (s *PostgresStore) DeleteCollection(ctx context.Context, collectionID int64) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM aveloxis_ops.collections WHERE collection_id = $1`, collectionID)
+	tag, err := s.pool.Exec(ctx, `DELETE FROM aveloxis_ops.collections WHERE collection_id = $1`, collectionID)
 	if err != nil {
 		return fmt.Errorf("DeleteCollection: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("DeleteCollection: collection %d: %w", collectionID, ErrCollectionNotFound)
 	}
 	return nil
 }
@@ -153,6 +164,9 @@ func (s *PostgresStore) DeleteCollection(ctx context.Context, collectionID int64
 // check-then-act race; zero rows inserted with a non-admin owner
 // surfaces ErrGroupNotAdminOwned.
 func (s *PostgresStore) AddGroupToCollection(ctx context.Context, collectionID, groupID int64) error {
+	if err := s.collectionExists(ctx, collectionID); err != nil {
+		return err
+	}
 	tag, err := s.pool.Exec(ctx, `
 		INSERT INTO aveloxis_ops.collection_groups (collection_id, group_id)
 		SELECT $1, g.group_id
@@ -172,7 +186,10 @@ func (s *PostgresStore) AddGroupToCollection(ctx context.Context, collectionID, 
 			FROM aveloxis_ops.user_groups g
 			JOIN aveloxis_ops.users u ON u.user_id = g.user_id
 			WHERE g.group_id = $1`, groupID).Scan(&isAdminOwned); err != nil {
-			return fmt.Errorf("AddGroupToCollection: group %d not found", groupID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("AddGroupToCollection: group %d: %w", groupID, ErrGroupNotFound)
+			}
+			return fmt.Errorf("AddGroupToCollection: group %d: %w", groupID, err)
 		}
 		if !isAdminOwned {
 			return ErrGroupNotAdminOwned
@@ -185,10 +202,14 @@ func (s *PostgresStore) AddGroupToCollection(ctx context.Context, collectionID, 
 // RemoveGroupFromCollection unlinks a member group. The group itself
 // (and its repos) are untouched.
 func (s *PostgresStore) RemoveGroupFromCollection(ctx context.Context, collectionID, groupID int64) error {
-	_, err := s.pool.Exec(ctx, `
+	if err := s.collectionExists(ctx, collectionID); err != nil {
+		return err
+	}
+	// A group that is not a member (or does not exist) leaves the
+	// collection as it was: idempotent, as the add is.
+	if _, err := s.pool.Exec(ctx, `
 		DELETE FROM aveloxis_ops.collection_groups
-		WHERE collection_id = $1 AND group_id = $2`, collectionID, groupID)
-	if err != nil {
+		WHERE collection_id = $1 AND group_id = $2`, collectionID, groupID); err != nil {
 		return fmt.Errorf("RemoveGroupFromCollection: %w", err)
 	}
 	return nil
@@ -260,6 +281,9 @@ func (s *PostgresStore) UnstarCollection(ctx context.Context, userID int, collec
 // GetCollectionGroups returns the member groups of a collection in
 // link position order, each with its live repo count.
 func (s *PostgresStore) GetCollectionGroups(ctx context.Context, collectionID int64) ([]CollectionGroup, error) {
+	if err := s.collectionExists(ctx, collectionID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT g.group_id, g.name, COUNT(ur.repo_id)::int AS repos
 		FROM aveloxis_ops.collection_groups cg
@@ -284,28 +308,17 @@ func (s *PostgresStore) GetCollectionGroups(ctx context.Context, collectionID in
 	return out, rows.Err()
 }
 
-// GetCollectionRepos returns one page of the collection's DEDUPED
-// repo set (a repo in two member groups appears once), ordered by
-// owner/name with repo_id as the stable tiebreaker (the v0.18.7
-// pagination lesson), plus the total deduped count.
+// GetCollectionRepos returns one page of the collection's DEDUPED repo
+// set (a repo in two member groups appears once) through the one listing
+// query (repoListingSQL, DBS-2), plus the total deduped count; page,
+// pageSize, sortKey and sortDir are normalised by NormalizeListingPage.
+// ErrCollectionNotFound for no such collection (58 §7 item 8: it answered
+// 200 with an empty page).
 func (s *PostgresStore) GetCollectionRepos(ctx context.Context, collectionID int64, userID, page, pageSize int, sortKey, sortDir string) ([]CollectionRepo, int, error) {
-	if page < 1 {
-		page = 1
+	if err := s.collectionExists(ctx, collectionID); err != nil {
+		return nil, 0, err
 	}
-	// Two single-comparison clamps rather than one compound
-	// condition (CodeQL go/uncontrolled-allocation-size,
-	// 2026-07-31): semantically identical, but the bare
-	// `pageSize > 100` guard is the barrier shape the scanner's
-	// upper-bound analysis recognizes — the OR-combined
-	// reassignment was flagged as an uncontrolled allocation size
-	// even though it bounded the value.
-	if pageSize < 1 {
-		pageSize = 50
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
-
+	p := NormalizeListingPage(page, pageSize, sortKey, sortDir)
 	var total int
 	if err := s.pool.QueryRow(ctx, `
 		SELECT COUNT(DISTINCT ur.repo_id)
@@ -314,64 +327,15 @@ func (s *PostgresStore) GetCollectionRepos(ctx context.Context, collectionID int
 		WHERE cg.collection_id = $1`, collectionID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("GetCollectionRepos count: %w", err)
 	}
-
-	// v0.27.74 — server-side sort (pagination makes client-side sort
-	// meaningless: it would only reorder the current page). Both the
-	// key and direction resolve through fixed allowlists BEFORE any
-	// interpolation; unknown values fall back to the default.
-	sortExpr, ok := collectionRepoSorts[sortKey]
-	if !ok {
-		sortExpr = collectionRepoSorts["name"]
-	}
-	dir := "ASC"
-	if strings.EqualFold(sortDir, "desc") {
-		dir = "DESC"
-	}
-	orderBy := strings.ReplaceAll(sortExpr, "%s", dir) + ", r.repo_id"
-
-	rows, err := s.pool.Query(ctx, `
-		SELECT r.repo_id, r.repo_owner, r.repo_name, r.repo_git,
-		       COALESCE(q.last_issues, 0), COALESCE(q.last_prs, 0), COALESCE(q.last_commits, 0),
-		       q.last_collected, ri.last_updated,
-		       (ucs.user_id IS NOT NULL) AS starred
-		FROM (
+	out, err := s.listRepos(ctx, `
 			SELECT DISTINCT ur.repo_id
 			FROM aveloxis_ops.collection_groups cg
 			JOIN aveloxis_ops.user_repos ur USING (group_id)
-			WHERE cg.collection_id = $1
-		) member
-		JOIN aveloxis_data.repos r ON r.repo_id = member.repo_id
-		LEFT JOIN aveloxis_ops.collection_queue q ON q.repo_id = r.repo_id
-		LEFT JOIN LATERAL (
-			SELECT last_updated FROM aveloxis_data.repo_info
-			WHERE repo_id = r.repo_id
-			ORDER BY data_collection_date DESC NULLS LAST, repo_info_id DESC LIMIT 1
-		) ri ON TRUE
-		LEFT JOIN aveloxis_ops.user_repo_stars ucs
-			ON ucs.repo_id = r.repo_id AND ucs.user_id = $2
-		ORDER BY `+orderBy+`
-		LIMIT $3 OFFSET $4`, collectionID, userID, pageSize, (page-1)*pageSize)
+			WHERE cg.collection_id = $1`, collectionID, userID, p)
 	if err != nil {
 		return nil, 0, fmt.Errorf("GetCollectionRepos: %w", err)
 	}
-	defer rows.Close()
-
-	// CONSTANT capacity hint (CodeQL go/uncontrolled-allocation-size,
-	// round 2): pageSize is clamped above, but the scanner doesn't
-	// credit clamp-and-continue reassignments as barriers. Capacity
-	// is only a pre-allocation hint — append grows past it on a
-	// 100-row page — so a constant severs the taint path outright.
-	// Do NOT change this back to `pageSize`.
-	out := make([]CollectionRepo, 0, 50)
-	for rows.Next() {
-		var cr CollectionRepo
-		if err := rows.Scan(&cr.RepoID, &cr.Owner, &cr.Name, &cr.GitURL,
-			&cr.Issues, &cr.PRs, &cr.Commits, &cr.LastCollected, &cr.LastActivity, &cr.Starred); err != nil {
-			return nil, 0, fmt.Errorf("GetCollectionRepos scan: %w", err)
-		}
-		out = append(out, cr)
-	}
-	return out, total, rows.Err()
+	return out, total, nil
 }
 
 // CopyCollectionToGroup links every repo of the collection into
@@ -390,6 +354,9 @@ func (s *PostgresStore) CopyCollectionToGroup(ctx context.Context, collectionID 
 		if errors.Is(err, ErrGroupNotOwned) {
 			return 0, ErrNotGroupOwner
 		}
+		return 0, err
+	}
+	if err := s.collectionExists(ctx, collectionID); err != nil {
 		return 0, err
 	}
 	rows, err := s.pool.Query(ctx, `

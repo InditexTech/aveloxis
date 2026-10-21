@@ -45,7 +45,7 @@ func (s *Scheduler) retryApprovedAddRequests(ctx context.Context) {
 	// ids beside it.
 	var causes []string
 	for _, id := range ids {
-		p, f, err := s.store.ProcessApprovedAddRequest(ctx, id)
+		p, f, err := s.store.ProcessApprovedAddRequest(ctx, id, s.gitlabWebBase())
 		processed += p
 		failed += f
 		if errors.Is(err, context.Canceled) {

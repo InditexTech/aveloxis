@@ -21,7 +21,9 @@ func TestSnapshotTimeSeriesReadHistoryTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(src)
-	for _, fn := range []string{"StarsTimeSeries", "ForksTimeSeries"} {
+	// Stage 1b: one reader, SnapshotSeries, behind /stars, /forks and
+	// /watchers.
+	for _, fn := range []string{"SnapshotSeries"} {
 		idx := strings.Index(s, "func (s *PostgresStore) "+fn)
 		if idx < 0 {
 			t.Fatalf("%s not found", fn)

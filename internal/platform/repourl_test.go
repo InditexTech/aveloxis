@@ -131,8 +131,10 @@ func TestParseRepoURL(t *testing.T) {
 }
 
 func TestParseRepoURLWithHints(t *testing.T) {
-	// Self-hosted GitLab without "gitlab" in hostname.
-	hints := map[string]bool{"code.internal.company.com": true}
+	// Self-hosted GitLab without "gitlab" in hostname (stage 1 of summary/59:
+	// the hint is the instance's web base, v0.30's signature; an install
+	// under a sub-path matches by prefix).
+	hints := []string{"https://code.internal.company.com", "https://code.example.edu/gitlab"}
 	got, err := ParseRepoURLWithHints("https://code.internal.company.com/infra/deploy-tools", hints)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -145,6 +147,27 @@ func TestParseRepoURLWithHints(t *testing.T) {
 	}
 	if got.Repo != "deploy-tools" {
 		t.Errorf("repo = %q, want %q", got.Repo, "deploy-tools")
+	}
+	if got.WebBase != "https://code.internal.company.com" {
+		t.Errorf("web base = %q", got.WebBase)
+	}
+	sub, err := ParseRepoURLWithHints("https://code.example.edu/gitlab/grp/sub/proj.git", hints)
+	if err != nil || sub.Platform != model.PlatformGitLab || sub.Owner != "grp/sub" || sub.Repo != "proj" || sub.WebBase != "https://code.example.edu/gitlab" {
+		t.Errorf("sub-path instance: %+v, %v", sub, err)
+	}
+	if _, err := ParseRepoURLWithHints("https://code.example.edu/gitlab/onlyowner", hints); err == nil {
+		t.Error("a hinted URL with no repository after the prefix must be refused")
+	}
+	// The public forges carry their own web base.
+	if gh, err := ParseRepoURL("https://github.com/o/r"); err != nil || gh.WebBase != "https://github.com" {
+		t.Errorf("github web base = %q, %v", gh.WebBase, err)
+	}
+	// The hint is derived once from gitlab.base_url.
+	if base, ok := GitLabWebBaseForAPI("https://code.internal.company.com/api/v4/"); !ok || base != "https://code.internal.company.com" {
+		t.Errorf("GitLabWebBaseForAPI = %q, %v", base, ok)
+	}
+	if _, ok := GitLabWebBaseForAPI(""); ok {
+		t.Error("no configured instance: no hint")
 	}
 }
 

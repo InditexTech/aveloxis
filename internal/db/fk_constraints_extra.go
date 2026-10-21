@@ -13,7 +13,7 @@ import (
 )
 
 // fkExtraConstraint is one of the 55 FKs (the original 50 identified
-// by the 2026-05-17 audit, plus the five v0.29.97 appended below) that
+// by the 2026-05-17 audit, plus the five v0.29.108 appended below) that
 // need ON UPDATE CASCADE ON DELETE RESTRICT DEFERRABLE INITIALLY
 // DEFERRED applied. Same
 // (child_table, child_column) groupings as fkExtraIndexes.
@@ -24,7 +24,7 @@ import (
 // relied on for the cntrb_id FKs; verified empirically against
 // the live production schema before v0.22.7.
 //
-// v0.29.97 appended the repo_id FKs of the five GitHub traffic
+// v0.29.108 appended the repo_id FKs of the five GitHub traffic
 // tables, shaped like repo_clones (55 entries).
 //
 // Adding a new FK to this set requires extending fkExtraIndexes
@@ -99,7 +99,7 @@ var fkExtraConstraints = []fkExtraConstraint{
 	{"review_comments", "repo_id", "repos", "repo_id", "review_comments_repo_id_fkey"},
 	{"topic_model_meta", "repo_id", "repos", "repo_id", "topic_model_meta_repo_id_fkey"},
 
-	// repos(repo_id) ← v0.29.97 GitHub traffic tables, shaped like repo_clones
+	// repos(repo_id) ← v0.29.108 GitHub traffic tables, shaped like repo_clones
 	{"repo_views", "repo_id", "repos", "repo_id", "repo_views_repo_id_fkey"},
 	{"repo_traffic_paths", "repo_id", "repos", "repo_id", "repo_traffic_paths_repo_id_fkey"},
 	{"repo_traffic_referrers", "repo_id", "repos", "repo_id", "repo_traffic_referrers_repo_id_fkey"},
@@ -171,7 +171,7 @@ func applyFullBehaviorFK(ctx context.Context, pg *PostgresStore, logger *slog.Lo
 // applies ON UPDATE CASCADE ON DELETE RESTRICT DEFERRABLE
 // INITIALLY DEFERRED to the 55 child FKs of fkExtraConstraints (the
 // original 50 identified by the 2026-05-17 audit, plus the five
-// v0.29.97 traffic tables).
+// v0.29.108 traffic tables).
 //
 // Idempotent via constraintStateMatches — already-migrated FKs
 // (constraint already in the desired state) are skipped. Fresh

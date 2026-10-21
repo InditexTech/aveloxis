@@ -153,7 +153,12 @@ func TestActivityBoundsAcrossArmsAndRepos(t *testing.T) {
 // each arm is a per-repository ORDER BY … LIMIT 1 over the unnested ids.
 func TestActivityBoundsAskOneRowPerRepository(t *testing.T) {
 	src := srctest.StripGoComments(srctest.Read(t, "internal/db/analytics_store.go"))
-	for _, fn := range []string{"LastActivityAt", "FirstActivityAt"} {
+	// Stage 1b: the per-repository reader is lastActivityByRepo (the stats
+	// batch reads it per id); LastActivityAt is its max in Go.
+	if body := srctest.FuncBody(t, src, "func (s *PostgresStore) LastActivityAt("); !strings.Contains(body, "s.lastActivityByRepo(ctx, repoIDs)") || strings.Contains(body, "SELECT") {
+		t.Error("LastActivityAt must be lastActivityByRepo's max, not a second query")
+	}
+	for _, fn := range []string{"lastActivityByRepo", "FirstActivityAt"} {
 		body := srctest.FuncBody(t, src, "func (s *PostgresStore) "+fn+"(")
 		if strings.Contains(body, "= ANY(") {
 			t.Errorf("%s: an aggregate over repo_id = ANY(...) cannot take the one-row index path", fn)

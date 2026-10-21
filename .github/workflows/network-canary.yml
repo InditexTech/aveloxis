@@ -31,7 +31,7 @@ jobs:
           # without them those tests skip, visibly, in the -v output.
           AVELOXIS_TEST_GITHUB_TOKEN: ${{ secrets.AVELOXIS_TEST_GITHUB_TOKEN }}
           AVELOXIS_TEST_GITLAB_TOKEN: ${{ secrets.AVELOXIS_TEST_GITLAB_TOKEN }}
-          # v0.29.97: group/project on gitlab.com that the GitLab token
+          # v0.29.108: group/project on gitlab.com that the GitLab token
           # has the Reporter role on (a repository variable, not a
           # secret: it is a name). Without it the statistics canary
           # skips, visibly.
@@ -62,14 +62,14 @@ jobs:
           go test ./internal/platform/ecosystems/ -run TestLiveEcosystemsLookupForSeaborn -count=1 -v
           go test ./internal/platform/gitlab/ -run TestLiveGitLabRepoInfoForGitLabRunner -count=1 -v
           go test ./internal/platform/github/ -run TestLiveGraphQLListingAndPRBatchParityFields -count=1 -v
-          # v0.29.97 — GitHub traffic (views, clones, popular paths and
+          # v0.29.108 — GitHub traffic (views, clones, popular paths and
           # referrers): the unit tests serve GitHub's OpenAPI examples,
           # so only this sees the live shape change. GitHub serves
           # traffic only with push access: the token needs it on
           # aveloxis/aveloxis (or on AVELOXIS_TEST_TRAFFIC_REPO), and
           # the canary skips, visibly, on a 403.
           go test ./internal/platform/github/ -run TestLiveGitHubTrafficContract -count=1 -v
-          # v0.29.97 — GitLab daily clone counts: the unit tests serve a
+          # v0.29.108 — GitLab daily clone counts: the unit tests serve a
           # body built to GitLab's entity, so only this sees a live
           # change of GET /projects/:id/statistics. GitLab serves it to
           # a key with at least the Reporter role (and read_api), so

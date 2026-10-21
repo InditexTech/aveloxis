@@ -14,24 +14,22 @@ package scheduler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/collector"
 	"github.com/aveloxis/aveloxis/internal/config"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/model"
 	"github.com/aveloxis/aveloxis/internal/platform"
+	"github.com/aveloxis/aveloxis/internal/platform/github"
 	"github.com/aveloxis/aveloxis/internal/safego"
 )
 
@@ -123,10 +121,14 @@ type Scheduler struct {
 	ghClient platform.Client
 	glClient platform.Client
 	ghKeys   *platform.KeyPool
-	glKeys   *platform.KeyPool // the legacy GitLab group refresh only (v0.29.11)
-	logger   *slog.Logger
-	cfg      Config
-	workerID string
+	glKeys   *platform.KeyPool // the legacy GitLab group refresh and the GitLab org pass (v0.29.11)
+	// ghOrgClient is the hookless client the org passes list through
+	// (githubOrgClient), built once.
+	ghOrgClient     *github.Client
+	ghOrgClientOnce sync.Once
+	logger          *slog.Logger
+	cfg             Config
+	workerID        string
 
 	// scorecardSem bounds concurrent scorecard SUBPROCESSES across the
 	// worker pool (collection.scorecard_max_concurrent, 2026-09-12). A
@@ -2381,11 +2383,16 @@ func (s *Scheduler) refreshOrgs(ctx context.Context) {
 			s.logger.Info("new repos discovered in org", "org", g.Name, "new", newRepos)
 		}
 	}
-
-	// Check existing repos for renames via prelim.
-	s.checkForRenames(ctx)
+	// The rename sweep that ran here (prelim over 50 stale repositories) is
+	// gone (stage 1 of summary/59, N3): Phase 0's prelim already detects a
+	// rename per collection, and this pass only ran while legacy org groups
+	// existed.
 }
 
+// refreshGitHubOrg lists a legacy GitHub org group through the one lister
+// and records what it lists through the one ingest (stage 1 of summary/59).
+// Returns the repositories recorded this pass. No personal-account
+// fallback: a legacy row is org-typed (N16).
 func (s *Scheduler) refreshGitHubOrg(ctx context.Context, g db.OrgGroup) int {
 	if !s.githubKeysAvailable() {
 		return 0
@@ -2398,17 +2405,14 @@ func (s *Scheduler) refreshGitHubOrg(ctx context.Context, g db.OrgGroup) int {
 			"org", g.Name, "website", platform.RedactURLUserinfo(g.Website), "github_host", platform.GitHubWebHost(s.ghAPIBase))
 		return 0
 	}
-	// s.ghAPIBase, not a literal (v0.29.57): this is the SECOND org-scan
-	// client — the legacy repo_groups refresh — and it was missed when
-	// scanOrgRepos moved onto the configured host, which is exactly the
-	// divergence one shared field exists to prevent.
-	http := platform.NewHTTPClient(s.ghAPIBase, s.ghKeys, s.logger, platform.AuthGitHub)
-
+	client := s.githubOrgClient()
+	if client == nil {
+		return 0
+	}
 	// Bridge from legacy aveloxis_data.repo_groups to modern
 	// aveloxis_ops.user_groups: any user_group whose user_org_requests
 	// row points at this org's URL gets every discovered repo linked
-	// into aveloxis_ops.user_repos. Hoisted out of the page loop so we
-	// pay the lookup once per scan.
+	// into aveloxis_ops.user_repos. Looked up once per scan.
 	userGroupIDs, ugErr := s.store.GetUserGroupIDsForOrgURL(ctx, g.Website)
 	if errors.Is(ugErr, context.Canceled) {
 		return 0 // shutdown, not a failure
@@ -2416,157 +2420,42 @@ func (s *Scheduler) refreshGitHubOrg(ctx context.Context, g db.OrgGroup) int {
 	if ugErr != nil {
 		s.logger.Warn("failed to look up user_groups for org", "org_url", platform.RedactURLUserinfo(g.Website), "error", ugErr)
 	}
-
+	targets := ingestTargets{legacyGroupID: g.ID, userGroupIDs: userGroupIDs}
 	newCount := 0
-	page := 1
-	for {
-		path := fmt.Sprintf("/orgs/%s/repos?per_page=100&type=all&page=%d", g.Name, page)
-		resp, err := http.Get(platform.WithoutETag(ctx), path)
+	for item, err := range client.ListOwnerRepos(ctx, g.Name, false) {
 		if errors.Is(err, context.Canceled) {
 			return newCount // shutdown mid-listing, not a failure
 		}
 		if err != nil {
-			s.logger.Warn("org refresh API error", "org", g.Name, "error", err)
+			// The listing ended early: what was listed is recorded; the next
+			// pass retries.
+			s.logger.Warn("org refresh: listing failed — recorded what was listed; the next pass retries", "org", g.Name, "error", err)
 			break
 		}
-		var items []struct {
-			ID        int64     `json:"id"` // v0.27.102 — rename-proof numeric identity
-			CreatedAt time.Time `json:"created_at"`
-			HTMLURL   string    `json:"html_url"`
-			Name      string    `json:"name"`
-			Owner     struct {
-				Login string `json:"login"`
-			} `json:"owner"`
+		out, ierr := s.ingestDiscovered(ctx, item, model.PlatformGitHub, targets)
+		if errors.Is(ierr, context.Canceled) {
+			return newCount
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
-			resp.Body.Close()
-			if errors.Is(err, context.Canceled) {
-				return newCount // shutdown mid-listing, not a failure
-			}
-			// H-7: a page that does not decode ends the listing; say so.
-			s.logger.Warn("org refresh: page did not decode — listing stopped", "org", g.Name, "error", err)
-			break
+		if out.created {
+			newCount++
 		}
-		resp.Body.Close()
-
-		if len(items) == 0 {
-			break
-		}
-		for _, item := range items {
-			// Resolve repo_id — either from the existing catalog row or
-			// by inserting a new one. The user_repos linkage step runs
-			// in BOTH cases so pre-bridge drift heals on subsequent
-			// refresh ticks.
-			var repoID int64
-			existing, findErr := s.store.FindRepoByURL(ctx, item.HTMLURL)
-			if errors.Is(findErr, context.Canceled) {
-				return newCount // shutdown, not a failure
-			}
-			if findErr != nil {
-				s.logger.Warn("failed to check for existing repo", "url", platform.RedactURLUserinfo(item.HTMLURL), "error", findErr)
-			}
-			if existing > 0 {
-				repoID = existing
-				// v0.27.102: opportunistic forge-ID backfill (fill-empty-
-				// only) — see refreshUserOrgs for the rationale.
-				idErr := s.store.SetPlatformRepoIDIfEmptySeen(ctx, repoID, model.ForgeIDString(item.ID), item.CreatedAt)
-				if errors.Is(idErr, context.Canceled) {
-					return newCount // shutdown, not a failure
-				}
-				if idErr != nil {
-					s.logger.Warn("failed to backfill platform_repo_id", "repo_id", repoID, "error", idErr)
-				}
-			} else {
-				rid, err := s.store.UpsertRepo(ctx, &model.Repo{
-					Platform:   model.PlatformGitHub,
-					GitURL:     item.HTMLURL,
-					Name:       item.Name,
-					Owner:      item.Owner.Login,
-					GroupID:    g.ID,
-					PlatformID: model.ForgeIDString(item.ID), // v0.27.102
-				})
-				if err != nil {
-					if errors.Is(err, context.Canceled) {
-						return newCount // shutdown mid-listing, not a failure
-					}
-					// H-7 (review HF-2): a repository the listing found but could not record.
-					s.logger.Warn("org refresh: could not record discovered repository", "org", g.Name, "repo", platform.RedactURLUserinfo(item.HTMLURL), "error", err)
-					continue
-				}
-				repoID = rid
-				if err := s.store.EnqueueRepo(ctx, repoID, 100); err != nil {
-					if errors.Is(err, context.Canceled) {
-						return newCount // shutdown mid-listing, not a failure
-					}
-					// H-7 (review HF-2): recorded but NOT queued. The next refresh finds
-					// the row and takes the existing-row branch, which links but never
-					// enqueues (re-queuing there would revive gone repositories and
-					// rename duplicates), so the operator repairs it (review HF2-1).
-					s.logger.Warn("org refresh: could not queue discovered repository — it will not be collected until `aveloxis reconcile-repos` queues it", "org", g.Name, "repo_id", repoID, "error", err)
-					continue
-				}
-				s.logger.Info("new repo discovered", "org", g.Name, "repo", platform.RedactURLUserinfo(item.HTMLURL))
-				newCount++
-				// §5c repo-side resolution: a mailing-list message may have
-				// signaled this repo before it was in the catalog. Backfill
-				// any waiting email_message.signaled_repo_id now.
-				if n, rerr := s.store.ResolveSignaledRepoForURL(ctx, repoID, item.HTMLURL); rerr == nil && n > 0 {
-					s.logger.Info("resolved signaled_repo for new repo", "repo", platform.RedactURLUserinfo(item.HTMLURL), "messages", n)
-				}
-			}
-			for _, gid := range userGroupIDs {
-				_, err := s.store.AddOrgRepoToGroupByID(ctx, gid, repoID)
-				if errors.Is(err, context.Canceled) {
-					return newCount // shutdown, not a failure
-				}
-				if _, capped := capacity.AsExceeded(err); capped {
-					continue // the account's repository quota (the store logs it once a day)
-				}
-				if err != nil {
-					s.logger.Warn("failed to link discovered repo into user_repos",
-						"group_id", gid, "repo_id", repoID, "error", err)
-				}
-			}
-		}
-		page++
 	}
 	return newCount
 }
 
+// refreshGitLabGroup lists a legacy GitLab group through the instance's
+// client (gitlabClientForWebURL: the three guards — no GitLab keys, no
+// usable host, not the configured instance — run before anything touches
+// the network or the store; v0.29.11: through v0.29.10 this sent GitHub
+// tokens to the group's host) and records what it lists through the one
+// ingest. Returns the repositories recorded this pass.
 func (s *Scheduler) refreshGitLabGroup(ctx context.Context, g db.OrgGroup) int {
-	// v0.29.11: through v0.29.10 this built its client on s.ghKeys (a TODO
-	// since the initial commit), so every GitLab group refresh sent a GitHub
-	// token as PRIVATE-TOKEN to the host in the group's website URL, and the
-	// 401s it earned struck GitHub keys. All three guards (no GitLab keys,
-	// no usable host, not the configured instance) run before anything
-	// touches the network or the store.
-	if s.glKeys == nil || s.glKeys.IsEmpty() {
-		s.logger.Warn("GitLab group refresh skipped — no GitLab API keys configured",
+	client, ok, why := s.gitlabClientForWebURL(g.Website)
+	if !ok {
+		s.logger.Warn("GitLab group refresh skipped — "+why,
 			"group", g.Name, "org_url", platform.RedactURLUserinfo(g.Website))
 		return 0
 	}
-	// No default host: a website with no scheme, or one that does not
-	// parse, is not assumed to be gitlab.com — that would list another
-	// instance's group of the same name against the configured instance.
-	u, perr := url.Parse(g.Website)
-	if perr != nil || u.Host == "" {
-		s.logger.Warn("GitLab group refresh skipped — the group's website URL has no usable host",
-			"group", g.Name, "org_url", platform.RedactURLUserinfo(g.Website), "error", perr)
-		return 0
-	}
-	glHost := u.Host
-	configuredBase := ""
-	if s.cfg.GitLab != nil {
-		configuredBase = s.cfg.GitLab.BaseURL
-	}
-	apiBase, ok := platform.GitLabAPIBaseForHost(configuredBase, glHost)
-	if !ok {
-		s.logger.Warn("GitLab group refresh skipped — the group is not on the configured GitLab instance, and GitLab API keys are only sent to that instance's host",
-			"group", g.Name, "group_host", glHost, "gitlab_base_url", platform.RedactURLUserinfo(configuredBase))
-		return 0
-	}
-	http := platform.NewHTTPClient(apiBase, s.glKeys, s.logger, platform.AuthGitLab)
-
 	// Same legacy → user_groups bridge as the GitHub path.
 	userGroupIDs, ugErr := s.store.GetUserGroupIDsForOrgURL(ctx, g.Website)
 	if errors.Is(ugErr, context.Canceled) {
@@ -2575,155 +2464,25 @@ func (s *Scheduler) refreshGitLabGroup(ctx context.Context, g db.OrgGroup) int {
 	if ugErr != nil {
 		s.logger.Warn("failed to look up user_groups for group", "org_url", platform.RedactURLUserinfo(g.Website), "error", ugErr)
 	}
-
+	targets := ingestTargets{legacyGroupID: g.ID, userGroupIDs: userGroupIDs}
 	newCount := 0
-	page := 1
-	encodedGroup := url.PathEscape(g.Name)
-	for {
-		path := fmt.Sprintf("/groups/%s/projects?per_page=100&include_subgroups=true&page=%d", encodedGroup, page)
-		resp, err := http.Get(platform.WithoutETag(ctx), path)
+	for item, err := range client.ListGroupProjects(ctx, g.Name) {
 		if errors.Is(err, context.Canceled) {
 			return newCount // shutdown mid-listing, not a failure
 		}
 		if err != nil {
-			s.logger.Warn("group refresh API error", "group", g.Name, "error", err)
+			s.logger.Warn("group refresh: listing failed — recorded what was listed; the next pass retries", "group", g.Name, "error", err)
 			break
 		}
-		var items []struct {
-			ID        int64     `json:"id"` // v0.27.102 — rename-proof numeric identity
-			CreatedAt time.Time `json:"created_at"`
-			WebURL    string    `json:"web_url"`
-			Name      string    `json:"name"`
-			Namespace struct {
-				FullPath string `json:"full_path"`
-			} `json:"namespace"`
+		out, ierr := s.ingestDiscovered(ctx, item.OwnerRepo(), model.PlatformGitLab, targets)
+		if errors.Is(ierr, context.Canceled) {
+			return newCount
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
-			resp.Body.Close()
-			if errors.Is(err, context.Canceled) {
-				return newCount // shutdown mid-listing, not a failure
-			}
-			// H-7: a page that does not decode ends the listing; say so.
-			s.logger.Warn("group refresh: page did not decode — listing stopped", "group", g.Name, "error", err)
-			break
+		if out.created {
+			newCount++
 		}
-		resp.Body.Close()
-
-		if len(items) == 0 {
-			break
-		}
-		for _, item := range items {
-			var repoID int64
-			existing, findErr := s.store.FindRepoByURL(ctx, item.WebURL)
-			if errors.Is(findErr, context.Canceled) {
-				return newCount // shutdown, not a failure
-			}
-			if findErr != nil {
-				s.logger.Warn("failed to check for existing repo", "url", platform.RedactURLUserinfo(item.WebURL), "error", findErr)
-			}
-			if existing > 0 {
-				repoID = existing
-				// v0.27.102: opportunistic forge-ID backfill (fill-empty-
-				// only) — see refreshUserOrgs for the rationale.
-				idErr := s.store.SetPlatformRepoIDIfEmptySeen(ctx, repoID, model.ForgeIDString(item.ID), item.CreatedAt)
-				if errors.Is(idErr, context.Canceled) {
-					return newCount // shutdown, not a failure
-				}
-				if idErr != nil {
-					s.logger.Warn("failed to backfill platform_repo_id", "repo_id", repoID, "error", idErr)
-				}
-			} else {
-				rid, err := s.store.UpsertRepo(ctx, &model.Repo{
-					Platform:   model.PlatformGitLab,
-					GitURL:     item.WebURL,
-					Name:       item.Name,
-					Owner:      item.Namespace.FullPath,
-					GroupID:    g.ID,
-					PlatformID: model.ForgeIDString(item.ID), // v0.27.102
-				})
-				if err != nil {
-					if errors.Is(err, context.Canceled) {
-						return newCount // shutdown mid-listing, not a failure
-					}
-					// H-7 (review HF-2): a repository the listing found but could not record.
-					s.logger.Warn("group refresh: could not record discovered repository", "group", g.Name, "repo", platform.RedactURLUserinfo(item.WebURL), "error", err)
-					continue
-				}
-				repoID = rid
-				if err := s.store.EnqueueRepo(ctx, repoID, 100); err != nil {
-					if errors.Is(err, context.Canceled) {
-						return newCount // shutdown mid-listing, not a failure
-					}
-					// H-7 (review HF-2): recorded but NOT queued. The next refresh finds
-					// the row and takes the existing-row branch, which links but never
-					// enqueues (re-queuing there would revive gone repositories and
-					// rename duplicates), so the operator repairs it (review HF2-1).
-					s.logger.Warn("group refresh: could not queue discovered repository — it will not be collected until `aveloxis reconcile-repos` queues it", "group", g.Name, "repo_id", repoID, "error", err)
-					continue
-				}
-				s.logger.Info("new repo discovered", "group", g.Name, "repo", platform.RedactURLUserinfo(item.WebURL))
-				newCount++
-				if n, rerr := s.store.ResolveSignaledRepoForURL(ctx, repoID, item.WebURL); rerr == nil && n > 0 {
-					s.logger.Info("resolved signaled_repo for new repo", "repo", platform.RedactURLUserinfo(item.WebURL), "messages", n)
-				}
-			}
-			for _, gid := range userGroupIDs {
-				_, err := s.store.AddOrgRepoToGroupByID(ctx, gid, repoID)
-				if errors.Is(err, context.Canceled) {
-					return newCount // shutdown, not a failure
-				}
-				if _, capped := capacity.AsExceeded(err); capped {
-					continue // the account's repository quota (the store logs it once a day)
-				}
-				if err != nil {
-					s.logger.Warn("failed to link discovered repo into user_repos",
-						"group_id", gid, "repo_id", repoID, "error", err)
-				}
-			}
-		}
-		page++
 	}
 	return newCount
-}
-
-// checkForRenames runs prelim on a sample of repos to detect renames/transfers.
-// Checks repos that haven't been collected recently — they're the most likely
-// to have gone stale.
-func (s *Scheduler) checkForRenames(ctx context.Context) {
-	repos, err := s.store.GetReposForRenameCheck(ctx, 50)
-	if errors.Is(err, context.Canceled) {
-		return // shutdown, not a failure
-	}
-	if err != nil {
-		s.logger.Warn("failed to load repos for rename check", "error", err)
-		return
-	}
-	for _, repo := range repos {
-		if ctx.Err() != nil {
-			return
-		}
-		// Same refusal as runJob's, for the same reason (round 2).
-		if uerr := platform.RefuseURLUserinfo(repo.GitURL); uerr != nil {
-			s.logger.Error("rename check: repo URL carries credentials — skipped; correct repo_git",
-				"repo_id", repo.ID, "url", platform.RedactURLUserinfo(repo.GitURL), "error", uerr)
-			continue
-		}
-		prelim, err := collector.RunPrelim(ctx, s.store, &repo, s.logger)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return
-			}
-			// H-7: a failed rename check was dropped without a word.
-			s.logger.Warn("rename check: prelim failed", "repo_id", repo.ID, "url", platform.RedactURLUserinfo(repo.GitURL), "error", err)
-			continue
-		}
-		if prelim != nil && (prelim.Skip || prelim.Redirected) {
-			s.logger.Info("rename check result",
-				"repo_id", repo.ID, "url", platform.RedactURLUserinfo(repo.GitURL),
-				"skip", prelim.Skip, "redirected", prelim.Redirected,
-				"reason", prelim.SkipReason, "new_url", platform.RedactURLUserinfo(prelim.NewURL))
-		}
-	}
 }
 
 // maybeStartMatviewRebuild starts the weekly rebuild in a goroutine when one
@@ -2848,7 +2607,21 @@ func (s *Scheduler) maybeScanNewOrgs(ctx context.Context) {
 	if !s.dbHealthy.Load() {
 		return
 	}
-	pending, err := s.store.HasNeverScannedOrgs(ctx, s.ghAPIBase)
+	// A row counts only while its forge has a usable key: the pass leaves
+	// it unstamped otherwise, and counting it would announce a scan every
+	// tick that the pass then skips (0.29.106 whole-branch review P2: the
+	// GitHub arm's only gate was the pool check in the pass, three INFO
+	// lines per 10 s poll forever). GitLab's "no key" word is the empty
+	// base; GitHub's is platform.NoGitHubHost, since "" is public GitHub.
+	ghBase := platform.NoGitHubHost
+	if s.githubKeysAvailable() {
+		ghBase = s.ghAPIBase
+	}
+	glBase := ""
+	if s.gitlabKeysAvailable() {
+		glBase = s.gitlabWebBase()
+	}
+	pending, err := s.store.HasNeverScannedOrgs(ctx, ghBase, glBase)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return // shutdown, not a failure (the v0.27.28 ClassCanceled rule)
@@ -2921,7 +2694,8 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 		groupID   int64
 	}
 	type orgScan struct {
-		name     string // first-seen casing — used in the API path
+		name     string // first-seen casing — used in the API path; a GitLab group's FULL path (N14)
+		url      string // the first-seen registration URL — names the GitLab instance
 		platform string
 		entries  []orgEntry
 	}
@@ -2962,26 +2736,46 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 			continue
 		}
 
-		// Host gate (v0.29.57, rounds 1–2 on the 5260961848 fixes): the
-		// registered URL names the org; the NAME alone does not. An org
-		// registered on a host other than the deployment's GitHub host is
-		// never enumerated here — the same name on the deployment's host
-		// is a different org. The store refuses such a registration in
-		// every writer (db.ErrOrgOffGitHubHost); this is the belt for rows
-		// that predate it. The row stays unstamped (SR-3), so this log
-		// repeats each 4-hour pass until the operator removes the row —
-		// and the never-scanned probe does not count it
-		// (db.OrgScanEligible), so it does not re-fire the demand scan.
-		if org.Platform == "github" && !platform.OrgOnGitHubHost(org.OrgURL, s.ghAPIBase) {
-			s.logger.Warn("org scan skipped — the registered URL is not on this deployment's GitHub host (the org name would be enumerated on the wrong host), or carries credentials; not enumerated",
-				"group_id", groupID, "org", org.OrgName, "org_url", platform.RedactURLUserinfo(org.OrgURL), "github_host", platform.GitHubWebHost(s.ghAPIBase))
+		// Host gate (v0.29.57, rounds 1–2 on the 5260961848 fixes; the
+		// GitLab arm since stage 1e of summary/59): the registered URL
+		// names the org; the NAME alone does not. An org registered on a
+		// host other than the deployment's GitHub host, or a group on a
+		// GitLab instance other than the configured one, is never
+		// enumerated here — the same name on the deployment's host is a
+		// different org, and GitLab keys go to one host. The store refuses
+		// such a GitHub registration in every writer (db.ErrOrgOffGitHubHost);
+		// this is the belt for rows that predate it, and the one gate for
+		// GitLab. The row stays unstamped (SR-3), so this log repeats each
+		// 4-hour pass until the operator removes the row — and the
+		// never-scanned probe does not count it (the same predicate,
+		// db.OrgScanEligible), so it does not re-fire the demand scan.
+		if !db.OrgScanEligible(org.Platform, org.OrgURL, s.ghAPIBase, s.gitlabWebBase()) {
+			s.logger.Warn("org scan skipped — the registered URL is not on this deployment's forge host (GitHub: github.base_url; GitLab: gitlab.base_url), or carries credentials; not enumerated",
+				"group_id", groupID, "org", org.OrgName, "platform", org.Platform, "org_url", platform.RedactURLUserinfo(org.OrgURL),
+				"github_host", platform.GitHubWebHost(s.ghAPIBase), "gitlab_base", s.gitlabWebBase())
 			continue
 		}
 
-		key := org.Platform + "\x00" + strings.ToLower(org.OrgName)
+		// The name the forge is asked for: GitHub's account; a GitLab
+		// group's FULL path, re-derived from the registered URL at scan
+		// time (N14) — rows written before stage 1e stored the first
+		// segment, which would enumerate the whole parent group.
+		name := org.OrgName
+		if org.Platform == "gitlab" {
+			ref, perr := platform.ParseOrgRef(org.OrgURL, platform.GitLabHints(s.gitlabAPIBase()))
+			if perr != nil {
+				// Unreachable past the gate above (it parsed the same URL);
+				// logged rather than trusted (SR-5).
+				s.logger.Warn("org scan skipped — the registered GitLab URL does not name a group", "group_id", groupID, "org_url", platform.RedactURLUserinfo(org.OrgURL), "error", perr)
+				continue
+			}
+			name = ref.Path
+		}
+
+		key := org.Platform + "\x00" + strings.ToLower(name)
 		g, ok := grouped[key]
 		if !ok {
-			g = &orgScan{name: org.OrgName, platform: org.Platform}
+			g = &orgScan{name: name, url: org.OrgURL, platform: org.Platform}
 			grouped[key] = g
 			order = append(order, key)
 		}
@@ -2990,83 +2784,22 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 
 	s.logger.Info("scanning user org requests",
 		"count", len(orgs), "distinct_orgs", len(order), "only_never_scanned", onlyNeverScanned)
+	noKeysSkipped, noGitLabKeysSkipped := 0, 0
+	defer func() {
+		if noKeysSkipped > 0 {
+			s.logger.Info("user org scan skipped GitHub orgs — no API keys; registrations stay unstamped until keys exist",
+				"orgs", noKeysSkipped)
+		}
+		if noGitLabKeysSkipped > 0 {
+			s.logger.Info("user org scan skipped GitLab groups — no API keys; registrations stay unstamped until keys exist",
+				"groups", noGitLabKeysSkipped)
+		}
+	}()
 	for _, key := range order {
 		if ctx.Err() != nil {
 			return // shutdown between orgs
 		}
 		g := grouped[key]
-
-		// ForgeID (v0.27.102) is the forge's numeric repo ID from the
-		// listing JSON — the rename-proof identity UpsertRepo dedups on.
-		type orgRepo struct {
-			URL, Owner, Name, ForgeID string
-			CreatedAt                 time.Time // v0.29.63: dates a forge-ID change the scan records
-		}
-		var repos []orgRepo
-		switch g.platform {
-		case "github":
-			if !s.githubKeysAvailable() {
-				continue // rows stay unstamped — retried when keys exist
-			}
-			httpC := platform.NewHTTPClient(s.ghAPIBase, s.ghKeys, s.logger, platform.AuthGitHub)
-			// Try /orgs/ first, fall back to /users/ for personal accounts.
-			basePaths := []string{
-				fmt.Sprintf("/orgs/%s/repos", g.name),
-				fmt.Sprintf("/users/%s/repos", g.name),
-			}
-			for _, basePath := range basePaths {
-				page := 1
-				found := false
-				for {
-					path := fmt.Sprintf("%s?per_page=100&type=all&page=%d", basePath, page)
-					resp, err := httpC.Get(platform.WithoutETag(ctx), path)
-					if err != nil {
-						if errors.Is(err, context.Canceled) {
-							return // shutdown mid-listing: stamp nothing, the next pass re-enumerates
-						}
-						// H-7: the failure was dropped without a word. Which
-						// failures may fall back to /users/ and whether the
-						// row is stamped is stage 1's (summary/59 N8, N16).
-						// A 404 on /orgs/ is the designed personal-account
-						// fallback, not a failure (review HF-1): Debug.
-						if errors.Is(err, platform.ErrNotFound) && strings.HasPrefix(basePath, "/orgs/") {
-							s.logger.Debug("user-org scan: not an organization — trying the personal account", "org", g.name)
-							break
-						}
-						s.logger.Warn("user-org scan: listing request failed", "org", g.name, "path", basePath, "page", page, "error", err)
-						break
-					}
-					var items []struct {
-						ID        int64     `json:"id"` // v0.27.102 — rename-proof numeric identity
-						HTMLURL   string    `json:"html_url"`
-						Name      string    `json:"name"`
-						CreatedAt time.Time `json:"created_at"`
-						Owner     struct {
-							Login string `json:"login"`
-						} `json:"owner"`
-					}
-					decErr := json.NewDecoder(resp.Body).Decode(&items)
-					resp.Body.Close()
-					if errors.Is(decErr, context.Canceled) {
-						return // shutdown mid-listing: stamp nothing, the next pass re-enumerates
-					}
-					if decErr != nil {
-						s.logger.Warn("failed to decode org repos response", "path", path, "error", decErr)
-					}
-					if len(items) == 0 {
-						break
-					}
-					found = true
-					for _, item := range items {
-						repos = append(repos, orgRepo{item.HTMLURL, item.Owner.Login, item.Name, model.ForgeIDString(item.ID), item.CreatedAt})
-					}
-					page++
-				}
-				if found {
-					break
-				}
-			}
-		}
 
 		// Distinct target groups (case-variant registrations of the same
 		// org within one group collapse here).
@@ -3078,85 +2811,99 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 				groupIDs = append(groupIDs, e.groupID)
 			}
 		}
+		targets := ingestTargets{userGroupIDs: groupIDs}
 
+		// The listing and the ingest run together: what the forge lists is
+		// recorded as it arrives (the one lister per forge, the one ingest —
+		// stage 1 of summary/59). The error contract is v0.30's: a
+		// cancellation stamps nothing; a pool emptied mid-listing
+		// (ErrNoKeys) leaves the rows unstamped so they retry when keys exist
+		// (N8; the demand probe skips while the pool is empty, so this cannot
+		// loop); any other listing failure is logged, what was listed stays
+		// linked, and the rows are stamped — retries fall to the 4h cadence
+		// (the deliberate rule: a failed enumeration must not re-fire the
+		// 10s demand probe).
+		var listErr error
+		listed := 0
 		newCounts := map[int64]int{}
-		for _, repo := range repos {
-			if ctx.Err() != nil {
-				return // shutdown between repos: stamp nothing, the next pass re-enumerates
+		switch g.platform {
+		case "github":
+			if !s.githubKeysAvailable() {
+				noKeysSkipped++
+				continue // rows stay unstamped — retried when keys exist
 			}
-			// Ensure repo exists — ONCE per repo, regardless of how many
-			// groups track the org.
-			repoID, findErr := s.store.FindRepoByURL(ctx, repo.URL)
-			if errors.Is(findErr, context.Canceled) {
-				return // shutdown, not a failure
+			client := s.githubOrgClient()
+			if client == nil {
+				noKeysSkipped++
+				continue
 			}
-			if findErr != nil {
-				s.logger.Warn("failed to find repo by URL", "url", platform.RedactURLUserinfo(repo.URL), "error", findErr)
-			}
-			if repoID == 0 {
-				var err error
-				repoID, err = s.store.UpsertRepo(ctx, &model.Repo{
-					Platform:   model.PlatformGitHub,
-					GitURL:     repo.URL,
-					Name:       repo.Name,
-					Owner:      repo.Owner,
-					PlatformID: repo.ForgeID, // v0.27.102 — enables the rename-heal inside UpsertRepo
-				})
+			// /orgs/ first; a personal account (a definitive 404 on the
+			// first page, N16) is listed through /users/.
+			for item, err := range client.ListOwnerRepos(ctx, g.name, true) {
 				if err != nil {
-					if errors.Is(err, context.Canceled) {
-						return // shutdown, not a failure
-					}
-					// H-7 (review HF-2): a repository the scan found but could not record.
-					s.logger.Warn("user-org scan: could not record discovered repository", "repo", platform.RedactURLUserinfo(repo.URL), "error", err)
-					continue
+					listErr = err
+					break
 				}
-				enqErr := s.store.EnqueueRepo(ctx, repoID, 100)
-				if errors.Is(enqErr, context.Canceled) {
-					return // shutdown, not a failure
+				listed++
+				out, ierr := s.ingestDiscovered(ctx, item, model.PlatformGitHub, targets)
+				if errors.Is(ierr, context.Canceled) {
+					return // shutdown between repos: stamp nothing, the next pass re-enumerates
 				}
-				if enqErr != nil {
-					s.logger.Warn("failed to enqueue repo", "repo_id", repoID, "error", enqErr)
-				}
-			} else if repo.ForgeID != "" {
-				// v0.27.102: opportunistic forge-ID backfill on already-
-				// tracked rows. The org-tracked cohort is EXACTLY the
-				// population at risk of rename re-discovery, so filling
-				// its IDs on every scan pass closes the protection gap
-				// now instead of waiting for each repo's Phase 0 cycle.
-				// Fill-empty-only; best-effort.
-				idErr := s.store.SetPlatformRepoIDIfEmptySeen(ctx, repoID, repo.ForgeID, repo.CreatedAt)
-				if errors.Is(idErr, context.Canceled) {
-					return // shutdown, not a failure
-				}
-				if idErr != nil {
-					s.logger.Warn("failed to backfill platform_repo_id", "repo_id", repoID, "error", idErr)
-				}
-			}
-			// Link into every registered group (ON CONFLICT DO NOTHING).
-			// Count a repo as "new" ONLY when a link row was actually
-			// inserted — a nil error alone includes the no-op re-link of
-			// every already-tracked repo, which had "found new repos"
-			// claiming the org's full repo count every pass forever
-			// (9.3M bogus new repos in the Aug 7–16 2026 run).
-			for _, gid := range groupIDs {
-				inserted, err := s.store.AddOrgRepoToGroupByID(ctx, gid, repoID)
-				if errors.Is(err, context.Canceled) {
-					return // shutdown, not a failure
-				}
-				if _, capped := capacity.AsExceeded(err); capped {
-					continue // the account's repository quota (the store logs it once a day)
-				}
-				if err != nil {
-					// Same message as refreshGitHubOrg/refreshGitLabGroup so
-					// one grep covers all three link paths (v0.27.92).
-					s.logger.Warn("failed to link discovered repo into user_repos",
-						"repo_id", repoID, "group_id", gid, "error", err)
-					continue
-				}
-				if inserted {
+				for gid := range out.linked {
 					newCounts[gid]++
 				}
 			}
+		case "gitlab":
+			// C4 (stage 1e of summary/59): the group's projects, subgroups
+			// included, through the one lister; the client is the configured
+			// instance's (the gate above admitted the URL's host).
+			if !s.gitlabKeysAvailable() {
+				noGitLabKeysSkipped++
+				continue // rows stay unstamped — retried when keys exist
+			}
+			// The stored spelling with the scheme the gate supplied before
+			// judging it (ParseOrgRef's WithDefaultScheme): the store has
+			// written https:// since v0.27.94, but a pending org request from
+			// before then, approved later, is registered as it was pasted —
+			// schemeless — and the builder's parse guard read that as a URL
+			// with no host: admitted by the gate, refused here, looped
+			// unstamped (round-7 review).
+			client, ok, why := s.gitlabClientForWebURL(platform.WithDefaultScheme(g.url))
+			if !ok {
+				s.logger.Warn("user org scan skipped a GitLab group — "+why, "group", g.name, "org_url", platform.RedactURLUserinfo(g.url))
+				continue // unstamped (SR-3): the gate and this disagree only on a configuration change mid-pass
+			}
+			for item, err := range client.ListGroupProjects(ctx, g.name) {
+				if err != nil {
+					listErr = err
+					break
+				}
+				listed++
+				out, ierr := s.ingestDiscovered(ctx, item.OwnerRepo(), model.PlatformGitLab, targets)
+				if errors.Is(ierr, context.Canceled) {
+					return // shutdown between repos: stamp nothing, the next pass re-enumerates
+				}
+				for gid := range out.linked {
+					newCounts[gid]++
+				}
+			}
+		default:
+			continue // no lister for this forge; the row stays unstamped (SR-3)
+		}
+		if errors.Is(listErr, context.Canceled) {
+			return // shutdown mid-listing: stamp nothing
+		}
+		if errors.Is(listErr, platform.ErrNoKeys) {
+			if g.platform == "gitlab" {
+				noGitLabKeysSkipped++
+			} else {
+				noKeysSkipped++
+			}
+			continue
+		}
+		if listErr != nil {
+			s.logger.Warn("org listing failed — linking what was listed; the next full pass retries",
+				"org", g.name, "repos_listed", listed, "error", listErr)
 		}
 
 		// Stamp EVERY registration row for this org — they all shared
@@ -3181,7 +2928,7 @@ func (s *Scheduler) refreshUserOrgs(ctx context.Context, onlyNeverScanned bool) 
 	// v0.27.93 self-heal: enumeration above links only what the forge
 	// listing returns. Tracked repos that entered the catalog through
 	// other paths (mailing-list loaders, foundation importers, renames,
-	// GitLab orgs — which this scan doesn't enumerate) would otherwise
+	// GitLab groups on another instance, which this scan never enumerates)
 	// stay unlinked forever (the 2026-08-18 production drift: 9 live
 	// repos stranded, incl. gitlab.com/petsc/petsc). One set-based pass
 	// per FULL cycle; the 10s demand probe (onlyNeverScanned) stays

@@ -76,7 +76,7 @@ func TestDetachedAddRequestPassFailureIsLoggedHere(t *testing.T) {
 	if _, err := store.pool.Exec(ctx, `CREATE TRIGGER `+trigger+` BEFORE INSERT ON aveloxis_ops.collection_add_requests FOR EACH ROW EXECUTE FUNCTION aveloxis_ops.`+trigger+`()`); err != nil {
 		t.Fatal(err)
 	}
-	out, err := store.AddReposToGroup(ctx, uid, gid, []string{"https://github.com/_avdetachedpass-owner/_avdetachedpass-repo"}, 5)
+	out, err := store.AddReposToGroup(ctx, uid, gid, []string{"https://github.com/_avdetachedpass-owner/_avdetachedpass-repo"}, 5, "")
 	if err == nil {
 		t.Fatal("the probe's pass must fail (the trigger made the request pending)")
 	}

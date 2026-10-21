@@ -21,7 +21,7 @@ func testClient(t *testing.T, handler http.Handler) *Client {
 	logger := slog.Default()
 	keys := platform.NewKeyPool([]string{"test-token"}, logger)
 	httpClient := platform.NewHTTPClient(server.URL, keys, logger, platform.AuthGitLab)
-	return &Client{http: httpClient, logger: logger, host: "gitlab.com"}
+	return &Client{http: httpClient, logger: logger}
 }
 
 // TestFetchCommunityFilePresence verifies that the GitLab client correctly

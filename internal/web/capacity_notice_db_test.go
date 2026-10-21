@@ -51,7 +51,7 @@ func TestGroupPageNamesTheDailyAdditionsRefusal(t *testing.T) {
 		ON CONFLICT (subject, day) DO UPDATE SET requests = 37`, key, time.Now().UTC().Format(time.DateOnly)); err != nil {
 		t.Fatal(err)
 	}
-	s := New(store, config.WebConfig{}, nil, "", logger)
+	s := New(store, config.WebConfig{}, "", logger)
 	got := s.capacityNotice(httptest.NewRequest("GET", "/groups/1?add_error=capacity_links", nil), uid)
 	if !strings.Contains(got, "has added 37 repositories") || strings.Contains(got, "remove repositories") {
 		t.Fatalf("daily-additions notice = %q; want today's 37 additions, not the allocation's advice", got)

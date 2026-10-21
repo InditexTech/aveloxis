@@ -26,7 +26,8 @@ import (
 
 // The repository-page response cache (v0.29.73). A repository's GET answers
 // do not depend on who asks (authorizeRepo decides WHETHER they may ask,
-// before any lookup), so one copy serves every caller. An answer is valid
+// after the one existence read and before any cache lookup — stage 1b), so
+// one copy serves every caller. An answer is valid
 // for exactly as long as the repository's db.RepoCacheState is unchanged:
 // a collection, a scancode run or a vulnerability scan replaces it, and an
 // unchanged repository is never recomputed. Answers that carry contributor
@@ -117,20 +118,25 @@ var pageParams = map[string][]string{
 // effective value its handler acts on (pageParamValue, applied to the first
 // value, which is what the handlers' Query().Get reads; a parameter at its
 // default is left out), in sorted order. A name without a rule keys on its
-// first value as spelled.
-func canonicalQuery(r *http.Request, params []string) string {
+// first value as spelled. keyable is false when a value has no key form
+// (an invalid date, stage 1b): the handler refuses it with 400, and keyed
+// on the default it would be answered with a stored 200 — such a request
+// is answered live, never stored and never 304.
+func canonicalQuery(r *http.Request, params []string) (query string, keyable bool) {
 	q := r.URL.Query()
 	keep := url.Values{}
 	for _, p := range params {
 		v := q.Get(p)
 		if rule, ok := pageParamValue[p]; ok {
-			v = rule(v)
+			if v, ok = rule(v); !ok {
+				return "", false
+			}
 		}
 		if v != "" {
 			keep.Set(p, v)
 		}
 	}
-	return keep.Encode()
+	return keep.Encode(), true
 }
 
 // pageCacheCtlKey carries the per-request "this answer is partial" flag.
@@ -515,9 +521,12 @@ func (c *captureWriter) Write(p []byte) (int, error) {
 }
 
 // cachedRepoGET wraps a repository-scoped GET handler with the cache. The
-// handler keeps its own authorizeRepo call (it is also reachable without
-// the wrapper in tests); this one runs first, so no lookup precedes the
-// scope check.
+// handler keeps its own prelude (repoFromPath: it is also reachable without
+// the wrapper in tests); this one runs first and decides the same things
+// in the same order — the state read IS the existence probe (an unknown id
+// is a 404 before any scope decision, D5; stage 1b reversed the earlier
+// "no lookup precedes the scope check" on purpose), then the scope — and
+// marks the request so the handler's prelude decides nothing twice.
 func (s *Server) cachedRepoGET(pol pagePolicy, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { s.servePageCached(pol, h, w, r) }
 }
@@ -525,7 +534,7 @@ func (s *Server) cachedRepoGET(pol pagePolicy, h http.HandlerFunc) http.HandlerF
 // servePageCached is one request through the cache (cachedRepoGET).
 func (s *Server) servePageCached(pol pagePolicy, h http.HandlerFunc, w http.ResponseWriter, r *http.Request) {
 	raw := r.PathValue("repoID")
-	repoID, err := strconv.ParseInt(raw, 10, 64)
+	repoID, err := parseRepoID(r)
 	if err != nil || s.pageCache == nil || s.repoStates == nil {
 		h(w, r) // the handler answers the 400 (or runs uncached)
 		return
@@ -538,35 +547,39 @@ func (s *Server) servePageCached(pol pagePolicy, h http.HandlerFunc, w http.Resp
 		h(w, r)
 		return
 	}
-	// Before authorizeRepo, which writes its 403 itself: headers set after
-	// it never reach the wire. Every arm below that answers a shareable body
-	// replaces these.
+	// Before the refusals below, which write themselves: headers set after
+	// them never reach the wire. Every arm below that answers a shareable
+	// body replaces these.
 	setNoStoreHeaders(w.Header())
+	states, err := s.repoStates(r.Context(), []int64{repoID})
+	if err != nil {
+		// No state, no validator, no proof of existence: the handler runs
+		// live and its own prelude decides (the same reader, once; SR-5: a
+		// lookup error is not "no such repository").
+		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err,
+			"repository cache state unreadable — answering without the cache", "repo_id", repoID, "error", err)
+		h(w, r)
+		return
+	}
+	st, known := states[repoID]
+	if !known {
+		// The state read is repos LEFT JOIN the queue: an id it does not
+		// know is a repository that does not exist — a 404 for every caller,
+		// before any scope decision (D5), so no auto-add slot is spent on it.
+		refuseRepoNotFound(w)
+		return
+	}
 	if !s.authorizeRepo(w, r, repoID) {
 		return
 	}
-	// Decided: the handler's own authorizeRepo (every path below runs h
-	// with authed) must not decide — and auto-add — again. A new variable,
-	// not a reassignment of r: r stays the request whose context the
-	// failure logging classifies (only a value is added here).
+	// Decided: the handler's own prelude (every path below runs h with
+	// authed) must not read or decide — and auto-add — again. A new
+	// variable, not a reassignment of r: r stays the request whose context
+	// the failure logging classifies (only a value is added here).
 	authed := withRepoAuthorized(r, repoID)
 	// The Shared-with-Me auto-add answers this caller with a one-time
 	// header: that response must never be stored for anyone else.
 	perCaller := w.Header().Get(sharedWithMeHeader) != ""
-
-	states, err := s.repoStates(r.Context(), []int64{repoID})
-	if err != nil {
-		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err,
-			"repository cache state unreadable — answering without the cache", "repo_id", repoID, "error", err)
-	}
-	st, known := states[repoID]
-	if err != nil || !known {
-		// No state, no validator: answer live, untagged (SR-5). An
-		// unknown repository is the handler's own 404/empty answer.
-		setNoStoreHeaders(w.Header())
-		h(w, authed)
-		return
-	}
 	// A re-warm replay carries the state its pass read; if the repository
 	// moved since — a collection started, another writer stamped — nothing
 	// is computed or stored under a state the pass did not choose, and the
@@ -587,7 +600,11 @@ func (s *Server) servePageCached(pol pagePolicy, h http.HandlerFunc, w http.Resp
 		h(w, authed) // a route without a parameter list is never keyed (untagged, no-store)
 		return
 	}
-	query := canonicalQuery(r, params)
+	query, keyable := canonicalQuery(r, params)
+	if !keyable {
+		h(w, authed) // a value the key cannot express (an invalid date): live, no-store, the handler's 400
+		return
+	}
 	c := s.pageCache
 	key := pageKey(r.Pattern, repoID, query, st, pol, c.now())
 
@@ -754,19 +771,17 @@ func (s *Server) runHandler(r *http.Request, h http.HandlerFunc) (pageResult, ti
 }
 
 // handleRepoAuthz answers whether the caller may read one repository's
-// pages: 204 when authorizeRepo admits the caller (the Shared-with-Me
-// auto-add included, with its one-time notice header), the structured 403
-// when it refuses, and the middleware's 401 when require_auth is on and the
-// caller presents no valid token. It reads no repository data; a deployment
-// front end calls it before serving a stored copy of a cacheable answer.
+// pages, through the prelude: 400 for an id that is not a positive integer,
+// 404 for an id no repository has (the one existence read: the
+// repository's state row, no data), 204 when authorizeRepo admits the
+// caller (the Shared-with-Me auto-add included, with its one-time notice
+// header), the structured 403 when it refuses, and the middleware's 401
+// when require_auth is on and the caller presents no valid token. A
+// deployment front end calls it before serving a stored copy of a cacheable
+// answer; its refusal fallback turns the 404 into the origin's own 404.
 func (s *Server) handleRepoAuthz(w http.ResponseWriter, r *http.Request) {
 	setNoStoreHeaders(w.Header())
-	repoID, err := strconv.ParseInt(r.PathValue("repoID"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid repo_id", http.StatusBadRequest)
-		return
-	}
-	if !s.authorizeRepo(w, r, repoID) {
+	if _, ok := s.repoFromPath(w, r); !ok {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

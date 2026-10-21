@@ -86,6 +86,10 @@ type Options struct {
 	// the portal must be on (db.ErrOrgOffGitHubHost); empty means public
 	// GitHub (v0.29.57 round 2).
 	GitHubAPIBase string
+	// GitLabAPIBase is gitlab.base_url: an org URL on that instance is
+	// registered as a GitLab group whatever its host name says (the admin
+	// service derives the web base; round-2 review of 0.29.100).
+	GitLabAPIBase string
 
 	// Mailer carries the transactional mailer for the v0.27.20
 	// add-request notifications (submission → operator, decision →

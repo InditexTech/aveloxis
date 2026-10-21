@@ -4,7 +4,6 @@
 package api
 
 import (
-	"bytes"
 	"log/slog"
 	"strings"
 	"testing"
@@ -40,7 +39,7 @@ func TestCollectionCacheIsKeyedByGenerationAndBounded(t *testing.T) {
 
 // TestServerCacheUsesTheConfiguredMaxAge — the option reaches the cache.
 func TestServerCacheUsesTheConfiguredMaxAge(t *testing.T) {
-	var buf bytes.Buffer
+	var buf lockedBuffer
 	s, err := NewWithOptions(nil, slog.New(slog.NewTextHandler(&buf, nil)), Options{ResponseCacheMaxAge: 45 * time.Minute})
 	if err != nil {
 		t.Fatal(err)

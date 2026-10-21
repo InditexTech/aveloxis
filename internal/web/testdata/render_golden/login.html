@@ -1,0 +1,31 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aveloxis - Login</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/avx.js"></script>
+</head>
+<body>
+<div class="login-box">
+<div style="display:flex;align-items:center;justify-content:center;gap:12px"><img src="/icon.png" alt="" style="height:48px;border-radius:8px"><h1>Aveloxis</h1></div>
+<p>Open source community health data collection</p>
+<div class="card">
+<h3>Sign in to manage your repo groups</h3>
+<div class="login-buttons" style="margin-top:20px">
+<a href="/auth/github" class="btn btn-github">Sign in with GitHub</a>
+<a href="/auth/gitlab" class="btn btn-gitlab">Sign in with GitLab</a>
+
+</div>
+
+<div style="margin-top:24px;padding-top:20px;border-top:1px solid #eee;font-size:13px;color:#586069">
+You currently have an active session.
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value=""><button type="submit" class="link-button">Sign out &amp; clear cookies</button></form>
+to log in as a different user.
+</div>
+
+</div>
+</div>
+</body></html>

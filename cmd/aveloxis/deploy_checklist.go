@@ -590,37 +590,85 @@ var deployChecklists = map[string][]deployStep{
 	// 5559632343 on PR #229 — the organization reconcile's warning names
 	// the quota that refused; the skip census prints failed tests' output
 	// and CI keeps it. No schema change.
-	// v0.29.97 (2026-10-20, branch feat/github-traffic): GitHub repository
+	// v0.29.97 (2026-10-17, hotfix): the migrate's api_token_settings seed
+	// works on a schema born on 0.29.82–0.29.88 (NOT NULL mirror column
+	// without a default). No new schema object.
+	// v0.29.98 (2026-10-17, stage 0.5 of summary/59): test infrastructure
+	// (package-scope source lookups), the web server file split, templates
+	// embedded, the dead-code sweep. No schema change.
+	// v0.29.103 (2026-10-18): one rule for a users.user_id a request
+	// names (admin.ParseUserID, int4) across the web and API admin routes
+	// (CodeQL go/incorrect-integer-conversion on PR #238). The one
+	// visible change: an id above int4 is a 400 instead of a 500. No
+	// schema change — same ladder as 0.29.102.
+	// v0.29.104 (2026-10-19 UTC): the API's one JSON request-body reader
+	// (every JSON route since the review loop moved the eight readers of
+	// their own onto it) refuses a stray delimiter or a reader error after
+	// the value (a second Decode must answer io.EOF; Decoder.More answered
+	// false for both — Copilot on PR #238). The one visible change: a tail
+	// after the body, `{"admin":true}}`, is a 400 on every JSON route
+	// (sixteen accepted it; the forge-id adopt route already refused it and
+	// now answers its one body-shape text, its unreadable-body WARN
+	// removed). No schema change — same ladder as 0.29.102.
+	"0.29.104": v029102DeployChecklist,
+	// v0.29.105 (2026-10-19 UTC): test-only. The integration job on PR #238
+	// found a data race in the API package's tests: four tests handed a
+	// server a bare strings.Builder as its log sink and read it while the
+	// capacity policy's refresh goroutine was still logging into it. The
+	// sinks are the package's lockedBuffer now, and a test function that
+	// constructs a server declares no bare buffer (pinned). No code a host
+	// runs changed — same ladder as 0.29.102.
+	"0.29.105": v029102DeployChecklist,
+	// v0.29.106 (2026-10-19 UTC): the whole-branch review of PR #238 (six
+	// areas). Code a host runs: the GitLab group lister stores the project's
+	// path, not its display name (a project whose name differs from its slug
+	// was uncollectable); the web CSRF guard bounds and restricts the form
+	// bodies it parses; sign-out and the token mint serialise on the session
+	// row; the chart grids reflow on narrow screens. No schema change — same
+	// ladder as 0.29.102. Full record: the ledger's v0.29.106 entry.
+	"0.29.106": v029102DeployChecklist,
+	// v0.29.107 (2026-10-19 UTC): CI only — the upgrade-path and processes
+	// jobs in integration.yml and the nightly race stress + golden
+	// collection. No code a host runs changed — same ladder as 0.29.102.
+	"0.29.107": v029102DeployChecklist,
+	// v0.29.108 (2026-10-20, branch feat/github-traffic): GitHub repository
 	// traffic kept past GitHub's 14 days (aveloxis/aveloxis#234) — five
 	// aveloxis_data tables born empty, one read-only route, and traffic
 	// errors other than a skip recorded as collection errors. No index on
 	// a fleet-scale table, no view change.
-	"0.29.97": v02997DeployChecklist,
-	"0.29.96": v02996DeployChecklist,
-	"0.29.95": v02995DeployChecklist,
-	"0.29.94": v02994DeployChecklist,
-	"0.29.93": v02993DeployChecklist,
-	"0.29.92": v02992DeployChecklist,
-	"0.29.91": v02991DeployChecklist,
-	"0.29.90": v02990DeployChecklist,
-	"0.29.89": v02989DeployChecklist,
-	"0.29.88": v02988DeployChecklist,
-	"0.29.87": v02987DeployChecklist,
-	"0.29.86": v02986DeployChecklist,
-	"0.29.85": v02985DeployChecklist,
-	"0.29.84": v02984DeployChecklist,
-	"0.29.83": v02983DeployChecklist,
-	"0.29.82": v02982DeployChecklist,
-	"0.29.81": v02981DeployChecklist,
-	"0.29.80": v02980DeployChecklist,
-	"0.29.79": v02979DeployChecklist,
-	"0.29.78": v02978DeployChecklist,
-	"0.29.77": v02977DeployChecklist,
-	"0.29.76": v02976DeployChecklist,
-	"0.29.75": v02975DeployChecklist,
-	"0.29.74": v02974DeployChecklist,
-	"0.29.73": v02973DeployChecklist,
-	"0.29.72": v02972DeployChecklist,
+	"0.29.108": v029108DeployChecklist,
+	"0.29.103": v029102DeployChecklist,
+	"0.29.102": v029102DeployChecklist,
+	"0.29.101": v029101DeployChecklist,
+	"0.29.100": v029100DeployChecklist,
+	"0.29.99":  v02999DeployChecklist,
+	"0.29.98":  v02998DeployChecklist,
+	"0.29.97":  v02997DeployChecklist,
+	"0.29.96":  v02996DeployChecklist,
+	"0.29.95":  v02995DeployChecklist,
+	"0.29.94":  v02994DeployChecklist,
+	"0.29.93":  v02993DeployChecklist,
+	"0.29.92":  v02992DeployChecklist,
+	"0.29.91":  v02991DeployChecklist,
+	"0.29.90":  v02990DeployChecklist,
+	"0.29.89":  v02989DeployChecklist,
+	"0.29.88":  v02988DeployChecklist,
+	"0.29.87":  v02987DeployChecklist,
+	"0.29.86":  v02986DeployChecklist,
+	"0.29.85":  v02985DeployChecklist,
+	"0.29.84":  v02984DeployChecklist,
+	"0.29.83":  v02983DeployChecklist,
+	"0.29.82":  v02982DeployChecklist,
+	"0.29.81":  v02981DeployChecklist,
+	"0.29.80":  v02980DeployChecklist,
+	"0.29.79":  v02979DeployChecklist,
+	"0.29.78":  v02978DeployChecklist,
+	"0.29.77":  v02977DeployChecklist,
+	"0.29.76":  v02976DeployChecklist,
+	"0.29.75":  v02975DeployChecklist,
+	"0.29.74":  v02974DeployChecklist,
+	"0.29.73":  v02973DeployChecklist,
+	"0.29.72":  v02972DeployChecklist,
 }
 
 // 0.29.72 has no schema change; its migrate is 0.29.71's, which a fleet
@@ -630,14 +678,107 @@ var deployChecklists = map[string][]deployStep{
 // carries 0.29.72's notes for a fleet that skipped it.
 var v02974DeployChecklist = v02974Checklist()
 
-// v02997DeployChecklist is 0.29.96's ladder with a note on the start step.
+// v029108DeployChecklist is 0.29.107's ladder with a note on the start
+// step: GitHub repository traffic kept past GitHub's 14 days
+// (aveloxis/aveloxis#234) and GitLab's daily clone counts.
+var v029108DeployChecklist = func() []deployStep {
+	prev := v029102DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.108: GitHub repository traffic is now kept past the 14 days GitHub serves, and GitLab's daily clone counts are now collected (aveloxis/aveloxis#234). The migrate adds five empty tables to aveloxis_data (repo_views, repo_traffic_paths, repo_traffic_referrers, repo_traffic_windows, repo_traffic_weeks) and changes no existing table; nothing is backfilled: GitHub returns only the last 14 days, so each repository's history starts at its first collection on this release. New read-only route GET /api/v1/repos/{repoID}/traffic: the stored daily views and clones, the 14-day and complete-week uniques, and the latest popular paths and referrers. Reading traffic needs push access to the repository with a classic token, or the 'Administration' repository permission set to read with a fine-grained token. A key without it gets 403 on the daily clones read (a request earlier releases already made): the collection logs one Info line 'skipping traffic endpoints' per repository and collection, records no error and makes no further traffic request. Any other traffic error is now recorded as a collection error, as a releases error is: the job completes with success=false and the first error's message in last_error (for a traffic error, 'clone stats: ...' for the daily clones read, whose errors earlier releases dropped silently, or 'traffic <endpoint>: ...'), and the collection's other phases still run. A key that can read traffic makes five more GitHub requests per repository and collection (views by day and by week, clones by week, popular paths, popular referrers). GitLab repositories get no views, paths, referrers, windows or weeks, but a key with at least the Reporter role (and read_api for a personal token) now gets the project's daily HTTP clone and pull counts for the 30 UTC days GitLab serves: repo_clones rows with unique_clones NULL, a day GitLab omits stored as 0 and data source 'GitLab API'. That is one more request per GitLab project and collection; a 403 or 404 logs the same Info line and records no error, and any other error, such as a 5xx, is recorded as 'clone stats: ...' and fails the job as above, which is new for GitLab. Nothing older than those 30 days is backfilled. A fleet already running 0.29.107 needs only the stop, the migrate and this start; a fleet on an older release takes the notes below in the same one migrate. " + out[i].desc
+		}
+	}
+	return out
+}()
+
+// v029102DeployChecklist is 0.29.101's ladder with a note on the start
+// step: stage 2 of summary/59 (the web GUI made safe). The note is
+// completed as the stage lands; aveloxis-gui must be deployed with it.
+var v029102DeployChecklist = func() []deployStep {
+	prev := v029101DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.102 (stage 2 of the admin-console program): two columns and one CONCURRENTLY index on aveloxis_ops.user_session_tokens (migrate --skip-views is enough). Web sessions are database rows from this release (a restart no longer signs everyone out; a demotion takes effect at the next request; signing out of the web GUI ends the API tokens that sign-in minted); e-mail confirmation links outstanding at the deploy stop working (stored hashed now — the owner requests a new one). Deploy aveloxis-gui's matching release WITH this one — its login page and sign-out send POST to /auth/token and /logout, which answer 405 to a GET from this release on (check-setup.sh requires 0.29.102). web.session_secret is removed (a file that still carries it loads, and from 0.29.106 logs a warning at start). Every POST to the web process is origin-checked: if aveloxis-gui runs on another origin, web.spa_url must name it. The pages serve their scripts and Chart.js from /static/ (no CDN) with a Content-Security-Policy and a framing refusal — a proxy that adds its own CSP must let the web process's through. " + out[i].desc
+		}
+	}
+	return out
+}()
+
+// v029101DeployChecklist is 0.29.100's ladder with a note on the start
+// step: the two GitLab URL rules tightened (gitlab.base_url must end in
+// /api/v4; web.gitlab_base_url must be the instance's web URL), no
+// schema change.
+var v029101DeployChecklist = func() []deployStep {
+	prev := v029100DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.101: no schema change. BEFORE the start, check the two GitLab URLs in aveloxis.json: gitlab.base_url must end in /api/v4 (the REST client appends paths to it as given), and web.gitlab_base_url must be the instance's web URL (https://gitlab.example.org, not its /api/v4 URL; no query, fragment or user name) — either refuses every process at start, naming the field; the defaults and any working value pass. " + out[i].desc
+		}
+	}
+	return out
+}()
+
+// v029100DeployChecklist is 0.29.99's ladder with a note on the start
+// step: stage 1 of summary/59 (the admin service, forge access, the URL
+// classifier), no schema change; two load-time rules changed (an invalid
+// mail block, and a gitlab.base_url that is not an absolute http(s) URL of
+// the instance's API, are refused at load).
+var v029100DeployChecklist = func() []deployStep {
+	prev := v02999DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.100: no schema change. BEFORE the start, check aveloxis.json's mail block: a half-filled one (gmail_user without gmail_app_password or the reverse, a user that is not an address, a password that is not a 16-letter App Password, a site_url that is not a URL) now refuses to start every process (it used to run with mail off and a WARN); fix it or empty it. gitlab.base_url must be an absolute http(s) URL of the instance's API (the default and any working value pass). The API's answers change (stage 1 of the admin-console program, listed under \"Changes for API clients\" in docs/guide/api.md): a group that is not the caller's answers 404 on every group route, as a group that does not exist does; a rejected group refuses an add with 409; every refusal body on the group, decision, role and forge-ID routes is JSON {\"error\"}; a paste's lines that are not repository URLs come back in \"invalid\" and the rest go through; a collection that does not exist is a 404 and a duplicate collection name a 409. Administrator privilege is decided from the users row at every operation: an API token never administers, and an administrator's open session loses its power the moment the row is demoted. GitLab groups registered in user groups are now enumerated by serve (full group path; a subgroup registration lists the subgroup only) — on the configured gitlab.base_url instance, when GitLab API keys exist. The web GUI and the CLI loaders hold no forge keys for organisation listing any more (aveloxis web no longer loads API keys; add-repo <org> registers and serve lists). aveloxis-gui's check-setup.sh requires this version (MIN_API_VERSION). " + out[i].desc
+		}
+	}
+	return out
+}()
+
+// v02999DeployChecklist is 0.29.98's ladder with a note on the start step:
+// stage 1b of summary/59 changes API answers (the contract changes are
+// listed for clients in docs/guide/api.md), no schema change.
+var v02999DeployChecklist = func() []deployStep {
+	prev := v02998DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.99: no schema change; the API's answers change (stage 1b of the admin-console program, listed under \"Changes for API clients\" in docs/guide/api.md): an unknown repository id is a 404 on every repository route and an id of 0 or less a 400; a date that does not parse is a 400; Augur's end_date includes its day and the commit metrics count by the UTC day of the author timestamp; empty lists are []; the Augur catalog is scoped for API tokens; /watchers carries the snapshot history; /repos/stats?ids= refuses an entry that is not an id and its rows carry archived, forked_from and last_activity_at; the searches match % and _ literally. The repository-page cache keys on the version, so every stored answer and ETag is replaced by the restart. aveloxis-gui's check-setup.sh requires this version (MIN_API_VERSION). " + out[i].desc
+		}
+	}
+	return out
+}()
+
+// v02998DeployChecklist is 0.29.97's ladder with a note on the start step.
+var v02998DeployChecklist = func() []deployStep {
+	prev := v02997DeployChecklist
+	out := make([]deployStep, len(prev))
+	copy(out, prev)
+	for i := range out {
+		if out[i].cmd == "aveloxis start all" {
+			out[i].desc = "0.29.98: no schema change and nothing new for the running services — a maintenance release (stage 0.5 of the admin-console program): the web GUI's handlers moved into files by concern and its page templates are embedded files, the :5555 monitor's unused POST /api/repos route is gone, and dead store/collector functions were removed. The migrate's step order is unchanged (the step-order golden pins it). A fleet already running 0.29.97 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.97's notes below in the same one migrate. " + out[i].desc
+		}
+	}
+	return out
+}()
+
+// v02997DeployChecklist is 0.29.96's ladder with a note on the start step
+// (the ladder's migrate step is shared; the note tells a fleet whose
+// migrate logged the error to rerun it before starting).
 var v02997DeployChecklist = func() []deployStep {
 	prev := v02996DeployChecklist
 	out := make([]deployStep, len(prev))
 	copy(out, prev)
 	for i := range out {
 		if out[i].cmd == "aveloxis start all" {
-			out[i].desc = "0.29.97: GitHub repository traffic is now kept past the 14 days GitHub serves, and GitLab's daily clone counts are now collected (aveloxis/aveloxis#234). The migrate adds five empty tables to aveloxis_data (repo_views, repo_traffic_paths, repo_traffic_referrers, repo_traffic_windows, repo_traffic_weeks) and changes no existing table; nothing is backfilled: GitHub returns only the last 14 days, so each repository's history starts at its first collection on this release. New read-only route GET /api/v1/repos/{repoID}/traffic: the stored daily views and clones, the 14-day and complete-week uniques, and the latest popular paths and referrers. Reading traffic needs push access to the repository with a classic token, or the 'Administration' repository permission set to read with a fine-grained token. A key without it gets 403 on the daily clones read (a request earlier releases already made): the collection logs one Info line 'skipping traffic endpoints' per repository and collection, records no error and makes no further traffic request. Any other traffic error is now recorded as a collection error, as a releases error is: the job completes with success=false and the first error's message in last_error (for a traffic error, 'clone stats: ...' for the daily clones read, whose errors earlier releases dropped silently, or 'traffic <endpoint>: ...'), and the collection's other phases still run. A key that can read traffic makes five more GitHub requests per repository and collection (views by day and by week, clones by week, popular paths, popular referrers). GitLab repositories get no views, paths, referrers, windows or weeks, but a key with at least the Reporter role (and read_api for a personal token) now gets the project's daily HTTP clone and pull counts for the 30 UTC days GitLab serves: repo_clones rows with unique_clones NULL, a day GitLab omits stored as 0 and data source 'GitLab API'. That is one more request per GitLab project and collection; a 403 or 404 logs the same Info line and records no error, and any other error, such as a 5xx, is recorded as 'clone stats: ...' and fails the job as above, which is new for GitLab. Nothing older than those 30 days is backfilled. A fleet already running 0.29.96 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.96's notes below in the same one migrate. " + out[i].desc
+			out[i].desc = "0.29.97: no new schema object. The migrate's 'v0.29.82 seed api_token_settings' step failed with SQLSTATE 23502 (null value in column default_rate_limit_per_hour) on a database whose api_token_settings table was born on 0.29.82–0.29.88 and had no row 1 yet; the step now supplies the rollback mirror and the column gets the DEFAULT 1000 schema.sql declares. A fleet whose 0.29.96 migrate logged that ERROR reruns the migrate on this version before starting; nothing else changed for the running services. A fleet already running 0.29.96 needs only the stop, the migrate and this start; a fleet on an older release takes 0.29.96's notes below in the same one migrate. " + out[i].desc
 		}
 	}
 	return out
@@ -1177,7 +1318,9 @@ func deployStepsFrom(after string, inclusive bool, upTo string) []versionSteps {
 	return out
 }
 
-// printDeploySteps prints every release's steps since the last acknowledged
+// printRange prints a range deployRange computed, saying first when the
+// acknowledgements could not be read (the list is then the binary's own).
+// Together they print every release's steps since the last acknowledged
 // deploy (worklist §1 item 2): a fleet acked at 0.29.64 and migrated to
 // 0.29.68 saw only 0.29.68's steps, and the skipped releases' heals never
 // ran. The range starts after the latest ack; with no ack at all it starts
@@ -1186,13 +1329,6 @@ func deployStepsFrom(after string, inclusive bool, upTo string) []versionSteps {
 // cannot be read, the binary's own steps print alone as well — the stamp
 // fallback is skipped (PR #218 review D1: it printed every release since
 // the stamp under a message that said "this version's steps only").
-func printDeploySteps(ctx context.Context, g deployGate, out io.Writer, stamp, version string) {
-	list, origin, ackErr := deployRange(ctx, g, stamp, version)
-	printRange(out, list, origin, ackErr)
-}
-
-// printRange prints a range deployRange computed, saying first when the
-// acknowledgements could not be read (the list is then the binary's own).
 func printRange(out io.Writer, list []versionSteps, origin string, ackErr error) {
 	if ackErr != nil {
 		fmt.Fprintf(out, "(could not read the deploy acknowledgements: %v — printing this version's steps only)\n", ackErr)
@@ -1484,15 +1620,11 @@ func deployStepsProvablyUnrun(stamp, binary string) bool {
 // invocations refuse unless skip is set. A fresh fleet, a version with
 // no checklist on a current stamp, and an already-acked version proceed
 // silently.
-func checkDeployReadiness(ctx context.Context, g deployGate, version string, skip bool, in *os.File, out io.Writer) (proceed bool, err error) {
-	proceed, _, err = checkDeployReadinessNaming(ctx, g, version, skip, in, out)
-	return proceed, err
-}
-
-// checkDeployReadinessNaming is checkDeployReadiness that also returns the
-// migrate its refusal named (the printed range's strongest, PR #218 fix
-// review r1 F2), so start's abort line names the same one. migrate is ""
-// when nothing was refused on a range.
+// It also returns the migrate its refusal named (the printed range's
+// strongest, PR #218 fix review r1 F2), so start's abort line names the
+// same one; migrate is "" when nothing was refused on a range. (v0.29.98:
+// the two-value wrapper checkDeployReadiness, which production stopped
+// calling in 3289742f, is gone; the tests take the production entry.)
 func checkDeployReadinessNaming(ctx context.Context, g deployGate, version string, skip bool, in *os.File, out io.Writer) (proceed bool, migrate string, err error) {
 	fleetHasData, err := g.FleetHasCollectedData(ctx)
 	if err != nil {
@@ -1689,19 +1821,14 @@ func startAbortMessage(version, migrate string) string {
 	return fmt.Sprintf("start aborted: see the reason printed above (un-acknowledged deploy steps — `aveloxis deploy-checklist --pending` lists them, `aveloxis ack-deploy` records them — or %s); --skip-deploy-check bypasses", stamp)
 }
 
-// runDeployChecklist is deploy-checklist's body: the binary's own steps, or
-// with since every release's after it through printStepBlocks. An
-// unparseable --since is an error (non-zero exit, PR #218 review D2): it
-// printed "no release after X" and exited 0, so a typo read as "nothing to
-// do".
-func runDeployChecklist(out io.Writer, since, version string) error {
-	return runDeployChecklistRange(out, since, false, version)
-}
-
-// runDeployChecklistRange is runDeployChecklist with --inclusive: the
-// --since release's own block prints too (PR #218 fix review r1 F4). A
-// fleet that never acknowledged a deploy passes its schema stamp, whose
-// own steps are unacknowledged — the range the start gate prints.
+// runDeployChecklistRange is deploy-checklist's body: the binary's own
+// steps, or with since every release's after it through printStepBlocks;
+// with inclusive the --since release's own block prints too (PR #218 fix
+// review r1 F4) — a fleet that never acknowledged a deploy passes its
+// schema stamp, whose own steps are unacknowledged, the range the start
+// gate prints. An unparseable --since is an error (non-zero exit, PR #218
+// review D2): it printed "no release after X" and exited 0, so a typo read
+// as "nothing to do".
 func runDeployChecklistRange(out io.Writer, since string, inclusive bool, version string) error {
 	if inclusive && since == "" {
 		return fmt.Errorf("--inclusive needs --since")

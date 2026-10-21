@@ -23,42 +23,30 @@
 package web
 
 import (
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
-const serverSourceFile = "server.go"
-
 // TestGitHubCallbackChecksHTTPStatus pins that the GitHub callback
 // rejects a non-200 response from /user. Without this, a transient
 // 401/403/5xx on the user-info fetch silently produced a zero-value
-// struct and a blank-login user row.
-func TestGitHubCallbackChecksHTTPStatus(t *testing.T) {
-	body := extractWebFunc(t, "handleGitHubCallback")
-	if !strings.Contains(body, "resp.StatusCode") {
-		t.Error("handleGitHubCallback must inspect resp.StatusCode from GitHub /user — a non-200 response can deliver an empty body that unmarshals to zero values")
+// TestOAuthHeadChecksStatusBeforeDecoding (0.29.102, WEB-14): both
+// callbacks share fetchOAuthUser, so the status check and the decode's
+// error arm are pinned once, in ORDER — a non-200 response can carry an
+// empty body that unmarshals to zero values (the blank-user incident).
+func TestOAuthHeadChecksStatusBeforeDecoding(t *testing.T) {
+	body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/web", "func (s *Server) fetchOAuthUser("))
+	status := strings.Index(body, "resp.StatusCode != http.StatusOK")
+	decode := strings.Index(body, "json.Unmarshal(body, out); err != nil")
+	if status < 0 || decode < 0 || status > decode {
+		t.Errorf("fetchOAuthUser must refuse a non-200 before decoding and check the decode error (status at %d, decode at %d)", status, decode)
 	}
-}
-
-// TestGitHubCallbackChecksUnmarshalError pins that json.Unmarshal's
-// error is checked. The pre-fix source threw away the error with a
-// bare `json.Unmarshal(body, &ghUser)` — malformed JSON silently
-// produced a zero-value struct.
-func TestGitHubCallbackChecksUnmarshalError(t *testing.T) {
-	body := extractWebFunc(t, "handleGitHubCallback")
-	// Look for either an explicit Unmarshal error check or a Decoder
-	// pattern. Both are acceptable; what's not acceptable is the
-	// bare `json.Unmarshal(body, &ghUser)` discard pattern.
-	if strings.Contains(body, "json.Unmarshal(body, &ghUser)\n") &&
-		!strings.Contains(body, "json.Unmarshal(body, &ghUser); err") &&
-		!strings.Contains(body, "json.Unmarshal(body, &ghUser); jerr") {
-		// The unmarshal call exists with no error capture — confirm
-		// SOMEWHERE the error is checked. The simplest check is for
-		// "Unmarshal" combined with "err" in close proximity.
-		t.Error("handleGitHubCallback must check the json.Unmarshal error — silently discarding it lets malformed JSON from GitHub /user produce a zero-value user struct")
+	for _, h := range []string{"handleGitHubCallback", "handleGitLabCallback"} {
+		if !strings.Contains(srctest.PackageFunc(t, "internal/web", "func (s *Server) "+h+"("), "s.fetchOAuthUser(w, r, ctx, s.") {
+			t.Errorf("%s does not read its identity through fetchOAuthUser", h)
+		}
 	}
 }
 
@@ -92,25 +80,6 @@ func TestGitHubCallbackRejectsEmptyLogin(t *testing.T) {
 	}
 }
 
-// TestGitLabCallbackChecksHTTPStatus mirrors the GitHub check for
-// the GitLab /api/v4/user fetch. GitLab self-hosted instances behind
-// a misbehaving proxy were observed returning 502 with empty bodies.
-func TestGitLabCallbackChecksHTTPStatus(t *testing.T) {
-	body := extractWebFunc(t, "handleGitLabCallback")
-	if !strings.Contains(body, "resp.StatusCode") {
-		t.Error("handleGitLabCallback must inspect resp.StatusCode from GitLab /api/v4/user")
-	}
-}
-
-// TestGitLabCallbackChecksUnmarshalError mirrors the GitHub check.
-func TestGitLabCallbackChecksUnmarshalError(t *testing.T) {
-	body := extractWebFunc(t, "handleGitLabCallback")
-	if strings.Contains(body, "json.Unmarshal(body, &glUser)\n") &&
-		!strings.Contains(body, "json.Unmarshal(body, &glUser); err") {
-		t.Error("handleGitLabCallback must check the json.Unmarshal error — silently discarding it lets malformed JSON from GitLab /api/v4/user produce a zero-value user struct")
-	}
-}
-
 // TestGitLabCallbackRejectsEmptyUsername pins the same invariant
 // for the GitLab path. GitLab's user object exposes Username (not
 // Login).
@@ -135,23 +104,10 @@ func TestGitLabCallbackRejectsEmptyUsername(t *testing.T) {
 	}
 }
 
-// extractWebFunc reads server.go and returns the body of the named
-// method on *Server. Boundary is the next "\nfunc " token.
+// extractWebFunc returns the body of the named method on *Server wherever
+// it lives in the package (v0.29.98: it read server.go by name and
+// returned "" — a vacuous pass — when the method was not there).
 func extractWebFunc(t *testing.T, name string) string {
 	t.Helper()
-	data, err := os.ReadFile(serverSourceFile)
-	if err != nil {
-		t.Fatalf("read %s: %v", serverSourceFile, err)
-	}
-	src := string(data)
-	marker := "func (s *Server) " + name + "("
-	idx := strings.Index(src, marker)
-	if idx < 0 {
-		return ""
-	}
-	rest := src[idx:]
-	if end := strings.Index(rest[1:], "\nfunc "); end > 0 {
-		return rest[:end+1]
-	}
-	return rest
+	return srctest.PackageFunc(t, "internal/web", "func (s *Server) "+name+"(")
 }

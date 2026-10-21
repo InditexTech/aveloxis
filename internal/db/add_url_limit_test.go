@@ -130,31 +130,31 @@ func TestAddURLByteLimit(t *testing.T) {
 
 	// At the limit, every path writes every index.
 	pendingURLs := []string{sized(host+"pending-a/", false, MaxAddURLBytes), sized(host+"pending-b/", true, MaxAddURLBytes)}
-	out, err := store.AddReposToGroup(ctx, uid, gid, pendingURLs, 0)
+	out, err := store.AddReposToGroup(ctx, uid, gid, pendingURLs, 0, "")
 	if err != nil || out.Pending != 2 {
 		t.Fatalf("non-admin add of two URLs at the limit = %+v, %v; want 2 pending", out, err)
 	}
-	if _, _, err := store.DecideAddRequest(ctx, out.RequestID, adminID, true, ""); err != nil {
+	if _, _, err := store.DecideAddRequest(ctx, out.RequestID, adminID, true, "", ""); err != nil {
 		t.Fatalf("approve: %v", err)
 	}
-	if n, _, err := store.ProcessApprovedAddRequest(ctx, out.RequestID); err != nil || n != 2 {
+	if n, _, err := store.ProcessApprovedAddRequest(ctx, out.RequestID, ""); err != nil || n != 2 {
 		t.Errorf("processing the approved URLs at the limit = %d, %v; want 2, nil", n, err)
 	}
 	// Surrounding whitespace is trimmed before the limit applies.
-	if out, err := store.AddReposToGroup(ctx, uid, gid, []string{" " + sized(hubOwner+"auto-", true, MaxAddURLBytes) + "\n"}, 5); err != nil || out.Enqueued != 1 {
+	if out, err := store.AddReposToGroup(ctx, uid, gid, []string{" " + sized(hubOwner+"auto-", true, MaxAddURLBytes) + "\n"}, 5, ""); err != nil || out.Enqueued != 1 {
 		t.Errorf("auto-approved add of a GitHub URL at the limit, with whitespace around it = %+v, %v; want 1 enqueued", out, err)
 	}
-	if out, err := store.AddReposToGroup(ctx, adminID, adminGID, []string{sized(host+"admin-", true, MaxAddURLBytes)}, 0); err != nil || out.Enqueued != 1 {
+	if out, err := store.AddReposToGroup(ctx, adminID, adminGID, []string{sized(host+"admin-", true, MaxAddURLBytes)}, 0, ""); err != nil || out.Enqueued != 1 {
 		t.Errorf("admin add of a URL at the limit = %+v, %v; want 1 enqueued", out, err)
 	}
-	if out, err := store.AddOrgToGroup(ctx, adminID, adminGID, sized(orgHost+"admin-", true, MaxAddURLBytes), ""); err != nil || !out.Registered {
+	if out, err := store.AddOrgToGroup(ctx, adminID, adminGID, sized(orgHost+"admin-", true, MaxAddURLBytes), "", ""); err != nil || !out.Registered {
 		t.Errorf("admin org add at the limit = %+v, %v; want registered", out, err)
 	}
-	orgOut, err := store.AddOrgToGroup(ctx, uid, gid, sized(orgHost+"user-", false, MaxAddURLBytes), "")
+	orgOut, err := store.AddOrgToGroup(ctx, uid, gid, sized(orgHost+"user-", false, MaxAddURLBytes), "", "")
 	if err != nil || orgOut.RequestID == 0 {
 		t.Fatalf("non-admin org add at the limit = %+v, %v; want a pending request", orgOut, err)
 	}
-	if _, _, err := store.DecideAddRequest(ctx, orgOut.RequestID, adminID, true, ""); err != nil {
+	if _, _, err := store.DecideAddRequest(ctx, orgOut.RequestID, adminID, true, "", ""); err != nil {
 		t.Errorf("approving an org at the limit: %v", err)
 	}
 
@@ -167,7 +167,7 @@ func TestAddURLByteLimit(t *testing.T) {
 		add  func() error
 	}{
 		{"non-admin repos", func() error {
-			_, err := store.AddReposToGroup(ctx, uid, gid, []string{host + "short-ok", sized(host+"over-", false, over)}, 0)
+			_, err := store.AddReposToGroup(ctx, uid, gid, []string{host + "short-ok", sized(host+"over-", false, over)}, 0, "")
 			return err
 		}},
 		{"repos, fewer characters than the limit", func() error {
@@ -175,27 +175,27 @@ func TestAddURLByteLimit(t *testing.T) {
 			if n := len([]rune(u)); n >= MaxAddURLBytes {
 				t.Fatalf("the multibyte URL has %d characters; want fewer than %d", n, MaxAddURLBytes)
 			}
-			_, err := store.AddReposToGroup(ctx, uid, gid, []string{u}, 0)
+			_, err := store.AddReposToGroup(ctx, uid, gid, []string{u}, 0, "")
 			return err
 		}},
 		{"org, fewer characters than the limit", func() error {
-			_, err := store.AddOrgToGroup(ctx, uid, gid, sized(orgHost+"over-multibyte-", true, over), "")
+			_, err := store.AddOrgToGroup(ctx, uid, gid, sized(orgHost+"over-multibyte-", true, over), "", "")
 			return err
 		}},
 		{"auto-approved repos", func() error {
-			_, err := store.AddReposToGroup(ctx, uid, gid, []string{sized(host+"over-auto-", false, over)}, 5)
+			_, err := store.AddReposToGroup(ctx, uid, gid, []string{sized(host+"over-auto-", false, over)}, 5, "")
 			return err
 		}},
 		{"admin repos", func() error {
-			_, err := store.AddReposToGroup(ctx, adminID, adminGID, []string{host + "admin-short-ok", sized(host+"over-admin-", false, over)}, 0)
+			_, err := store.AddReposToGroup(ctx, adminID, adminGID, []string{host + "admin-short-ok", sized(host+"over-admin-", false, over)}, 0, "")
 			return err
 		}},
 		{"admin org", func() error {
-			_, err := store.AddOrgToGroup(ctx, adminID, adminGID, sized(orgHost+"over-admin-", false, over), "")
+			_, err := store.AddOrgToGroup(ctx, adminID, adminGID, sized(orgHost+"over-admin-", false, over), "", "")
 			return err
 		}},
 		{"non-admin org", func() error {
-			_, err := store.AddOrgToGroup(ctx, uid, gid, sized(orgHost+"over-user-", false, over), "")
+			_, err := store.AddOrgToGroup(ctx, uid, gid, sized(orgHost+"over-user-", false, over), "", "")
 			return err
 		}},
 	} {

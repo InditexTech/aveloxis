@@ -86,7 +86,7 @@ func scanAccount(r pgx.CollectableRow) (CapacityAccount, error) {
 }
 
 // AccountByLogin resolves a login to exactly one account, matched apart
-// from letter case: ErrNoSuchUser for none, ErrAmbiguousLogin for more than
+// from letter case: ErrUserNotFound for none, ErrAmbiguousLogin for more than
 // one — even when one matches exactly (round 4 R4-1: a request naming
 // GitHub's "alice" must not silently open GitLab's "alice"). The escrow
 // export must never pick a person silently (closing review r3 F3).
@@ -102,7 +102,7 @@ func (s *PostgresStore) AccountByLogin(ctx context.Context, login string) (Capac
 	}
 	switch len(found) {
 	case 0:
-		return CapacityAccount{}, ErrNoSuchUser
+		return CapacityAccount{}, ErrUserNotFound
 	case 1:
 		return found[0], nil
 	}
@@ -110,7 +110,7 @@ func (s *PostgresStore) AccountByLogin(ctx context.Context, login string) (Capac
 }
 
 // CapacityAccountByID reads one account for the page's lookup by id (the
-// way to an account whose login has a case twin); ErrNoSuchUser for none.
+// way to an account whose login has a case twin); ErrUserNotFound for none.
 func (s *PostgresStore) CapacityAccountByID(ctx context.Context, userID int) (CapacityAccount, error) {
 	a, err := s.AccountByID(ctx, userID)
 	if err != nil {
@@ -119,7 +119,7 @@ func (s *PostgresStore) CapacityAccountByID(ctx context.Context, userID int) (Ca
 	return s.fillCapacityAccount(ctx, a)
 }
 
-// AccountByID reads one account's identity; ErrNoSuchUser for none.
+// AccountByID reads one account's identity; ErrUserNotFound for none.
 func (s *PostgresStore) AccountByID(ctx context.Context, userID int) (CapacityAccount, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+accountColumns+` FROM aveloxis_ops.users u WHERE u.user_id = $1`, userID)
 	if err != nil {
@@ -130,13 +130,13 @@ func (s *PostgresStore) AccountByID(ctx context.Context, userID int) (CapacityAc
 		return CapacityAccount{}, fmt.Errorf("account by id: %w", err)
 	}
 	if len(found) == 0 {
-		return CapacityAccount{}, ErrNoSuchUser
+		return CapacityAccount{}, ErrUserNotFound
 	}
 	return found[0], nil
 }
 
 // CapacityAccountByLogin reads one account for the page's lookup;
-// ErrNoSuchUser when there is none, ErrAmbiguousLogin when the login names
+// ErrUserNotFound when there is none, ErrAmbiguousLogin when the login names
 // several apart from letter case.
 func (s *PostgresStore) CapacityAccountByLogin(ctx context.Context, login string) (CapacityAccount, error) {
 	a, err := s.AccountByLogin(ctx, login)

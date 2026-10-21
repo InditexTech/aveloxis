@@ -19,30 +19,14 @@ import (
 // only ever receive string literals. This pin enforces that structurally:
 // any operand that is not a literal fails, whatever its name or source.
 
-// inlineScripts returns the bodies of the <script> blocks without a src.
+// inlineScripts returns the web GUI's page scripts (0.29.102, stage 2e:
+// the scripts left the templates for internal/static; the corpus moved
+// with them — pageScripts — and the vendored library is not ours to scan).
 func inlineScripts(t *testing.T) []string {
 	t.Helper()
 	var out []string
-	rest := allTemplates
-	for {
-		i := strings.Index(rest, "<script")
-		if i < 0 {
-			break
-		}
-		gt := strings.Index(rest[i:], ">")
-		if gt < 0 {
-			t.Fatal("unterminated <script tag")
-		}
-		open := rest[i : i+gt+1]
-		end := strings.Index(rest[i+gt+1:], "</script>")
-		if end < 0 {
-			t.Fatal("<script> without </script>")
-		}
-		body := rest[i+gt+1 : i+gt+1+end]
-		if !strings.Contains(open, "src=") {
-			out = append(out, body)
-		}
-		rest = rest[i+gt+1+end+len("</script>"):]
+	for _, src := range pageScripts(t) {
+		out = append(out, src)
 	}
 	return out
 }
@@ -314,8 +298,8 @@ func TestTemplateScriptsWriteOnlyLiteralsIntoHTML(t *testing.T) {
 	}
 	// The reviewed reads: the two search dropdowns re-open on focus when they
 	// hold results (`x.innerHTML && …`). The count is exact: more or fewer fail.
-	if reads != 2 {
-		t.Fatalf("found %d `.innerHTML &&` reads; the reviewed count is 2 (the two search dropdowns)", reads)
+	if reads != 0 {
+		t.Fatalf("found %d `.innerHTML &&` reads; the reviewed count is 0 (the search dropdown reads childNodes.length since 0.29.102)", reads)
 	}
 }
 
@@ -338,14 +322,20 @@ var sinkReadRE = regexp.MustCompile(`\.innerHTML\s*&&[^=]`)
 
 // The DOM builder is defined once, in the head every page includes (L18).
 func TestTemplateDOMBuilderDefinedOnce(t *testing.T) {
-	defs := regexp.MustCompile(`function avxEl\(`).FindAllStringIndex(allTemplates, -1)
-	if len(defs) != 1 {
-		t.Fatalf("avxEl defined %d times; want exactly once, in the head template", len(defs))
+	var all strings.Builder
+	for _, src := range pageScripts(t) {
+		all.WriteString(src)
 	}
+	defs := regexp.MustCompile(`function avxEl\(`).FindAllStringIndex(all.String(), -1)
+	if len(defs) != 1 {
+		t.Fatalf("avxEl defined %d times; want exactly once, in avx.js", len(defs))
+	}
+	// avx.js is the head template's first script, so every page has the
+	// builder before its own script runs.
 	head := allTemplates[strings.Index(allTemplates, `{{define "head"}}`):]
 	head = head[:strings.Index(head, "<body>{{end}}")] // the head's own {{end}}; {{if .Title}} has an earlier one
-	if !strings.Contains(head, "function avxEl(") {
-		t.Fatal("avxEl must live in the head template, which every page includes")
+	if !strings.Contains(head, `<script src="/static/avx.js"></script>`) {
+		t.Fatal("the head template does not load /static/avx.js")
 	}
 }
 
@@ -405,11 +395,12 @@ func TestTemplateSinkScannerSeesEverySpelling(t *testing.T) {
 // attribute setter would let a caller route data into a link without a
 // scheme check, so the allowlist is pinned exactly.
 func TestTemplateDOMBuilderPropertyAllowlist(t *testing.T) {
-	i := strings.Index(allTemplates, "function avxEl(")
+	avx := pageScripts(t)["avx.js"]
+	i := strings.Index(avx, "function avxEl(")
 	if i < 0 {
-		t.Fatal("avxEl not found")
+		t.Fatal("avxEl not found in avx.js")
 	}
-	body := allTemplates[i:]
+	body := avx[i:]
 	body = body[:strings.Index(body, "\n}\n")]
 	if strings.Count(body, "e[k] = v") != 1 {
 		t.Fatal("avxEl must assign element properties in exactly one, allowlisted branch")

@@ -82,19 +82,31 @@ func TestEveryRepoScopedGETIsCachedOrReviewed(t *testing.T) {
 	srctest.MinCount(t, "cached repository-page routes", cached, 13)
 }
 
-// The wrapper decides scope before any lookup: a cached body must never
-// reach a caller authorizeRepo would refuse (runtime twin:
-// TestPageCacheRefusalsAndAutoAddsAreNeverShared).
+// The wrapper decides scope before any cache lookup: a cached body must
+// never reach a caller authorizeRepo would refuse (runtime twin:
+// TestPageCacheRefusalsAndAutoAddsAreNeverShared). The one read before the
+// scope decision is the repository's state (stage 1b, D5: the existence
+// probe, so an unknown id is a 404 for every caller); the cache entry, the
+// validator and the handler run come after.
 func TestCachedRepoGETAuthorizesBeforeAnyLookup(t *testing.T) {
 	body := srctest.StripGoComments(srctest.FuncBody(t, srctest.Read(t, "internal/api/repo_page_cache.go"), "func (s *Server) servePageCached("))
 	authz := strings.Index(body, "s.authorizeRepo(")
 	if authz < 0 {
 		t.Fatal("servePageCached must call s.authorizeRepo")
 	}
-	for _, lookup := range []string{"s.repoStates(", "c.get(", "etagMatches(", "s.runOnce("} {
+	if states := strings.Index(body, "s.repoStates("); states < 0 || states > authz {
+		t.Errorf("servePageCached reads the repository state at %d and decides scope at %d; the state read (the existence probe, D5) comes first", states, authz)
+	}
+	for _, lookup := range []string{"c.get(", "etagMatches(", "s.runOnce(", "refuseRepoNotFound("} {
 		i := strings.Index(body, lookup)
 		if i < 0 {
 			t.Errorf("cachedRepoGET no longer calls %s — update this pin", lookup)
+			continue
+		}
+		if lookup == "refuseRepoNotFound(" {
+			if i > authz {
+				t.Error("the unknown-repository 404 is written after the scope decision; it must come first (no auto-add slot for a repository that does not exist)")
+			}
 			continue
 		}
 		if i < authz {
@@ -109,8 +121,10 @@ func TestCachedRepoGETAuthorizesBeforeAnyLookup(t *testing.T) {
 // the next collection.
 func TestCachedHandlersDegradeOnlyThroughPartialAnswer(t *testing.T) {
 	files := map[string]string{}
-	for _, f := range []string{"server.go", "metrics.go", "vulnerabilities.go", "contributions.go", "top_contributors.go", "traffic.go"} {
-		files[f] = srctest.StripGoComments(srctest.Read(t, "internal/api/"+f))
+	// Every non-test file of the package, so a handler that moves into a
+	// new file (traffic.go, v0.29.108) is still found.
+	for repoRel, src := range srctest.PackageFiles(t, "internal/api", 20) {
+		files[strings.TrimPrefix(repoRel, "internal/api/")] = srctest.StripGoComments(src)
 	}
 	discarded := regexp.MustCompile(`(, _ :?=|_ = )s\.store\.`)
 	examined := 0
@@ -228,8 +242,8 @@ func TestCachedRepoRoutesServeFromTheCache(t *testing.T) {
 // reads from its body; TestEveryQueryReaderIsScannedOrReviewed requires
 // every other query reader to be reviewed as serving uncached routes.
 var helperFiles = map[string]string{
-	"parseWindow":              "contributions.go",
-	"parseDateRange":           "metrics.go",
+	"parseWindow":              "page_query.go",
+	"parseDateRange":           "page_query.go",
 	"parseTopContributorsArgs": "page_query.go",
 	"parseSBOMArgs":            "page_query.go",
 }
@@ -242,8 +256,10 @@ var helperFiles = map[string]string{
 // what it reads: Query().Get literals and the window helpers.
 func TestPageParamsMatchTheHandlers(t *testing.T) {
 	files := map[string]string{}
-	for _, f := range []string{"server.go", "metrics.go", "vulnerabilities.go", "contributions.go", "top_contributors.go", "traffic.go"} {
-		files[f] = srctest.StripGoComments(srctest.Read(t, "internal/api/"+f))
+	// Every non-test file of the package, so a handler that moves into a
+	// new file (traffic.go, v0.29.108) is still found.
+	for repoRel, src := range srctest.PackageFiles(t, "internal/api", 20) {
+		files[strings.TrimPrefix(repoRel, "internal/api/")] = srctest.StripGoComments(src)
 	}
 	files["page_query.go"] = srctest.StripGoComments(srctest.Read(t, "internal/api/page_query.go"))
 	// The parse helpers a handler may read its query through. What each

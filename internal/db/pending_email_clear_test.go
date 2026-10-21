@@ -170,7 +170,7 @@ func TestConfirmEmailTokenEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, `UPDATE aveloxis_ops.email_confirmations SET expires_at = NOW() - INTERVAL '1 minute' WHERE token = $1`, stale); err != nil {
+	if _, err := store.pool.Exec(ctx, `UPDATE aveloxis_ops.email_confirmations SET expires_at = NOW() - INTERVAL '1 minute' WHERE token = $1`, hashToken(stale)); err != nil { // stored hashed (0.29.102)
 		t.Fatal(err)
 	}
 	_, err = store.ConfirmEmailToken(ctx, stale, b)
@@ -186,7 +186,7 @@ func TestConfirmEmailTokenEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.pool.Exec(ctx, `UPDATE aveloxis_ops.email_confirmations SET expires_at = NOW() - INTERVAL '1 minute' WHERE token = $1`, old); err != nil {
+	if _, err := store.pool.Exec(ctx, `UPDATE aveloxis_ops.email_confirmations SET expires_at = NOW() - INTERVAL '1 minute' WHERE token = $1`, hashToken(old)); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := store.GetUserLivePendingEmail(ctx, b); got != "" {

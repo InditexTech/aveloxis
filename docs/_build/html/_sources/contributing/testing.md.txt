@@ -216,6 +216,30 @@ exists to catch → confirm RED → revert → green. Interdependent pins (ones 
 read other test files or share allowlists) migrate as a closed cluster in one
 change.
 
+### Finding a subject across a package (v0.29.98, stage 0.5)
+
+A pin that reads a production file BY NAME (`os.ReadFile("server.go")`,
+`srctest.Read(t, "internal/web/server.go")`) breaks when that file is split —
+or, for a negative needle, passes vacuously because the old file still exists.
+Name the function instead:
+
+- `srctest.PackageFunc(t, dir, sig)` / `PackageFuncAt` — the ONE declaration
+  starting with `sig` among the package's non-test files that build on this
+  host (build constraints honoured); zero or several matches are fatal, and
+  `sig` must end with `(` or `[` (the complete name, so a prefix cannot pin a
+  longer name). `FuncBody` follows the same rules on a source you already hold.
+- `srctest.PackageSource(t, dir, minFiles)` — the package's production source
+  in one string, for NEGATIVE needles only (a token that must appear nowhere);
+  never widen a positive needle to it.
+- `srctest.FuncParts(t, src)` — a source split by function for registries
+  keyed `srctest.SiteKey(dir, func)`; `srctest.ExecOrder` orders sites by
+  execution from a root function (the migrate analyzer's resolver).
+
+The split of a file migrates only the pins it breaks (the strangler rule, N26)
+and each migrated pin is re-redded. `scripts/source_file_reads_baseline.txt`
+lists every remaining by-name read (`TestSourceFileReadsOnlyShrink`; one
+literal, or a `filepath.Join` of literal segments) and only shrinks; a per-file count registry that stays keyed by file is listed there too.
+
 ### SQL write scanning: `internal/srctest/sqlscan` (v0.27.124)
 
 Tests that reason about SQL WRITE statements use the Phase 2 engine
@@ -569,7 +593,22 @@ See `internal/platform/httpclient_test.go` for patterns. Tests like `TestHTTPCli
 GitHub Actions runs:
 
 - `test.yml`: `go test ./...` (with `-race`) on every push.
-- `integration.yml`: PostgreSQL service container + `AVELOXIS_TEST_DB` integration tests.
+- `integration.yml`: PostgreSQL service container + `AVELOXIS_TEST_DB` integration tests
+  (the `migrate` job), plus two deployment jobs (0.29.107): `upgrade-path`
+  (the base release — the PR's base branch, or the newest release tag on a
+  push — migrates an empty database and populates it; the head release
+  migrates it again plain, `--skip-views` and plain, then the stamp, the
+  seeded rows, index validity and data-verify must hold;
+  `scripts/ci-upgrade-path.sh`) and `processes` (serve, api and web from
+  one binary against one database, the contracts between them over HTTP:
+  anonymous API refused, session → Bearer exchange, the form guard's 415/413
+  before any gate, privilege per request, sign-out in web = 401 in api,
+  clean SIGTERM; `scripts/ci-process-contracts.sh`).
+- `nightly.yml` (scheduled on `main`, and by hand on any branch): `race-stress`
+  (api, web, scheduler, platform under `-race -count=8 -cpu=2 -shuffle=on`)
+  and `golden-collection` (`aveloxis data-test` between the newest release
+  tag and the branch over a small fixed set; the GitLab half needs the
+  `GITLAB_TOKEN` secret and the `GOLDEN_GITLAB_PROJECT` variable).
 - `lint.yml`: `go vet` → `staticcheck` → `golangci-lint` (pinned version), all blocking.
 - `codeql.yml`: security scanning.
 - `cifuzz.yml`: ClusterFuzzLite over the 7 native Go fuzz targets.

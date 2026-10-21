@@ -50,7 +50,7 @@ func TestOAuthUserErrorAnswerIsNotASizeMark(t *testing.T) {
 	t.Run("github", func(t *testing.T) {
 		ctx, _ := githubCallbackFixture(t, refused)
 		var logs bytes.Buffer
-		s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, nil, "", slog.New(slog.NewTextHandler(&logs, nil)))
+		s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, "", slog.New(slog.NewTextHandler(&logs, nil)))
 		rec := httptest.NewRecorder()
 		s.handleGitHubCallback(rec, githubCallbackRequest(ctx))
 		check(t, "github", &logs, rec)
@@ -59,7 +59,7 @@ func TestOAuthUserErrorAnswerIsNotASizeMark(t *testing.T) {
 		forge := httptest.NewServer(http.HandlerFunc(refused))
 		t.Cleanup(forge.Close)
 		var logs bytes.Buffer
-		s := New(nil, config.WebConfig{DevMode: true, GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: forge.URL}, nil, "", slog.New(slog.NewTextHandler(&logs, nil)))
+		s := New(nil, config.WebConfig{DevMode: true, GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: forge.URL}, "", slog.New(slog.NewTextHandler(&logs, nil)))
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/auth/gitlab/callback?code=c&state=st", nil)
 		req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "st"})

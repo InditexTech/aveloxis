@@ -82,7 +82,7 @@ func TestOrgAutoApproveWhenAlreadyRegisteredEndToEnd(t *testing.T) {
 
 	org := "_avorgauto_tracked" + itoa64(suffix)
 	// Admin registers the org first (the pre-existing registration).
-	out, err := store.AddOrgToGroup(ctx, adminID, adminGroup, "https://github.com/"+org, "")
+	out, err := store.AddOrgToGroup(ctx, adminID, adminGroup, "https://github.com/"+org, "", "")
 	if err != nil || !out.Registered {
 		t.Fatalf("admin registration failed: out=%+v err=%v", out, err)
 	}
@@ -90,7 +90,7 @@ func TestOrgAutoApproveWhenAlreadyRegisteredEndToEnd(t *testing.T) {
 	// (1) Non-admin adds the SAME org as a CASE VARIANT: must register
 	// immediately (no pending), with an auto-approved audit row.
 	variant := "https://github.com/" + strings.ToUpper(org[:3]) + org[3:]
-	out, err = store.AddOrgToGroup(ctx, plainID, plainGroup, variant, "")
+	out, err = store.AddOrgToGroup(ctx, plainID, plainGroup, variant, "", "")
 	if err != nil {
 		t.Fatalf("non-admin add of already-registered org: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestOrgAutoApproveWhenAlreadyRegisteredEndToEnd(t *testing.T) {
 
 	// (2) Non-admin adds an UNREGISTERED org: must still pend (the
 	// v0.27.20 principle — a new org is an unbounded future commitment).
-	out, err = store.AddOrgToGroup(ctx, plainID, plainGroup, "https://github.com/_avorgauto_new"+itoa64(suffix), "")
+	out, err = store.AddOrgToGroup(ctx, plainID, plainGroup, "https://github.com/_avorgauto_new"+itoa64(suffix), "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,11 +242,12 @@ func TestRepoStatsCarriesLastCollected(t *testing.T) {
 		t.Fatal("RepoStats must carry last_collected (omitempty) — the GUI's only way to " +
 			"distinguish 'queued for first collection' from 'collected, zero activity'")
 	}
-	for _, fn := range []string{"GetRepoStats", "GetRepoStatsBatch"} {
-		body := extractFunctionBody(t, "repo_stats.go", fn)
-		if !strings.Contains(body, "last_collected") {
-			t.Errorf("%s must read collection_queue.last_collected", fn)
-		}
+	// Stage 1b: one reader; GetRepoStats is the batch's answer for its id.
+	if body := extractFunctionBody(t, "repo_stats.go", "GetRepoStatsBatch"); !strings.Contains(body, "last_collected") {
+		t.Error("GetRepoStatsBatch must read collection_queue.last_collected")
+	}
+	if body := extractFunctionBody(t, "repo_stats.go", "GetRepoStats"); !strings.Contains(body, "GetRepoStatsBatch(") {
+		t.Error("GetRepoStats must answer from GetRepoStatsBatch")
 	}
 }
 

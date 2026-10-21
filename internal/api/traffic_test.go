@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/srctest"
 )
 
@@ -65,10 +66,19 @@ func TestRepoTrafficRefusesANonIntegerID(t *testing.T) {
 // The handler decides scope before it reads anything. The server has no
 // store, so a lookup made before the check would panic on the nil store;
 // an API token outside its owner's groups must get the structured 403.
+// The prelude (repoFromPath) proves the repository exists first, so the
+// bare server needs a state reader that knows the id.
 func TestRepoTrafficAuthorizesBeforeAnyLookup(t *testing.T) {
 	s, err := NewWithOptions(nil, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	s.repoStates = func(_ context.Context, ids []int64) (map[int64]db.RepoCacheState, error) {
+		out := map[int64]db.RepoCacheState{}
+		for _, id := range ids {
+			out[id] = db.RepoCacheState{HasQueueRow: true}
+		}
+		return out, nil
 	}
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/repos/42/traffic", nil)
 	r = r.WithContext(withIdentity(context.Background(), authInfo{UserID: 7, APITokenID: 3, Scope: map[int64]bool{41: true}}))
@@ -81,13 +91,13 @@ func TestRepoTrafficAuthorizesBeforeAnyLookup(t *testing.T) {
 		t.Errorf("a refusal is about this caller and must never be stored: %v", w.Header())
 	}
 
-	body := srctest.StripGoComments(srctest.FuncBody(t, srctest.Read(t, "internal/api/traffic.go"), "func (s *Server) handleRepoTraffic("))
-	authz := strings.Index(body, "s.authorizeRepo(")
+	body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/api", "func (s *Server) handleRepoTraffic("))
+	prelude := strings.Index(body, "s.repoFromPath(")
 	lookup := strings.Index(body, "s.store.")
-	if authz < 0 || lookup < 0 {
-		t.Fatalf("handleRepoTraffic must call s.authorizeRepo and read through s.store (authorizeRepo at %d, store at %d)", authz, lookup)
+	if prelude < 0 || lookup < 0 {
+		t.Fatalf("handleRepoTraffic must reach the prelude and read through s.store (repoFromPath at %d, store at %d)", prelude, lookup)
 	}
-	if lookup < authz {
-		t.Error("handleRepoTraffic reads the store before s.authorizeRepo: a caller out of scope would trigger a lookup")
+	if lookup < prelude {
+		t.Error("handleRepoTraffic reads the store before the prelude: a caller out of scope would trigger a lookup")
 	}
 }

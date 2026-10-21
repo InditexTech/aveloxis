@@ -142,7 +142,7 @@ func TestPortalAdminApproveReportsAForeignHostOrgAsConflict(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := store.AddOrgToGroup(ctx, muid, gid, "https://github.com/_avapiforeign"+suffix, "")
+	out, err := store.AddOrgToGroup(ctx, muid, gid, "https://github.com/_avapiforeign"+suffix, "", "")
 	if err != nil || out.Registered || out.RequestID == 0 {
 		t.Fatalf("pending the request: out=%+v err=%v", out, err)
 	}

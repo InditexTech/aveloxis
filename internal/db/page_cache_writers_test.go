@@ -42,7 +42,7 @@ var pageCacheTables = []string{
 	"repo_lockfiles", "repo_lockfile_packages", "repo_lockfile_edges",
 	// The SBOM's license (GetRepoForSBOM reads the latest repo_info row).
 	"repo_info",
-	// The traffic answer (v0.29.97): the daily clones and the five
+	// The traffic answer (v0.29.108): the daily clones and the five
 	// GitHub traffic tables, all stored history, no time bound.
 	"repo_clones", "repo_views", "repo_traffic_paths",
 	"repo_traffic_referrers", "repo_traffic_windows", "repo_traffic_weeks",
@@ -63,10 +63,8 @@ var pageCacheWriters = map[string]pageWriterCoverage{
 	"rotateScancodeRows":               {"helper", "ReplaceScancodeSnapshot"},
 	"ClearRepoDependencies":            {"job", "analysis phase"},
 	"InsertRepoDependency":             {"job", "analysis phase"},
-	"InsertRepoDependencyBatch":        {"job", "analysis phase"},
 	"RotateLibyearToHistory":           {"job", "analysis phase"},
 	"InsertRepoLibyear":                {"job", "analysis phase"},
-	"InsertRepoLibyearBatch":           {"job", "analysis phase"},
 	"ReplaceRepoLockfileSnapshot":      {"job", "analysis phase (lockfile scan)"},
 	"migrateStage10RecentReleases":     {"migrate", "a migration step"},
 	// The staged processor reaches these outside any job too (heal-messages,
@@ -82,11 +80,11 @@ var pageCacheWriters = map[string]pageWriterCoverage{
 // writer (whole-branch review: one shared file list let every job writer be
 // called from anywhere in scheduler.go, sweeps and lock release included).
 // "file" allows the whole file — the analysis collector, which only the
-// scheduler's job constructs (checked below); "file|func" allows one
-// function.
+// scheduler's job constructs (checked below); srctest.SiteKey(dir, func)
+// allows one function wherever it lives in that package (v0.29.98).
 var jobCallers = map[string][]string{
 	"analysis":                  {"internal/collector/analysis.go", "internal/collector/lockfile_scan.go"},
-	"BackfillGitLabCommitCount": {"internal/scheduler/scheduler.go|runFacadeAndAnalysis"},
+	"BackfillGitLabCommitCount": {srctest.SiteKey("internal/scheduler", "runFacadeAndAnalysis")},
 }
 
 // jobCallersOf is the allowance for writer fn: its own entry, else the
@@ -101,17 +99,14 @@ func jobCallersOf(fn string) []string {
 func TestPageCacheTableWritersAreCovered(t *testing.T) {
 	files := srctest.PackageFiles(t, "internal/db", 20)
 	tableRE := regexp.MustCompile(`(?i)(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:aveloxis_\w+\.)?(` + strings.Join(pageCacheTables, "|") + `)\b`)
-	nameRE := regexp.MustCompile(`^(?:\([^)]*\)\s*)?(\w+)\(`)
 	bodies := map[string]string{}
 	found := map[string]bool{}
 	for name, src := range files {
 		src = srctest.StripGoComments(src)
-		for _, part := range strings.Split(src, "\nfunc ")[1:] {
-			m := nameRE.FindStringSubmatch(part)
-			if m == nil {
+		for fn, part := range srctest.FuncParts(t, src) {
+			if fn == srctest.PackageLevel {
 				continue
 			}
-			fn := m[1]
 			bodies[fn] = part
 			if tableRE.MatchString(part) {
 				found[fn] = true
@@ -154,7 +149,6 @@ func TestPageCacheTableWritersAreCovered(t *testing.T) {
 		}
 	}
 	callRE := regexp.MustCompile(`\.(` + strings.Join(jobWriters, "|") + `)\(`)
-	funcName := regexp.MustCompile(`^(?:\([^)]*\)\s*)?(\w+)[\[(]`)
 	ctorRE := regexp.MustCompile(`\bNewAnalysisCollector\(`)
 	examined := 0
 	for _, dir := range []string{"internal", "cmd", "scripts"} {
@@ -173,15 +167,11 @@ func TestPageCacheTableWritersAreCovered(t *testing.T) {
 			}
 			src := srctest.StripGoComments(string(b))
 			examined++
-			for _, part := range strings.Split(src, "\nfunc ") {
-				enclosing := ""
-				if m := funcName.FindStringSubmatch(part); m != nil {
-					enclosing = m[1]
-				}
+			for enclosing, part := range srctest.FuncParts(t, src) {
 				for _, m := range callRE.FindAllStringSubmatch(part, -1) {
 					ok := false
 					for _, a := range jobCallersOf(m[1]) {
-						if a == rel || a == rel+"|"+enclosing {
+						if a == rel || a == srctest.SiteKey(srctest.SiteDir(rel), enclosing) {
 							ok = true
 						}
 					}

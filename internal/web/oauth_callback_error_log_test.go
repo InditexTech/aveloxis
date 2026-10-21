@@ -67,7 +67,7 @@ func TestOAuthCallbackFailuresAreLogged(t *testing.T) {
 			rec := httptest.NewRecorder()
 			if tc.provider == "github" {
 				ctx, refuse := githubCallbackFixture(t, forgeHandler("/login/oauth/access_token", "/user", tc.failExchange))
-				s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, nil, "", logger)
+				s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, "", logger)
 				s.handleGitHubCallback(rec, githubCallbackRequest(ctx))
 				// PR #218 review C10: a request that bypassed the fixture
 				// fails too, and would read here as the logged failure.
@@ -77,7 +77,7 @@ func TestOAuthCallbackFailuresAreLogged(t *testing.T) {
 			} else {
 				forge := httptest.NewServer(forgeHandler("/oauth/token", "/api/v4/user", tc.failExchange))
 				t.Cleanup(forge.Close)
-				s := New(nil, config.WebConfig{DevMode: true, GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: forge.URL}, nil, "", logger)
+				s := New(nil, config.WebConfig{DevMode: true, GitLabClientID: "id", GitLabClientSecret: "secret", GitLabBaseURL: forge.URL}, "", logger)
 				req := httptest.NewRequest(http.MethodGet, "/auth/gitlab/callback?code=c&state=st", nil)
 				req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "st"})
 				s.handleGitLabCallback(rec, req.WithContext(context.Background()))

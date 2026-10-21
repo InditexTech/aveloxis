@@ -36,26 +36,6 @@ func (s *PostgresStore) GetUserEmail(ctx context.Context, userID int) (string, e
 	return *email, nil
 }
 
-// UpdateUserEmail writes the email column for the given user_id.
-// Used by the v0.19.10 POST handler for /account/email when the OAuth
-// flow couldn't surface an email automatically. Returns an error if
-// the user doesn't exist or the write fails.
-func (s *PostgresStore) UpdateUserEmail(ctx context.Context, userID int, email string) error {
-	email = strings.TrimSpace(email)
-	if email == "" {
-		return errors.New("email cannot be empty")
-	}
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE aveloxis_ops.users SET email = $2 WHERE user_id = $1`, userID, email)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("user_id %d not found", userID)
-	}
-	return nil
-}
-
 // ErrEmptyLogin is returned by UpsertOAuthUser when the supplied
 // OAuthUserInfo.Login is empty (or whitespace-only). An empty login
 // is never a legitimate OAuth result; allowing it through inserts a
@@ -96,10 +76,17 @@ type OAuthUserInfo struct {
 // ID is an identity only on its own instance (final review round 2 F4: two
 // self-hosted instances number their users from 1, so moving
 // web.gitlab_base_url handed instance B's user 7 instance A's user 7).
+// It is NOT model.NormalizeInstanceWebBase (which drops www., a default
+// port and collapses the path): the stored key is frozen on every account
+// row since 0.29.69, and a respelling of web.gitlab_base_url is documented
+// as a move to another instance (configuration.md); the two rules meet on
+// one input only at config.Load, which admits by the model's rule and
+// stores by this one (0.29.101 round 1, declined: a new spelling would
+// re-key every GitLab account).
 func GitLabOAuthHost(base string) string {
 	h := strings.TrimRight(strings.ToLower(strings.TrimSpace(base)), "/")
 	if h == "" {
-		return "https://gitlab.com"
+		return platform.PublicGitLabWebBase
 	}
 	return h
 }
@@ -434,8 +421,13 @@ func (s *PostgresStore) IsUserAdmin(ctx context.Context, userID int) (bool, erro
 	err := s.pool.QueryRow(ctx,
 		`SELECT admin FROM aveloxis_ops.users WHERE user_id = $1`, userID,
 	).Scan(&isAdmin)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// No such account is a definitive answer (a deleted account with a
+		// live session), not a lookup failure: never an administrator.
+		return false, nil
+	}
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("admin flag for user %d: %w", userID, err)
 	}
 	return isAdmin, nil
 }
@@ -506,13 +498,13 @@ func (s *PostgresStore) GetGroupDetail(ctx context.Context, userID int, groupID 
 	// Count total matching repos.
 	var totalRepos int
 	if search != "" {
-		searchPattern := "%" + strings.ToLower(search) + "%"
+		searchPattern := LikeContains(strings.ToLower(search)) // % and _ are literal (stage 1b review, the class sweep)
 		err = s.pool.QueryRow(ctx, `
 			SELECT COUNT(*)
 			FROM aveloxis_ops.user_repos ur
 			JOIN aveloxis_data.repos r ON r.repo_id = ur.repo_id
 			WHERE ur.group_id = $1
-			  AND (LOWER(r.repo_name) LIKE $2 OR LOWER(r.repo_owner) LIKE $2 OR LOWER(r.repo_git) LIKE $2)`,
+			  AND (LOWER(r.repo_name) LIKE $2 ESCAPE '\' OR LOWER(r.repo_owner) LIKE $2 ESCAPE '\' OR LOWER(r.repo_git) LIKE $2 ESCAPE '\')`,
 			groupID, searchPattern).Scan(&totalRepos)
 	} else {
 		err = s.pool.QueryRow(ctx, `
@@ -534,7 +526,7 @@ func (s *PostgresStore) GetGroupDetail(ctx context.Context, userID int, groupID 
 	}
 
 	// Load tracked orgs.
-	if detail.Orgs, err = s.loadGroupOrgs(ctx, groupID); err != nil {
+	if detail.Orgs, err = s.GetGroupOrgs(ctx, groupID); err != nil {
 		return nil, 0, fmt.Errorf("load orgs of group %d: %w", groupID, err)
 	}
 
@@ -547,13 +539,13 @@ func (s *PostgresStore) loadGroupRepos(ctx context.Context, groupID int64, searc
 	var err error
 
 	if search != "" {
-		searchPattern := "%" + strings.ToLower(search) + "%"
+		searchPattern := LikeContains(strings.ToLower(search))
 		repoRows, err = s.pool.Query(ctx, `
 			SELECT r.repo_id, r.repo_name, r.repo_owner, r.repo_git, r.platform_id
 			FROM aveloxis_ops.user_repos ur
 			JOIN aveloxis_data.repos r ON r.repo_id = ur.repo_id
 			WHERE ur.group_id = $1
-			  AND (LOWER(r.repo_name) LIKE $2 OR LOWER(r.repo_owner) LIKE $2 OR LOWER(r.repo_git) LIKE $2)
+			  AND (LOWER(r.repo_name) LIKE $2 ESCAPE '\' OR LOWER(r.repo_owner) LIKE $2 ESCAPE '\' OR LOWER(r.repo_git) LIKE $2 ESCAPE '\')
 			ORDER BY r.repo_owner, r.repo_name
 			LIMIT $3 OFFSET $4`, groupID, searchPattern, limit, offset)
 	} else {
@@ -583,8 +575,13 @@ func (s *PostgresStore) loadGroupRepos(ctx context.Context, groupID int64, searc
 	return result, repoRows.Err()
 }
 
-// loadGroupOrgs fetches tracked orgs for a group.
-func (s *PostgresStore) loadGroupOrgs(ctx context.Context, groupID int64) ([]GroupOrg, error) {
+// GetGroupOrgs lists a group's tracked organizations
+// (aveloxis_ops.user_org_requests — presence there means approved to scan,
+// per the v0.27.20 rule): one loader for the web GUI's group page and the
+// API's /groups/{id}/orgs, so the two surfaces cannot disagree on what a
+// "tracked org" is. Who may read the group is decided before this is
+// called (admin.Service.GroupAccess).
+func (s *PostgresStore) GetGroupOrgs(ctx context.Context, groupID int64) ([]GroupOrg, error) {
 	orgRows, err := s.pool.Query(ctx, `
 		SELECT org_request_id, org_url, org_name, platform, last_scanned
 		FROM aveloxis_ops.user_org_requests
@@ -604,18 +601,6 @@ func (s *PostgresStore) loadGroupOrgs(ctx context.Context, groupID int64) ([]Gro
 		result = append(result, o)
 	}
 	return result, orgRows.Err() // PR #218 review C17, as in loadGroupRepos
-}
-
-// AddRepoToGroup adds a single repo URL to a user group under the
-// v0.27.20 per-add approval rule — a thin single-URL wrapper over
-// AddReposToGroup with auto-approval disabled. Kept for the CLI
-// importers (which run as the bootstrap admin and therefore take the
-// direct path) and any caller that doesn't need the outcome counts;
-// web/portal handlers call AddReposToGroup directly for the
-// linked/pending split and the configured auto-approve limit.
-func (s *PostgresStore) AddRepoToGroup(ctx context.Context, userID int, groupID int64, repoURL string) error {
-	_, err := s.AddReposToGroup(ctx, userID, groupID, []string{repoURL}, 0)
-	return err
 }
 
 // splitOAuthName splits a provider display name into the users
@@ -683,11 +668,7 @@ func CanonicalOrgURL(orgURL string) string {
 // entry limit measures (MaxAddURLBytes budgets for lower() lengthening some
 // characters, so the check runs on the input, not on the grown form).
 func orgURLTrimmedSchemed(orgURL string) string {
-	orgURL = strings.TrimSuffix(strings.TrimSpace(orgURL), "/")
-	if orgURL != "" && !strings.Contains(orgURL, "://") {
-		orgURL = "https://" + orgURL
-	}
-	return orgURL
+	return platform.WithDefaultScheme(strings.TrimSuffix(strings.TrimSpace(orgURL), "/"))
 }
 
 // AddOrgToGroup registers an org for tracking under the v0.27.20
@@ -709,7 +690,7 @@ func orgURLTrimmedSchemed(orgURL string) string {
 // already tracked and its future repos already auto-enqueue via the
 // existing registration, so this branch adds no new enqueue
 // reachability.
-func (s *PostgresStore) AddOrgToGroup(ctx context.Context, userID int, groupID int64, orgURL, ghAPIBase string) (OrgAddOutcome, error) {
+func (s *PostgresStore) AddOrgToGroup(ctx context.Context, userID int, groupID int64, orgURL, ghAPIBase, glWebBase string) (OrgAddOutcome, error) {
 	var out OrgAddOutcome
 	if err := s.verifyGroupOwned(ctx, userID, groupID); err != nil {
 		return out, err
@@ -734,8 +715,8 @@ func (s *PostgresStore) AddOrgToGroup(ctx context.Context, userID int, groupID i
 	// The host gate, before the admin/non-admin split so neither path can
 	// register or pend an org the deployment cannot enumerate; the same
 	// label registerApprovedOrg will store decides it (SR-17/SR-18).
-	if _, platformName := parseOrgURLMeta(orgURL); true {
-		if err := orgRegistrable(platformName, orgURL, ghAPIBase); err != nil {
+	if _, platformName := parseOrgURLMeta(orgURL, glWebBase); true {
+		if err := orgRegistrable(platformName, orgURL, ghAPIBase, glWebBase); err != nil {
 			return out, err
 		}
 	}
@@ -775,7 +756,7 @@ func (s *PostgresStore) AddOrgToGroup(ctx context.Context, userID int, groupID i
 		if err != nil {
 			return out, err
 		}
-		if _, err := registerApprovedOrg(ctx, tx, AddRequest{UserID: userID, GroupID: groupID, OrgURL: orgURL}, ghAPIBase); err != nil {
+		if _, err := registerApprovedOrg(ctx, tx, AddRequest{UserID: userID, GroupID: groupID, OrgURL: orgURL}, ghAPIBase, glWebBase); err != nil {
 			return out, err
 		}
 		if err := tx.Commit(ctx); err != nil {
@@ -793,7 +774,7 @@ func (s *PostgresStore) AddOrgToGroup(ctx context.Context, userID int, groupID i
 		return out, err
 	}
 	defer tx.Rollback(ctx)
-	if _, err := registerApprovedOrg(ctx, tx, AddRequest{UserID: userID, GroupID: groupID, OrgURL: orgURL}, ghAPIBase); err != nil {
+	if _, err := registerApprovedOrg(ctx, tx, AddRequest{UserID: userID, GroupID: groupID, OrgURL: orgURL}, ghAPIBase, glWebBase); err != nil {
 		return out, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -855,10 +836,10 @@ func (s *PostgresStore) GetOrgRequests(ctx context.Context) ([]GroupOrg, error) 
 // counting them here would re-fire the demand probe on every poll
 // tick forever. For the same reason only rows the scan will enumerate
 // count (OrgScanEligible: a "github" row on this deployment's GitHub host,
-// ghAPIBase): a row the host gate skips stays NULL forever too, and a
-// GitLab group — which the full pass stamps but nothing enumerates — is
-// not worth a demand scan that would only stamp it (v0.29.57 rounds 2–3).
-func (s *PostgresStore) HasNeverScannedOrgs(ctx context.Context, ghAPIBase string) (bool, error) {
+// ghAPIBase, or a "gitlab" row on the configured instance, glWebBase — ""
+// while no GitLab key exists): a row a gate skips stays NULL forever too
+// (v0.29.57 rounds 2–3; the GitLab arm since stage 1e of summary/59).
+func (s *PostgresStore) HasNeverScannedOrgs(ctx context.Context, ghAPIBase, glWebBase string) (bool, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT o.platform, o.org_url
 		FROM aveloxis_ops.user_org_requests o
@@ -874,7 +855,7 @@ func (s *PostgresStore) HasNeverScannedOrgs(ctx context.Context, ghAPIBase strin
 		if err := rows.Scan(&platformName, &orgURL); err != nil {
 			return false, err
 		}
-		if OrgScanEligible(platformName, orgURL, ghAPIBase) {
+		if OrgScanEligible(platformName, orgURL, ghAPIBase, glWebBase) {
 			return true, nil
 		}
 	}
@@ -954,147 +935,30 @@ func (s *PostgresStore) MarkOrgRequestScanned(ctx context.Context, orgRequestID 
 // v0.19.0 admin / approval workflow
 // ============================================================
 
-// PendingGroup is a group awaiting admin review, joined to its
-// requesting user for the admin's pending-queue view.
-type PendingGroup struct {
-	GroupID     int64
-	Name        string
-	UserID      int
-	UserLogin   string
-	UserEmail   string
-	RepoCount   int
-	OrgRequests int
-	CreatedAt   time.Time
-}
-
-// ListPendingGroups returns every group with status='pending' joined
-// to its requesting user. Sorted oldest-first so the admin sees the
-// longest-waiting submissions at the top.
-func (s *PostgresStore) ListPendingGroups(ctx context.Context) ([]PendingGroup, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT g.group_id, g.name, u.user_id, u.login_name, COALESCE(u.email, ''),
-		       (SELECT COUNT(*) FROM aveloxis_ops.user_repos WHERE group_id = g.group_id),
-		       (SELECT COUNT(*) FROM aveloxis_ops.user_org_requests WHERE group_id = g.group_id),
-		       COALESCE(u.data_collection_date, NOW())
-		FROM aveloxis_ops.user_groups g
-		JOIN aveloxis_ops.users u ON u.user_id = g.user_id
-		WHERE g.status = 'pending'
-		ORDER BY g.group_id`)
-	if err != nil {
-		return nil, fmt.Errorf("list pending groups: %w", err)
-	}
-	defer rows.Close()
-	var out []PendingGroup
-	for rows.Next() {
-		var p PendingGroup
-		if err := rows.Scan(&p.GroupID, &p.Name, &p.UserID, &p.UserLogin, &p.UserEmail,
-			&p.RepoCount, &p.OrgRequests, &p.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
-}
-
-// GroupApproval is what ApproveGroup reports about a group it approved:
-// who asked for it — RequesterEmail is "" when their account has no
-// address — and the group's name, for the approval email.
-type GroupApproval struct {
-	RequesterEmail string
-	RequesterLogin string
-	GroupName      string
-}
-
-// ApproveGroup flips a pending group to approved AND enqueues all of
-// its repos for collection, in one transaction. Idempotent: re-approving
-// an already-approved group is a no-op (the UPDATE matches only pending
-// rows; the queue INSERT's ON CONFLICT DO NOTHING covers repos already
-// queued by another group).
-//
-// It returns the requester, read by the same statement that approves, and
-// whether THIS call approved the group: false (with a zero GroupApproval)
-// for a group that is not pending or does not exist, so a second click
-// mails nobody. Before v0.29.36 the web and API handlers each looked the
-// requester up themselves, discarded that lookup's error and mailed on
-// every call (round-10 review).
-//
-// LEGACY (v0.19.0 → v0.27.20): new groups are always created
-// 'approved' now and non-admin additions pend on
-// collection_add_requests instead — see add_requests.go. This method
-// stays for the migration window (deciding any pre-conversion pending
-// group) and remains harmless afterwards. NOTE: org scans were NEVER
-// status-gated (the earlier claim here that they were was wrong —
-// audited 2026-07-16); under the per-add rule the gate is structural:
-// unapproved org registrations never reach user_org_requests at all.
-func (s *PostgresStore) ApproveGroup(ctx context.Context, groupID int64, adminID int) (GroupApproval, bool, error) {
-	var approval GroupApproval
-	var approved bool
-	err := s.withRetry(ctx, func(ctx context.Context) error {
-		approval, approved = GroupApproval{}, false
-		tx, err := s.pool.Begin(ctx)
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback(ctx)
-
-		// Flip status. Only act on currently-pending rows so a double
-		// click doesn't re-stamp approved_at. user_groups.user_id is a
-		// NOT NULL foreign key, so the join always finds the requester.
-		var a GroupApproval
-		err = tx.QueryRow(ctx, `
-			UPDATE aveloxis_ops.user_groups g
-			SET status = 'approved', approved_by = $2, approved_at = NOW()
-			FROM aveloxis_ops.users u
-			WHERE g.group_id = $1 AND g.status = 'pending' AND u.user_id = g.user_id
-			RETURNING COALESCE(u.email, ''), u.login_name, g.name`,
-			groupID, adminID).Scan(&a.RequesterEmail, &a.RequesterLogin, &a.GroupName)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("approve group: %w", err)
-		}
-
-		// Enqueue every repo in the group for collection. ON CONFLICT
-		// DO NOTHING handles repos already in the queue from another
-		// group's approval.
-		_, err = tx.Exec(ctx, `
-			INSERT INTO aveloxis_ops.collection_queue (repo_id, priority, status, due_at)
-			SELECT ur.repo_id, 100, 'queued', NOW()
-			FROM aveloxis_ops.user_repos ur
-			WHERE ur.group_id = $1
-			ON CONFLICT (repo_id) DO NOTHING`, groupID)
-		if err != nil {
-			return fmt.Errorf("enqueue group repos on approval: %w", err)
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return err
-		}
-		approval, approved = a, true
-		return nil
-	})
-	if err != nil {
-		return GroupApproval{}, false, err
-	}
-	return approval, approved, nil
-}
-
 // RejectGroup flips a group to rejected. Repos in the group are NOT
 // deleted (the user might appeal); the group simply refuses all
 // future additions (AddReposToGroup / AddOrgToGroup error) and its
 // tracked orgs stop scanning (the v0.27.20 rejected-group gate in
-// scanOrgRepos / refreshUserOrgs).
+// refreshUserOrgs).
 //
 // v0.27.20: applies to ANY non-rejected group, not just 'pending' —
 // with groups now created 'approved', this is the group-level abuse
-// lever, so it must work on approved groups too.
-func (s *PostgresStore) RejectGroup(ctx context.Context, groupID int64, adminID int) error {
-	_, err := s.pool.Exec(ctx, `
+// lever, so it must work on approved groups too. The legacy pending-group
+// approval (ListPendingGroups / ApproveGroup, v0.19.0) is gone since
+// 0.29.100 (N9, stage 1g of summary/59): the migrate converted every
+// pending group into add requests at v0.27.20, and the only INSERT writes
+// 'approved'. A group that does not exist touches no row: the admin
+// service answers NotFound ahead of this.
+func (s *PostgresStore) RejectGroup(ctx context.Context, groupID int64, adminID int) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE aveloxis_ops.user_groups
 		SET status = 'rejected', approved_by = $2, approved_at = NOW()
 		WHERE group_id = $1 AND status IS DISTINCT FROM 'rejected'`,
 		groupID, adminID)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // AdminUser is the row shape for the admin user-management page.
@@ -1113,7 +977,7 @@ type AdminUser struct {
 // operator) appears first.
 func (s *PostgresStore) ListUsers(ctx context.Context) ([]AdminUser, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT user_id, login_name, COALESCE(email, ''), COALESCE(oauth_provider, ''),
+		SELECT user_id, login_name, COALESCE(email, ''), `+effectiveProviderSQL("")+`,
 		       admin,
 		       COALESCE(created_at, data_collection_date, NOW()),
 		       COALESCE(data_collection_date, NOW())
@@ -1140,24 +1004,54 @@ func (s *PostgresStore) ListUsers(ctx context.Context) ([]AdminUser, error) {
 // failures became logged generic 500s). Handlers answer it 409.
 var ErrLastAdmin = errors.New("refusing to demote the last admin — promote another user first")
 
-// SetUserAdmin toggles the admin role for a user. Refuses to demote
-// the last remaining admin (ErrLastAdmin) so the system can't end up with
-// zero admins (which would leave the approval queue forever stuck).
+// ErrUserNotFound is the ONE answer for an account that does not exist:
+// SetUserAdmin's target (the UPDATE touched no row), a capacity account
+// read by id or login, an API token grant's owner. The caller's input,
+// not a failure (0.29.106, whole-branch review DB-F5: three sentinels for
+// one condition, each classified at a different layer).
+var ErrUserNotFound = errors.New("no such account")
+
+// adminRoleLockClass is the two-argument advisory lock space SetUserAdmin
+// serialises on (key 0): the "another administrator remains" rule is a
+// count-then-write, and two demotions deciding at once each saw the other
+// as the remaining administrator (DBS-10, stage 1 of summary/59).
+const adminRoleLockClass = 0x61767A // "avz"
+
+// SetUserAdmin sets the admin role for a user, atomically: one transaction
+// holds the admin-role lock, counts the OTHER administrators, refuses to
+// demote the last one (ErrLastAdmin — the approval queue would be stuck
+// for good), and writes. ErrUserNotFound when no such user. Self-demotion
+// is the service's refusal (admin.ErrSelfDemotion), ahead of this.
 func (s *PostgresStore) SetUserAdmin(ctx context.Context, userID int, isAdmin bool) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("set admin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, int32(adminRoleLockClass), int32(0)); err != nil {
+		return fmt.Errorf("set admin: lock: %w", err)
+	}
 	if !isAdmin {
-		// Demoting — make sure another admin remains.
 		var otherAdmins int
-		err := s.pool.QueryRow(ctx,
-			`SELECT COUNT(*) FROM aveloxis_ops.users WHERE admin = TRUE AND user_id != $1`, userID).Scan(&otherAdmins)
-		if err != nil {
+		if err := tx.QueryRow(ctx,
+			`SELECT COUNT(*) FROM aveloxis_ops.users WHERE admin = TRUE AND user_id != $1`, userID).Scan(&otherAdmins); err != nil {
 			return fmt.Errorf("count remaining admins: %w", err)
 		}
 		if otherAdmins == 0 {
 			return ErrLastAdmin
 		}
 	}
-	_, err := s.pool.Exec(ctx,
+	tag, err := tx.Exec(ctx,
 		`UPDATE aveloxis_ops.users SET admin = $2 WHERE user_id = $1`,
 		userID, isAdmin)
-	return err
+	if err != nil {
+		return fmt.Errorf("set admin: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("user %d: %w", userID, ErrUserNotFound)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("set admin: %w", err)
+	}
+	return nil
 }

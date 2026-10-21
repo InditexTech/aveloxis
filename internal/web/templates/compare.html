@@ -1,0 +1,65 @@
+{{define "compare"}}
+{{template "head" (dict "Title" "Compare Repos")}}
+<script src="/static/vendor/chart.umd.js"></script>
+<div class="nav">
+<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
+<div class="nav-user">
+{{if .Session.AvatarURL}}<img src="{{.Session.AvatarURL}}" alt="">{{end}}
+<span>{{.Session.LoginName}}</span>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="nav-link">Logout</button></form>
+</div>
+</div>
+<div class="breadcrumb">
+<a href="/dashboard">Home</a>{{if .Session.IsAdmin}}<span class="sep">|</span><a href="/monitor">Monitor</a>{{end}}<span class="sep">/</span><span class="current">Compare Repos</span>
+</div>
+<div class="container">
+<div class="card">
+<h2>Compare Repositories</h2>
+<p style="color:#586069;font-size:13px;margin-bottom:12px">Select up to 5 repositories from your groups to compare side-by-side. Use 100% mode to normalize by relative size, or Z-Score to compare trends controlling for community size.</p>
+
+<div class="compare-controls">
+<div class="search-box">
+<input type="text" id="repo-search" placeholder="Type to search repositories..." autocomplete="off" style="width:100%">
+<div id="search-results" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid #d1d5da;border-top:none;border-radius:0 0 6px 6px;box-shadow:0 4px 12px rgba(0,0,0,0.15);max-height:250px;overflow-y:auto;z-index:100"></div>
+</div>
+<div id="selected-repos" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+</div>
+
+<div class="compare-controls">
+<div class="mode-toggle">
+<button id="mode-raw" class="active" data-mode="raw" type="button">Raw Counts</button>
+<button id="mode-pct" data-mode="pct" type="button">100%</button>
+<button id="mode-zscore" data-mode="zscore" type="button">Z-Score</button>
+</div>
+</div>
+
+<div class="compare-controls date-range" aria-label="Time range">
+<label for="date-since">From</label>
+<input type="date" id="date-since">
+<label for="date-until">To</label>
+<input type="date" id="date-until">
+<button class="preset-btn" data-preset="1m" type="button">1M</button>
+<button class="preset-btn" data-preset="6m" type="button">6M</button>
+<button class="preset-btn" data-preset="1y" type="button">1Y</button>
+<button class="preset-btn active" data-preset="2y" type="button">2Y</button>
+<button class="preset-btn" data-preset="5y" type="button">5Y</button>
+<button class="preset-btn" data-preset="all" type="button">All</button>
+<button class="apply-btn" id="apply-range" type="button">Apply</button>
+</div>
+<div id="compare-msg" class="form-msg" hidden></div>
+
+<div class="chart-grid spaced">
+<div><canvas id="cmp-commits" height="220"></canvas></div>
+<div><canvas id="cmp-prs-opened" height="220"></canvas></div>
+<div><canvas id="cmp-prs-merged" height="220"></canvas></div>
+<div><canvas id="cmp-issues" height="220"></canvas></div>
+</div>
+</div>
+</div>
+
+<div id="compare-page" data-repo-ids="{{.RepoIDs}}" hidden></div>
+<script src="/static/repo-search.js"></script>
+<script src="/static/compare.js"></script>
+</body></html>
+{{end}}
+
