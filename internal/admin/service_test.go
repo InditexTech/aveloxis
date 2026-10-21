@@ -115,6 +115,14 @@ func TestAdministrativeOperationsNeedAnAdministratorSession(t *testing.T) {
 // requireAdmin call sites (TestEveryRequireAdminSiteIsEnumerated).
 func adminOperations() map[string]func(*Service, context.Context, Actor) error {
 	return map[string]func(*Service, context.Context, Actor) error{
+		"ListSessions": func(s *Service, ctx context.Context, a Actor) error {
+			_, err := s.ListSessions(ctx, a, 77) // another account's
+			return err
+		},
+		"RevokeSessions": func(s *Service, ctx context.Context, a Actor) error {
+			_, err := s.RevokeSessions(ctx, a, 77)
+			return err
+		},
 		"DecideAddRequest": func(s *Service, ctx context.Context, a Actor) error {
 			_, err := s.DecideAddRequest(ctx, a, 1, true)
 			return err

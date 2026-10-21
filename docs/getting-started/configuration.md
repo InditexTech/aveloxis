@@ -163,6 +163,7 @@ a half against its own reference table below:
     "addr": ":8082",
     "base_url": "https://aveloxis.example.com",
     "dev_mode": false,
+    "session_idle_minutes": 30,
     "github_client_id": "your-github-oauth-app-client-id",
     "github_client_secret": "your-github-oauth-app-client-secret",
     "gitlab_client_id": "your-gitlab-oauth-app-id",
@@ -379,6 +380,7 @@ The `web` block configures the `aveloxis web` server. Optional — if you only r
 | `web.addr` | string | `":8082"` | Listen address for the web GUI. |
 | `web.base_url` | string | (none) | Public-facing external URL of the web GUI (e.g. `https://aveloxis.example.com`). Used to build OAuth callback URLs only. Links in emails, including account-email confirmation links, come from `mail.site_url`; when `web.spa_url` is set, the group, pending-approvals and confirmation links lead to that front end's pages instead (see `web.spa_url`). |
 | `web.dev_mode` | boolean | `false` | When `true`, disables the `Secure` flag on cookies so the GUI works over plain HTTP, and lets a loopback request (`localhost`, `127.0.0.1`, `[::1]`) build email confirmation links when `mail.site_url` is unset. **Production must leave this `false`** so browsers only send cookies over HTTPS and confirmation links always come from `mail.site_url` (or `web.spa_url`). `HttpOnly` is always set regardless. |
+| `web.session_idle_minutes` | int | `30` | Signs a browser session out after this many minutes without a request (0.29.113; OWASP ASVS V7.3.1). `0` means the default, 30 — NIST SP 800-63B's AAL2 inactivity bound, the stricter of the two published numbers, since the same session administers. At most `1440`, the session's own 24-hour life; a negative value or more is refused at start. A session in use is re-stamped at most once a minute. The SPA's `/auth/token` tokens are not subject to it (see [Security](../guide/security.md)). |
 | `web.github_client_id` | string | (none) | GitHub OAuth App client ID. Create one at <https://github.com/settings/developers>. The callback URL must match `<base_url>/auth/github/callback`. |
 | `web.github_client_secret` | string | (none) | GitHub OAuth App client secret. |
 | `web.gitlab_client_id` | string | (none) | GitLab OAuth Application ID. Create one at <https://gitlab.com/-/profile/applications> (or your self-hosted instance's `/admin/applications`). |

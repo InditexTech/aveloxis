@@ -37,6 +37,12 @@ var ErrInvalidSessionToken = errors.New("invalid or expired session token")
 // DefaultSessionTokenLifetime is how long an SPA session token lives.
 const DefaultSessionTokenLifetime = 30 * 24 * time.Hour
 
+// SessionTouchInterval is how often a web session's last_used_at is
+// re-stamped by a request: once a minute at most, the same horizon as the
+// api's authorization cache (authCacheTTL), so a busy session costs one
+// write a minute rather than one per page (0.29.113).
+const SessionTouchInterval = time.Minute
+
 // CreateSessionToken mints a Bearer token for the user with the given
 // lifetime, bound to no web session. No production path mints one this
 // way since 0.29.102 (the web process mints through MintTokenForWebSession
@@ -144,6 +150,27 @@ func (s *PostgresStore) ValidateSessionToken(ctx context.Context, token string) 
 		return 0, fmt.Errorf("validate session token: %w", err)
 	}
 	return userID, nil
+}
+
+// SessionTokenCreatedAt is when a live Bearer session token was minted —
+// the sign-in it stands for (its own mint, or the web session it was
+// minted from: a child carries its parent's sign-in). A sensitive change
+// asks for a recent one (ASVS V7.5.1, 0.29.113). ErrInvalidSessionToken
+// for no live token.
+func (s *PostgresStore) SessionTokenCreatedAt(ctx context.Context, token string) (time.Time, error) {
+	var created int64
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(p.created_at, t.created_at, 0)
+		FROM aveloxis_ops.user_session_tokens t
+		LEFT JOIN aveloxis_ops.user_session_tokens p ON p.token = t.parent_token
+		WHERE t.token = $1 AND t.kind = $3 AND t.expiration > $2`, hashToken(token), time.Now().Unix(), sessionKindAPI).Scan(&created)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, ErrInvalidSessionToken
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("session token created at: %w", err)
+	}
+	return time.Unix(created, 0), nil
 }
 
 // DeleteSessionToken revokes one token (logout).

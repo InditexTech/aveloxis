@@ -35,14 +35,17 @@ import (
 
 // Server is the Aveloxis REST API server.
 type Server struct {
-	store     *db.PostgresStore
-	logger    *slog.Logger
-	mux       *http.ServeMux
-	limiter   *rateLimiter        // v0.27.0: nil only when construction failed
-	auth      *authenticator      // v0.27.1: Bearer sessions + repo scope
-	cmpCache  *compareCache       // v0.27.2: 60s TTL for hot compare responses
-	faCache   *firstActivityCache // v0.27.24: per-entity first-activity floors (process lifetime)
-	homeCache homeReposCache      // v0.27.4 + v0.29.0: per-user cache, stale-while-revalidate
+	store *db.PostgresStore
+	// sessionIdle is Options.SessionIdle: the "recent sign-in" bound of a
+	// sensitive change (ASVS V7.5.1, 0.29.113).
+	sessionIdle time.Duration
+	logger      *slog.Logger
+	mux         *http.ServeMux
+	limiter     *rateLimiter        // v0.27.0: nil only when construction failed
+	auth        *authenticator      // v0.27.1: Bearer sessions + repo scope
+	cmpCache    *compareCache       // v0.27.2: 60s TTL for hot compare responses
+	faCache     *firstActivityCache // v0.27.24: per-entity first-activity floors (process lifetime)
+	homeCache   homeReposCache      // v0.27.4 + v0.29.0: per-user cache, stale-while-revalidate
 
 	// v0.29.0: the home-repos loader seam (defaults to
 	// store.GetHomeRepos at construction; a bare test Server injects a
@@ -203,6 +206,10 @@ func NewWithOptions(store *db.PostgresStore, logger *slog.Logger, opts Options) 
 	// while api.require_auth is off for the read endpoints.
 	s.mux.HandleFunc("GET /api/v1/me", s.handleMe)
 	s.mux.HandleFunc("POST /api/v1/me/email", s.handleMeEmail)
+	// 0.29.113 (ASVS V7.5.2, V7.4.5): an account's sessions, listed and ended.
+	s.mux.HandleFunc("GET /api/v1/me/sessions", s.handleMeSessions)
+	s.mux.HandleFunc("POST /api/v1/me/sessions/revoke", s.handleMeSessionsRevoke)
+	s.mux.HandleFunc("POST /api/v1/admin/users/{userID}/sessions/revoke", s.handleAdminUserSessionsRevoke)
 	s.mux.HandleFunc("POST /api/v1/me/email/confirm", s.handleMeEmailConfirm)
 	s.mux.HandleFunc("GET /api/v1/groups", s.handleGroupsList)
 	s.mux.HandleFunc("POST /api/v1/groups", s.handleGroupCreate)
@@ -304,6 +311,7 @@ func NewWithOptions(store *db.PostgresStore, logger *slog.Logger, opts Options) 
 	s.autoAdds = newAutoAddLimiter()
 	s.refusals = newRefusalLog(time.Now)
 	s.auth = newAuthenticator(store, opts.RequireAuth, s.logger)
+	s.sessionIdle = opts.SessionIdle
 	s.cmpCache = &compareCache{m: map[string]compareCacheEntry{}}
 	s.respCache = &compareCache{m: map[string]compareCacheEntry{}}
 	s.faCache = &firstActivityCache{m: map[string]time.Time{}}
@@ -338,7 +346,7 @@ func (s *Server) Handler() http.Handler {
 // a valid session is not counted, an API token has its own hourly
 // allowance), then Bearer auth + scope, then the routes.
 func requestChain(rl *rateLimiter, a *authenticator, next http.Handler) http.Handler {
-	return rl.cors(a.identify(rl, rl.middleware(a.middleware(rl, next))))
+	return secureHeaders(rl.cors(a.identify(rl, rl.middleware(a.middleware(rl, next)))))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

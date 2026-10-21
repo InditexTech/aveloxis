@@ -679,6 +679,10 @@ var deployChecklists = map[string][]deployStep{
 	// parsed at the column's width; no schema change — 0.29.111's ladder
 	// with a note on the start step.
 	"0.29.112": v029112DeployChecklist,
+	// v0.29.113 (the ASVS pre-existing gaps): one column on
+	// user_session_tokens (migrate --skip-views adds it) and the session
+	// rules — 0.29.112's ladder with a note on the start step.
+	"0.29.113": v029113DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,
@@ -1806,3 +1810,9 @@ var v029111DeployChecklist = withStartNote(v029110DeployChecklist, "0.29.111 (st
 // v0.29.112 (2026-10-21): the CodeQL and OWASP ASVS passes over stages 3–5.
 // 0.29.111's ladder; the notes accumulate.
 var v029112DeployChecklist = withStartNote(v029111DeployChecklist, "0.29.112 (the CodeQL and ASVS passes on the admin console): no schema change. The web console's number fields (quotas, allowances, lifetimes, positions) are parsed at the store's int4 width, so a value past it is refused at the form as out of range instead of reaching the service. Nothing to change in aveloxis.json. ")
+
+// v0.29.113 (2026-10-21): the thirteen pre-existing OWASP ASVS gaps of
+// summary/62 — the session inactivity bound, the account page, admin
+// session termination, __Host- cookies, HSTS, the re-authentication rule,
+// the security guide. 0.29.112's ladder; the notes accumulate.
+var v029113DeployChecklist = withStartNote(v029112DeployChecklist, "0.29.113 (the ASVS session rules): migrate --skip-views adds user_session_tokens.last_used_at (one nullable column, instant). From this release a web session is signed out after web.session_idle_minutes without a request (default 30; up to 1440; the front end's /auth/token tokens are exempt), the cookies are __Host- prefixed outside dev_mode so every browser signs in again once after the deploy, a sign-in replaces the browser's earlier session, the account e-mail change needs a sign-in within the bound, the account page and the Users page list and end sessions, and both processes send Strict-Transport-Security (remove any add_header Strict-Transport-Security from nginx, or the value is sent twice). Nothing to change in aveloxis.json unless the 30-minute default is wrong for this deployment. ")

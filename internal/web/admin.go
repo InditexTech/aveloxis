@@ -124,6 +124,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request, sess *
 	s.render(w, r, "admin_users", map[string]any{
 		"Session": sess,
 		"Users":   users,
+		"Notice":  adminNotice(r),
 	})
 }
 

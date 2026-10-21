@@ -27,7 +27,9 @@ func redirectServer(spaURL string) *Server {
 func withNextCookie(next string) *http.Request {
 	r := httptest.NewRequest("GET", "/auth/github/callback", nil)
 	if next != "" {
-		r.AddCookie(&http.Cookie{Name: "oauth_next", Value: next})
+		// redirectServer is production-mode: the cookie carries the
+		// __Host- prefix (0.29.113).
+		r.AddCookie(&http.Cookie{Name: "__Host-oauth_next", Value: next})
 	}
 	return r
 }
@@ -125,7 +127,7 @@ func TestOAuthNextCookiesCarryHouseAttributes(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/auth/github?next=/groups/5", nil)
 	s.stashNext(w, r)
-	stash := findCookie(t, w, "oauth_next")
+	stash := findCookie(t, w, s.cookieName("oauth_next"))
 	if !stash.HttpOnly || !stash.Secure {
 		t.Errorf("stashNext cookie must be HttpOnly+Secure, got HttpOnly=%v Secure=%v", stash.HttpOnly, stash.Secure)
 	}
@@ -133,7 +135,7 @@ func TestOAuthNextCookiesCarryHouseAttributes(t *testing.T) {
 	// clearNext
 	w = httptest.NewRecorder()
 	s.clearNext(w)
-	clear := findCookie(t, w, "oauth_next")
+	clear := findCookie(t, w, s.cookieName("oauth_next"))
 	if !clear.HttpOnly || !clear.Secure {
 		t.Errorf("clearNext expiry cookie must be HttpOnly+Secure, got HttpOnly=%v Secure=%v", clear.HttpOnly, clear.Secure)
 	}

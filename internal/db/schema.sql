@@ -2682,7 +2682,12 @@ CREATE TABLE IF NOT EXISTS aveloxis_ops.user_session_tokens (
     kind           TEXT NOT NULL DEFAULT 'api',
     -- The partial index on parent_token is migration-built (CONCURRENTLY,
     -- SR-2): idx_user_session_tokens_parent.
-    parent_token   TEXT REFERENCES aveloxis_ops.user_session_tokens(token) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
+    parent_token   TEXT REFERENCES aveloxis_ops.user_session_tokens(token) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+    -- 0.29.113 (ASVS V7.3.1): when a web session was last used (Unix
+    -- seconds; NULL until its first use after sign-in), touched at most
+    -- once per SessionTouchInterval; a session idle past
+    -- web.session_idle_minutes is refused by LookupWebSession.
+    last_used_at   BIGINT
 );
 -- v0.29.82: operator-issued API tokens (api_tokens.go), granted and revoked
 -- on the admin page. Each authenticates as its owner (the owner's repository

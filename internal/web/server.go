@@ -91,7 +91,8 @@ type Session struct {
 	Provider  string
 	IsAdmin   bool
 	ExpiresAt time.Time
-	cookie    string // the raw cookie token, for the token exchange's parent
+	CreatedAt time.Time // the sign-in: a sensitive change asks for a recent one (ASVS V7.5.1)
+	cookie    string    // the raw cookie token, for the token exchange's parent
 }
 
 // New creates a web server. The web process holds no forge keys (stage 1
@@ -317,6 +318,13 @@ func (s *Server) Handler() http.Handler {
 
 	// Authenticated routes.
 	mux.HandleFunc("GET /dashboard", s.requireAuth(s.handleDashboard))
+	// The account page (0.29.113, ASVS V7.5.2): the account's sessions, and
+	// one form that ends them all; an administrator ends any account's from
+	// the Users page (V7.4.5).
+	mux.HandleFunc("GET /account", s.requireAuth(s.handleAccount))
+	mux.HandleFunc("POST /account/sessions/revoke", s.requireAuth(s.handleAccountSessionsRevoke))
+	mux.HandleFunc("GET /admin/users/{id}/sessions/revoke", s.requireAdmin(s.handleAdminUserSessionsRevokeConfirm))
+	mux.HandleFunc("POST /admin/users/{id}/sessions/revoke", s.requireAdmin(s.handleAdminUserSessionsRevoke))
 	mux.HandleFunc("GET /account/email", s.requireAuth(s.handleAccountEmailForm))
 	mux.HandleFunc("POST /account/email", s.requireAuth(s.handleAccountEmailSubmit))
 	mux.HandleFunc("GET /account/email/confirm", s.requireAuth(s.handleEmailConfirm))

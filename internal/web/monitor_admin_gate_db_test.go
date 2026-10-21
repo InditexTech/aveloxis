@@ -83,7 +83,7 @@ func TestMonitorRoutesAreAdministratorOnly(t *testing.T) {
 	h := s.Handler()
 	call := func(method, path, tok string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, path, nil)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: tok})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: tok})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)

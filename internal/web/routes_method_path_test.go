@@ -63,7 +63,7 @@ func TestStateChangesNeverRideAGet(t *testing.T) {
 	withSession := func(r *http.Request) *http.Request {
 		planted++
 		token := plantSession(t, s, "method-path-"+strconv.Itoa(planted), &Session{UserID: 1, LoginName: "m", ExpiresAt: time.Now().Add(time.Hour)})
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 		csrf(r) // the session's form token (stage 2f)
 		return r
 	}

@@ -35,6 +35,8 @@ type fakeStore struct {
 	processApprovedAddRequest func(ctx context.Context, requestID int64, glWebBase string) (int, int, error)
 	isUserAdmin               func(ctx context.Context, userID int) (bool, error)
 	setUserAdmin              func(ctx context.Context, userID int, isAdmin bool) error
+	listUserSessions          func(ctx context.Context, userID int) ([]db.UserSession, error)
+	deleteUserSessions        func(ctx context.Context, userID int) (int64, error)
 	userLabel                 func(ctx context.Context, userID int) (string, error)
 	getUserEmail              func(ctx context.Context, userID int) (string, error)
 	getUserLivePendingEmail   func(ctx context.Context, userID int) (string, error)
@@ -149,6 +151,20 @@ func (f *fakeStore) SetUserAdmin(ctx context.Context, userID int, isAdmin bool) 
 		return nil
 	}
 	return f.setUserAdmin(ctx, userID, isAdmin)
+}
+func (f *fakeStore) ListUserSessions(ctx context.Context, userID int) ([]db.UserSession, error) {
+	if f.listUserSessions == nil {
+		f.unexpected("ListUserSessions")
+		return nil, nil
+	}
+	return f.listUserSessions(ctx, userID)
+}
+func (f *fakeStore) DeleteUserSessions(ctx context.Context, userID int) (int64, error) {
+	if f.deleteUserSessions == nil {
+		f.unexpected("DeleteUserSessions")
+		return 0, nil
+	}
+	return f.deleteUserSessions(ctx, userID)
 }
 func (f *fakeStore) UserLabel(ctx context.Context, userID int) (string, error) {
 	if f.userLabel == nil {

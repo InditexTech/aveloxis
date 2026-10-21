@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>REST API &mdash; Aveloxis 0.29.112 documentation</title>
+  <title>REST API &mdash; Aveloxis 0.29.113 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,14 +14,14 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=79d6e248"></script>
+      <script src="../_static/documentation_options.js?v=ddae6651"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Visualizations" href="visualizations.html" />
-    <link rel="prev" title="Web GUI" href="web-gui.html" /> 
+    <link rel="prev" title="Security" href="security.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -332,7 +332,18 @@
 <li class="toctree-l2"><a class="reference internal" href="web-gui.html#security-considerations">Security Considerations</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="security.html#credentials-and-their-strength">Credentials and their strength</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#where-sign-in-strength-comes-from">Where sign-in strength comes from</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#sessions">Sessions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#cryptography">Cryptography</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#data">Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#logs">Logs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#why-the-web-process-has-no-request-limiter-of-its-own">Why the web process has no request limiter of its own</a></li>
+</ul>
+</li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-113">Changes for API clients in 0.29.113</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-100">Changes for API clients in 0.29.100</a></li>
@@ -1779,6 +1790,23 @@
 </pre></div>
 </div>
 <p>The API runs as a separate process alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code> (collection) and <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> (GUI). All three share the same PostgreSQL database. It refuses to start until <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">migrate</span></code> has brought the schema to its own version.</p>
+<section id="changes-for-api-clients-in-0-29-113">
+<h2>Changes for API clients in 0.29.113<a class="headerlink" href="#changes-for-api-clients-in-0-29-113" title="Link to this heading"></a></h2>
+<p>Sessions (OWASP ASVS 5.0 review, release notes 0.29.113). Three routes:
+<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/me/sessions</span></code> lists the account’s live sessions (browser
+sessions, <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> tokens, the web proxy’s tokens; the one presenting
+the request is <code class="docutils literal notranslate"><span class="pre">current</span></code>), <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/sessions/revoke</span></code> ends them
+all (the caller’s own included — its next request is <code class="docutils literal notranslate"><span class="pre">401</span></code>), and
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/users/{userID}/sessions/revoke</span></code> lets an administrator
+end an account’s. <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/email</span></code> now answers <code class="docutils literal notranslate"><span class="pre">403</span> <span class="pre">{&quot;error&quot;:</span> <span class="pre">&quot;reauthentication_required&quot;}</span></code> when the token’s sign-in is older
+than <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code> (30 by default; the proxy token of a browser
+session is judged by that session’s sign-in): sign in again and retry. A
+browser session of the web GUI idle past that bound is signed out; a
+<code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> token is not (it lives its 30 days, and the SPA can keep its
+own idle rule). Every answer of the api process carries
+<code class="docutils literal notranslate"><span class="pre">X-Content-Type-Options:</span> <span class="pre">nosniff</span></code> and <code class="docutils literal notranslate"><span class="pre">Strict-Transport-Security</span></code>. The
+per-IP <code class="docutils literal notranslate"><span class="pre">429</span></code> is logged once a minute per address.</p>
+</section>
 <section id="changes-for-api-clients-in-0-29-110">
 <h2>Changes for API clients in 0.29.110<a class="headerlink" href="#changes-for-api-clients-in-0-29-110" title="Link to this heading"></a></h2>
 <p>Stage 4 of the admin-console program (release notes 0.29.110) changes how the
@@ -3407,7 +3435,9 @@ empty). <code class="docutils literal notranslate"><span class="pre">scope_repo_
 the owner’s groups’ (v0.29.86). The GUI uses
 <code class="docutils literal notranslate"><span class="pre">is_admin</span></code> to decide whether to render the admin navigation.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/email</span></code> (a signed-in session only: an API token is
-refused <code class="docutils literal notranslate"><span class="pre">403</span></code>, v0.29.88) — body <code class="docutils literal notranslate"><span class="pre">{&quot;email&quot;:</span> <span class="pre">&quot;…&quot;}</span></code>: stores the address as
+refused <code class="docutils literal notranslate"><span class="pre">403</span></code>, v0.29.88; a sign-in older than <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code>
+is <code class="docutils literal notranslate"><span class="pre">403</span> <span class="pre">{&quot;error&quot;:</span> <span class="pre">&quot;reauthentication_required&quot;}</span></code>, 0.29.113) — body
+<code class="docutils literal notranslate"><span class="pre">{&quot;email&quot;:</span> <span class="pre">&quot;…&quot;}</span></code>: stores the address as
 pending and mails the confirmation link, for an account whose forge gave
 no email (a private GitHub address). <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;sent&quot;:</span> <span class="pre">true}</span></code>, or <code class="docutils literal notranslate"><span class="pre">422</span> <span class="pre">{&quot;sent&quot;:</span> <span class="pre">false,</span> <span class="pre">&quot;message&quot;:</span> <span class="pre">&quot;…&quot;}</span></code> with the reason (not a deliverable
 address; mail not configured — <code class="docutils literal notranslate"><span class="pre">mail.site_url</span></code> and the Gmail settings
@@ -3415,6 +3445,14 @@ are required; a failed save or send). The link lands on the front end’s
 profile page when <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code> is set, on the web process’s
 <code class="docutils literal notranslate"><span class="pre">/account/email/confirm</span></code> otherwise. The same submission the web
 process’s <code class="docutils literal notranslate"><span class="pre">/account/email</span></code> form runs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/me/sessions</span></code> (0.29.113) — the account’s live sessions:
+<code class="docutils literal notranslate"><span class="pre">{sessions:</span> <span class="pre">[{kind,</span> <span class="pre">from_web_session,</span> <span class="pre">current,</span> <span class="pre">created_at,</span> <span class="pre">last_used_at,</span> <span class="pre">expires_at}]}</span></code>; <code class="docutils literal notranslate"><span class="pre">kind</span></code> is <code class="docutils literal notranslate"><span class="pre">web</span></code> (a browser session of the
+web GUI) or <code class="docutils literal notranslate"><span class="pre">api</span></code> (a Bearer token: <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code>’s, or the web proxy’s,
+<code class="docutils literal notranslate"><span class="pre">from_web_session</span></code>); <code class="docutils literal notranslate"><span class="pre">current</span></code> marks the one presenting the request.
+Operator-issued API tokens are not sessions.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/sessions/revoke</span></code> (0.29.113) — ends every session of the
+account, this one included: <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;ok&quot;:</span> <span class="pre">true,</span> <span class="pre">&quot;ended&quot;:</span> <span class="pre">N}</span></code>, then <code class="docutils literal notranslate"><span class="pre">401</span></code>
+for each of them.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/email/confirm</span></code> — body <code class="docutils literal notranslate"><span class="pre">{&quot;token&quot;:</span> <span class="pre">&quot;…&quot;}</span></code> from that link,
 for the signed-in account: <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;status&quot;:</span> <span class="pre">&quot;confirmed&quot;}</span></code>; <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;status&quot;:</span> <span class="pre">&quot;invalid&quot;}</span></code> for a token that is not live for this account (unknown,
 expired, already used, another account’s — nothing changes); <code class="docutils literal notranslate"><span class="pre">500</span> <span class="pre">{&quot;status&quot;:</span> <span class="pre">&quot;error&quot;}</span></code> when the database failed (the link still works).</p></li>
@@ -3521,6 +3559,12 @@ and diverge from the next login onward.</p></li>
 <code class="docutils literal notranslate"><span class="pre">409</span></code> with <code class="docutils literal notranslate"><span class="pre">refusing</span> <span class="pre">to</span> <span class="pre">demote</span> <span class="pre">the</span> <span class="pre">last</span> <span class="pre">admin</span> <span class="pre">—</span> <span class="pre">promote</span> <span class="pre">another</span> <span class="pre">user</span> <span class="pre">first</span></code> (it was a <code class="docutils literal notranslate"><span class="pre">500</span></code> before PR #218 review); the count and the write
 are one locked transaction, so two demotions deciding at once cannot
 both pass. No such user is a <code class="docutils literal notranslate"><span class="pre">404</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/users/{userID}/sessions/revoke</span></code> (0.29.113) — end
+every session of an account (a lost device, a suspected takeover): its
+web sessions, <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> tokens and the web proxy’s tokens are
+deleted, each <code class="docutils literal notranslate"><span class="pre">401</span></code> at its next request; operator-issued API tokens are
+not touched. <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;ok&quot;:</span> <span class="pre">true,</span> <span class="pre">&quot;ended&quot;:</span> <span class="pre">N}</span></code> (<code class="docutils literal notranslate"><span class="pre">0</span></code> for an account with
+none); a non-integer id is <code class="docutils literal notranslate"><span class="pre">400</span></code>. Logged.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/groups/{groupID}/reject</span></code> — reject a group: the
 group-level abuse lever (v0.27.20); it takes no further additions and
 its organizations stop being listed; its repositories stay. <code class="docutils literal notranslate"><span class="pre">404</span></code> for a
@@ -3692,7 +3736,7 @@ timestamp and is counted by no family.</p></li>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="web-gui.html" class="btn btn-neutral float-left" title="Web GUI" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="security.html" class="btn btn-neutral float-left" title="Security" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="visualizations.html" class="btn btn-neutral float-right" title="Visualizations" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

@@ -77,7 +77,7 @@ func TestCSRFGuardBoundsAndRestrictsFormBodies(t *testing.T) {
 		_ = mw.Close()
 		r := httptest.NewRequest(http.MethodPost, "/no/such/route", &body)
 		r.Header.Set("Content-Type", mw.FormDataContentType())
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "bogus"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "bogus"})
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, r)
 		after := multipartTempFiles(t)
@@ -99,7 +99,7 @@ func TestCSRFGuardBoundsAndRestrictsFormBodies(t *testing.T) {
 	withSession := func(t *testing.T, r *http.Request) {
 		t.Helper()
 		token := plantSession(t, s, "w1-"+strconv.Itoa(len(logs.String())), &Session{UserID: 1, LoginName: "w1", ExpiresAt: time.Now().Add(time.Hour)})
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 		r.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "test-csrf-token"})
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
@@ -206,7 +206,7 @@ func TestRemoveConfirmAnswers404ForARepoThatIsGone(t *testing.T) {
 	s := New(store, config.WebConfig{Addr: ":0", APIInternalURL: "http://127.0.0.1:1", DevMode: true}, "", slog.New(slog.NewTextHandler(&logs, nil)))
 	token := plantSession(t, s, "remove-confirm", &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)})
 	r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/repos/%d/remove", gid, goneRepo), nil)
-	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+	r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, r)
 	if rec.Code != http.StatusNotFound {
@@ -260,7 +260,7 @@ func TestSetUserAdminRequiresABooleanField(t *testing.T) {
 		token := plantSession(t, s, "a2-"+strconv.Itoa(i), &Session{UserID: 1, LoginName: "root", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
 		r := httptest.NewRequest(http.MethodPost, "/admin/users/5/admin", strings.NewReader(tc.body))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 		r.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "test-csrf-token"})
 		code, _, reached := serve(h, r)
 		if tc.want == 0 {

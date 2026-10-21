@@ -432,6 +432,7 @@ var snippetValueAccessors = map[string]snippetAccessor{
 	"mail.VulnDigestMinSeverity":   {"VulnDigestMinSeverityOrDefault", func(c *Config) any { return c.Mail.VulnDigestMinSeverityOrDefault() }},
 	"mail.VulnDigestIntervalHours": {"VulnDigestInterval", func(c *Config) any { return c.Mail.VulnDigestInterval() }},
 	"web.GitLabBaseURL":            {"GitLabOAuthBase", func(c *Config) any { return c.Web.GitLabOAuthBase() }},
+	"web.SessionIdleMinutes":       {"SessionIdle", func(c *Config) any { return c.Web.SessionIdle() }},
 }
 
 // snippetAccessorExemptions are accessor methods that deliberately

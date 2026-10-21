@@ -8,6 +8,24 @@ aveloxis api            # listens on api.addr, 127.0.0.1:8383 by default; --addr
 
 The API runs as a separate process alongside `aveloxis serve` (collection) and `aveloxis web` (GUI). All three share the same PostgreSQL database. It refuses to start until `aveloxis migrate` has brought the schema to its own version.
 
+## Changes for API clients in 0.29.113
+
+Sessions (OWASP ASVS 5.0 review, release notes 0.29.113). Three routes:
+`GET /api/v1/me/sessions` lists the account's live sessions (browser
+sessions, `/auth/token` tokens, the web proxy's tokens; the one presenting
+the request is `current`), `POST /api/v1/me/sessions/revoke` ends them
+all (the caller's own included — its next request is `401`), and
+`POST /api/v1/admin/users/{userID}/sessions/revoke` lets an administrator
+end an account's. `POST /api/v1/me/email` now answers `403
+{"error": "reauthentication_required"}` when the token's sign-in is older
+than `web.session_idle_minutes` (30 by default; the proxy token of a browser
+session is judged by that session's sign-in): sign in again and retry. A
+browser session of the web GUI idle past that bound is signed out; a
+`/auth/token` token is not (it lives its 30 days, and the SPA can keep its
+own idle rule). Every answer of the api process carries
+`X-Content-Type-Options: nosniff` and `Strict-Transport-Security`. The
+per-IP `429` is logged once a minute per address.
+
 ## Changes for API clients in 0.29.110
 
 Stage 4 of the admin-console program (release notes 0.29.110) changes how the
@@ -1518,7 +1536,9 @@ Per-user:
   the owner's groups' (v0.29.86). The GUI uses
   `is_admin` to decide whether to render the admin navigation.
 - `POST /api/v1/me/email` (a signed-in session only: an API token is
-  refused `403`, v0.29.88) — body `{"email": "…"}`: stores the address as
+  refused `403`, v0.29.88; a sign-in older than `web.session_idle_minutes`
+  is `403 {"error": "reauthentication_required"}`, 0.29.113) — body
+  `{"email": "…"}`: stores the address as
   pending and mails the confirmation link, for an account whose forge gave
   no email (a private GitHub address). `200 {"sent": true}`, or `422
   {"sent": false, "message": "…"}` with the reason (not a deliverable
@@ -1527,6 +1547,15 @@ Per-user:
   profile page when `web.spa_url` is set, on the web process's
   `/account/email/confirm` otherwise. The same submission the web
   process's `/account/email` form runs.
+- `GET /api/v1/me/sessions` (0.29.113) — the account's live sessions:
+  `{sessions: [{kind, from_web_session, current, created_at,
+  last_used_at, expires_at}]}`; `kind` is `web` (a browser session of the
+  web GUI) or `api` (a Bearer token: `/auth/token`'s, or the web proxy's,
+  `from_web_session`); `current` marks the one presenting the request.
+  Operator-issued API tokens are not sessions.
+- `POST /api/v1/me/sessions/revoke` (0.29.113) — ends every session of the
+  account, this one included: `200 {"ok": true, "ended": N}`, then `401`
+  for each of them.
 - `POST /api/v1/me/email/confirm` — body `{"token": "…"}` from that link,
   for the signed-in account: `200 {"status": "confirmed"}`; `200 {"status":
   "invalid"}` for a token that is not live for this account (unknown,
@@ -1640,6 +1669,12 @@ Admin-only:
   first` (it was a `500` before PR #218 review); the count and the write
   are one locked transaction, so two demotions deciding at once cannot
   both pass. No such user is a `404`.
+- `POST /api/v1/admin/users/{userID}/sessions/revoke` (0.29.113) — end
+  every session of an account (a lost device, a suspected takeover): its
+  web sessions, `/auth/token` tokens and the web proxy's tokens are
+  deleted, each `401` at its next request; operator-issued API tokens are
+  not touched. `200 {"ok": true, "ended": N}` (`0` for an account with
+  none); a non-integer id is `400`. Logged.
 - `POST /api/v1/admin/groups/{groupID}/reject` — reject a group: the
   group-level abuse lever (v0.27.20); it takes no further additions and
   its organizations stop being listed; its repositories stay. `404` for a

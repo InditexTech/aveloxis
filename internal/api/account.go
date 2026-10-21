@@ -14,10 +14,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/aveloxis/aveloxis/internal/admin"
+	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 )
 
@@ -70,6 +74,23 @@ func (s *Server) handleMeEmail(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSONBody(w, r, accountEmailBodyLimit, &req); err != nil {
 		writeAuthError(w, http.StatusBadRequest, `invalid JSON body: expected {"email": "…"}`)
 		return
+	}
+	// The recovery address changes only after a recent sign-in (ASVS
+	// V7.5.1, 0.29.113): the token's sign-in — its own mint, or the web
+	// session it was minted from — within web.session_idle_minutes.
+	if s.sessionIdle > 0 && s.store != nil {
+		created, err := s.store.SessionTokenCreatedAt(r.Context(), bearerToken(r))
+		if err != nil && !errors.Is(err, db.ErrInvalidSessionToken) {
+			s.serverError(w, r, "handleMeEmail", err)
+			return
+		}
+		if err != nil || time.Since(created) > s.sessionIdle {
+			setNoStoreHeaders(w.Header())
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": "reauthentication_required", "message": fmt.Sprintf("changing the address needs a sign-in within the last %d minutes; sign in again and retry", int(s.sessionIdle.Minutes()))})
+			return
+		}
 	}
 	login, _, _, err := s.accounts.GetUserIdentity(r.Context(), info.UserID)
 	if err != nil {

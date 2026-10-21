@@ -80,7 +80,7 @@ func TestAPIProxyBearerIsTheSessionsOwnToken(t *testing.T) {
 	}
 	// Sign-out: the store revokes the child and the process forgets it.
 	r := httptest.NewRequest(http.MethodPost, "/logout", nil)
-	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: raw})
+	r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: raw})
 	csrf(r)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)

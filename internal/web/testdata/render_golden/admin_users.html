@@ -13,12 +13,13 @@
 <a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
 <div class="nav-user">
 <img src="https://avatars.example/7.png" alt="">
-<span>golden</span>
+<a href="/account" class="nav-link" title="Your sessions">golden</a>
 <form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="golden-csrf"><button type="submit" class="nav-link">Logout</button></form>
 </div>
 </div>
 <div class="breadcrumb"><a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">|</span><a href="/admin/groups/pending">Approvals</a><span class="sep">|</span><a href="/admin/users">Users</a><span class="sep">|</span><a href="/admin/capacity">Capacity</a><span class="sep">|</span><a href="/admin/api-tokens">API tokens</a><span class="sep">|</span><a href="/admin/collections">Collections</a><span class="sep">/</span><span class="current">Users</span></div>
 <div class="container">
+
 <div class="card">
 <h2>Users</h2>
 <table class="tbl-stack">
@@ -34,6 +35,7 @@
 <td data-label="Joined">2026-10-17</td>
 <td data-label="Last seen">2026-10-17 12:30</td>
 <td data-label="Action">
+<a href="/admin/users/7/sessions/revoke" class="btn btn-reject" title="End every session and token of this account">End sessions</a>
 <span class="muted">(you)</span>
 </td>
 </tr>
@@ -47,6 +49,7 @@
 <td data-label="Joined">2026-10-17</td>
 <td data-label="Last seen">2026-10-17 12:30</td>
 <td data-label="Action">
+<a href="/admin/users/8/sessions/revoke" class="btn btn-reject" title="End every session and token of this account">End sessions</a>
 <form method="POST" action="/admin/users/8/admin" class="inline-form"><input type="hidden" name="csrf_token" value="golden-csrf"><input type="hidden" name="admin" value="true"><button class="btn btn-approve" type="submit">Promote to admin</button></form>
 </td>
 </tr>

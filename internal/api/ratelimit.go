@@ -48,6 +48,10 @@ type Options struct {
 	CORSOrigins    []string // origins allowed to call the API from a browser
 	TrustedProxy   string   // peer IP whose X-Forwarded-For is believed
 	RequireAuth    bool     // v0.27.1: gate all data endpoints behind Bearer sessions
+	// SessionIdle is web.session_idle_minutes as a duration (0.29.113): the
+	// bound a sensitive change's "recent sign-in" is measured against
+	// (ASVS V7.5.1); zero means no such rule (a server nobody configured).
+	SessionIdle time.Duration
 
 	// ResponseCacheMaxAge is the longest a per-repository answer is reused
 	// within one collection generation (collection_cache.go): the
@@ -118,6 +122,9 @@ type bucket struct {
 
 	lastSeen time.Time
 
+	// limitedAt is when this address was last refused by the per-IP limit,
+	// for the once-per-window log line (ASVS V16.3.3, 0.29.113).
+	limitedAt time.Time
 	// badTokenAt is when this address last presented a token the store
 	// called invalid (v0.29.82; see deferLookup).
 	badTokenAt time.Time
@@ -177,6 +184,43 @@ func (rl *rateLimiter) noteBadToken(r *http.Request, kind string) {
 			"address", ip.String(), "kind", kind)
 	}
 	b.badTokenAt = now
+}
+
+// noteRateLimited logs a per-IP refusal once per address per
+// badTokenMemory (ASVS V16.3.3, the 0.29.82 review P6 closed on this side
+// by 0.29.113): the address and the path's shape, never a token. The
+// bucket is the caller's, already under rl.mu.
+func (rl *rateLimiter) noteRateLimited(r *http.Request, b *bucket, now time.Time) {
+	if rl.logger == nil || b == nil {
+		return
+	}
+	rl.mu.Lock()
+	due := b.limitedAt.IsZero() || now.Sub(b.limitedAt) >= badTokenMemory
+	if due {
+		b.limitedAt = now
+	}
+	rl.mu.Unlock()
+	if due {
+		ip := rl.clientIP(r)
+		addr := "unknown"
+		if ip != nil {
+			addr = ip.String()
+		}
+		rl.logger.Info("per-IP rate limit reached (logged once a minute per address)", "address", addr, "path", r.URL.Path)
+	}
+}
+
+// secureHeaders is the outermost answer shaping of the api process (ASVS
+// V3.4.1, V3.4.4; 0.29.113): no content sniffing, and the same HSTS the
+// web process sends (a browser ignores it over plain HTTP, so it is
+// harmless on the loopback hop and right behind TLS).
+func secureHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // allow refills by elapsed×rps (capped at burst) and consumes one
@@ -423,6 +467,7 @@ func (rl *rateLimiter) middleware(next http.Handler) http.Handler {
 				}
 			}
 			w.Header().Set("Retry-After", strconv.Itoa(retry))
+			rl.noteRateLimited(r, b, now)
 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}

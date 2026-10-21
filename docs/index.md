@@ -39,6 +39,7 @@ getting-started/upgrading
 
 guide/commands
 guide/web-gui
+guide/security
 guide/api
 guide/visualizations
 guide/metrics

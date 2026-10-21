@@ -89,7 +89,7 @@ func TestAddNoticesAreShownToTheUser(t *testing.T) {
 	s := New(store, config.WebConfig{}, "", logger)
 	plantSession(t, s, "probe-token", &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)})
 	serve := func(r *http.Request) *httptest.ResponseRecorder {
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "probe-token"})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)

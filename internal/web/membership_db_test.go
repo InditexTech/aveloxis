@@ -72,7 +72,7 @@ func TestRepositoryPageAndSBOMRequireMembership(t *testing.T) {
 	h := s.Handler()
 	get := func(path string) int {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		return w.Code

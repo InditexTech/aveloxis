@@ -28,7 +28,7 @@ import (
 // sites, and the deletions had no SameSite.
 func (s *Server) cookie(name, value string, maxAge int) *http.Cookie {
 	return &http.Cookie{
-		Name:     name,
+		Name:     s.cookieName(name),
 		Value:    value,
 		MaxAge:   maxAge,
 		Path:     "/",
@@ -36,6 +36,25 @@ func (s *Server) cookie(name, value string, maxAge int) *http.Cookie {
 		Secure:   !s.cfg.DevMode,
 		SameSite: http.SameSiteLaxMode,
 	}
+}
+
+// cookieName is the one spelling of a cookie's name (0.29.113, ASVS
+// V3.3.1/V3.3.3): the __Host- prefix whenever the cookie is Secure — the
+// browser then refuses the cookie from a non-secure origin, from a
+// Domain attribute or a path other than /, so no sibling host can plant a
+// session — and the bare name under web.dev_mode (plain HTTP cannot carry
+// a __Host- cookie). Every Set-Cookie, read and deletion goes through it.
+func (s *Server) cookieName(name string) string {
+	if s.cfg.DevMode {
+		return name
+	}
+	return "__Host-" + name
+}
+
+// readCookie is the one cookie read: the request's cookie under the name
+// cookieName spells.
+func (s *Server) readCookie(r *http.Request, name string) (*http.Cookie, error) {
+	return r.Cookie(s.cookieName(name))
 }
 
 // sessionCookie is the web session cookie; it lives as long as the row
@@ -102,7 +121,7 @@ func (s *Server) createSession(ctx context.Context, userID int) (string, error) 
 // names no live session; a database failure is returned, never read as
 // "no session" (SR-5).
 func (s *Server) getSession(r *http.Request) (*Session, error) {
-	cookie, err := r.Cookie("aveloxis_session")
+	cookie, err := s.readCookie(r, "aveloxis_session")
 	if err != nil {
 		return nil, nil
 	}
@@ -125,7 +144,7 @@ func (s *Server) storeSession(ctx context.Context, raw string) (*Session, error)
 	if err != nil {
 		return nil, err
 	}
-	return &Session{UserID: ws.UserID, LoginName: ws.LoginName, AvatarURL: ws.AvatarURL, Provider: ws.Provider, IsAdmin: ws.IsAdmin, ExpiresAt: ws.ExpiresAt}, nil
+	return &Session{UserID: ws.UserID, LoginName: ws.LoginName, AvatarURL: ws.AvatarURL, Provider: ws.Provider, IsAdmin: ws.IsAdmin, ExpiresAt: ws.ExpiresAt, CreatedAt: ws.CreatedAt}, nil
 }
 
 // authedHandler is a handler behind requireAuth or requireAdmin: it takes

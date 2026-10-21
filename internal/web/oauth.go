@@ -56,7 +56,7 @@ func (s *Server) hasSession(r *http.Request) bool {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie("aveloxis_session"); err == nil {
+	if cookie, err := s.readCookie(r, "aveloxis_session"); err == nil {
 		// The session row and every Bearer token /auth/token minted from
 		// it (B4). A failure is logged; the cookies are cleared regardless
 		// — the browser is signed out, and the row expires on its own.
@@ -89,7 +89,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // web.spa_url origin — anything else (open-redirect attempts) falls
 // back to the server-rendered /dashboard.
 func (s *Server) postLoginRedirect(r *http.Request) string {
-	c, err := r.Cookie("oauth_next")
+	c, err := s.readCookie(r, "oauth_next")
 	if err != nil || c.Value == "" {
 		return "/dashboard"
 	}
@@ -179,7 +179,7 @@ func (s *Server) fetchOAuthUser(w http.ResponseWriter, r *http.Request, ctx cont
 		http.Error(w, p.label+" OAuth not configured", http.StatusBadRequest)
 		return nil, nil, false
 	}
-	stateCookie, err := r.Cookie("oauth_state")
+	stateCookie, err := s.readCookie(r, "oauth_state")
 	if err != nil || stateCookie.Value != r.URL.Query().Get("state") {
 		http.Error(w, "Invalid OAuth state", http.StatusBadRequest)
 		return nil, nil, false
@@ -368,6 +368,15 @@ func (s *Server) completeOAuthLogin(w http.ResponseWriter, r *http.Request, info
 		}
 	}
 
+	// A sign-in replaces the session the browser already carried (ASVS
+	// V7.2.4, 0.29.113): its row and the tokens minted from it end now,
+	// not at their own expiry. A failure is logged; the new session is
+	// still minted (the old row expires on its own).
+	if prior, err := s.readCookie(r, "aveloxis_session"); err == nil && prior.Value != "" {
+		if err := s.store.DeleteWebSession(r.Context(), prior.Value); err != nil && !httpserver.RequestEnded(r.Context(), err) {
+			httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, err, "sign-in: the browser's earlier session could not be ended; it expires on its own", "user_id", userID, "error", err)
+		}
+	}
 	// No privilege is read here (0.29.102, D-1): the gate reads the users
 	// row on every request, so the first user's auto-promotion and every
 	// later change on the user-management page apply at once.
@@ -380,6 +389,9 @@ func (s *Server) completeOAuthLogin(w http.ResponseWriter, r *http.Request, info
 	}
 	http.SetCookie(w, s.sessionCookie(sessToken))
 	http.SetCookie(w, s.cookie(csrfCookieName, rand.Text(), int(db.WebSessionLifetime.Seconds()))) // the form token (stage 2f)
+	// The one line a successful sign-in writes (ASVS V16.3.1, 0.29.113):
+	// the account and the forge, never the address or the token.
+	s.logger.Info("sign-in", "user_id", userID, "provider", strings.ToLower(providerLabel), "new_account", wasNewUser)
 	dest := s.postLoginRedirect(r)
 	s.clearNext(w)
 	http.Redirect(w, r, dest, http.StatusFound)

@@ -27,6 +27,11 @@ import (
 // cookie but cannot read it to fill the field.
 const csrfCookieName = "aveloxis_csrf"
 
+// hstsValue is the Strict-Transport-Security every answer of a production
+// web process carries: a year, subdomains included (OWASP ASVS 5.0
+// V3.4.1). The api process sends the same (internal/api).
+const hstsValue = "max-age=31536000; includeSubDomains"
+
 // csrfExempt lists the POST routes that take no form token: the two
 // aveloxis-gui calls from its own origin with credentials (the origin
 // check below is their guard — the SPA cannot read the HttpOnly cookie),
@@ -62,6 +67,12 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		if !s.cfg.DevMode {
+			// One year, subdomains included (ASVS V3.4.1; 0.29.113). A
+			// front proxy that terminates TLS may replace it; under
+			// web.dev_mode (plain HTTP) a browser would ignore it anyway.
+			h.Set("Strict-Transport-Security", hstsValue)
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -111,8 +122,8 @@ func (s *Server) csrfGuard(next http.Handler) http.Handler {
 		if !proxied {
 			r.Body = http.MaxBytesReader(w, r.Body, formBodyMaxBytes)
 		}
-		if _, err := r.Cookie("aveloxis_session"); err == nil && !csrfExempt[r.URL.Path] && !proxied {
-			cookie, err := r.Cookie(csrfCookieName)
+		if _, err := s.readCookie(r, "aveloxis_session"); err == nil && !csrfExempt[r.URL.Path] && !proxied {
+			cookie, err := s.readCookie(r, csrfCookieName)
 			given := r.Header.Get("X-CSRF-Token")
 			if given == "" {
 				if !s.parseForm(w, r) {

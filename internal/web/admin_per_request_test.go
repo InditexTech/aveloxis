@@ -103,7 +103,7 @@ func TestAdminPrivilegeIsDecidedPerRequest(t *testing.T) {
 	h := s.Handler()
 	get := func(path string) (int, bool) {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "ada"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "ada"})
 		code, _, reached := serve(h, r)
 		return code, reached
 	}
@@ -168,7 +168,7 @@ func TestBadAdminIdsAre400BeforeTheStore(t *testing.T) {
 	for _, path := range []string{"/admin/users/x/admin", "/admin/users/0/admin", "/admin/users/99999999999999999999/admin", "/admin/users/4294967296/admin", "/admin/groups/-1/reject", "/admin/add-requests/x/approve", "/monitor/prioritize/x"} {
 		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader("admin=true"))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 		csrf(r)
 		code, _, reached := serve(h, r)
 		if reached || code != http.StatusBadRequest {

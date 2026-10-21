@@ -31,6 +31,7 @@ var templateOrder = []string{
 	"login.html",
 	"dashboard.html",
 	"account_email.html",
+	"account.html",
 	"group.html",
 	"repo_detail.html",
 	"compare.html",

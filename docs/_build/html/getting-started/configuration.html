@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuration &mdash; Aveloxis 0.29.112 documentation</title>
+  <title>Configuration &mdash; Aveloxis 0.29.113 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=79d6e248"></script>
+      <script src="../_static/documentation_options.js?v=ddae6651"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -332,7 +332,18 @@
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#security-considerations">Security Considerations</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="../guide/security.html">Security</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#credentials-and-their-strength">Credentials and their strength</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#where-sign-in-strength-comes-from">Where sign-in strength comes from</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#sessions">Sessions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#cryptography">Cryptography</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#data">Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#logs">Logs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#why-the-web-process-has-no-request-limiter-of-its-own">Why the web process has no request limiter of its own</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-113">Changes for API clients in 0.29.113</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-100">Changes for API clients in 0.29.100</a></li>
@@ -1929,6 +1940,7 @@ a half against its own reference table below:</p>
 <span class="w">    </span><span class="nt">&quot;addr&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;:8082&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;base_url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://aveloxis.example.com&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;dev_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;session_idle_minutes&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">30</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;github_client_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;your-github-oauth-app-client-id&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;github_client_secret&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;your-github-oauth-app-client-secret&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;gitlab_client_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;your-gitlab-oauth-app-id&quot;</span><span class="p">,</span>
@@ -2577,52 +2589,57 @@ a half against its own reference table below:</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code></p></td>
 <td><p>When <code class="docutils literal notranslate"><span class="pre">true</span></code>, disables the <code class="docutils literal notranslate"><span class="pre">Secure</span></code> flag on cookies so the GUI works over plain HTTP, and lets a loopback request (<code class="docutils literal notranslate"><span class="pre">localhost</span></code>, <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>, <code class="docutils literal notranslate"><span class="pre">[::1]</span></code>) build email confirmation links when <code class="docutils literal notranslate"><span class="pre">mail.site_url</span></code> is unset. <strong>Production must leave this <code class="docutils literal notranslate"><span class="pre">false</span></code></strong> so browsers only send cookies over HTTPS and confirmation links always come from <code class="docutils literal notranslate"><span class="pre">mail.site_url</span></code> (or <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code>). <code class="docutils literal notranslate"><span class="pre">HttpOnly</span></code> is always set regardless.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_id</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code></p></td>
+<td><p>int</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">30</span></code></p></td>
+<td><p>Signs a browser session out after this many minutes without a request (0.29.113; OWASP ASVS V7.3.1). <code class="docutils literal notranslate"><span class="pre">0</span></code> means the default, 30 — NIST SP 800-63B’s AAL2 inactivity bound, the stricter of the two published numbers, since the same session administers. At most <code class="docutils literal notranslate"><span class="pre">1440</span></code>, the session’s own 24-hour life; a negative value or more is refused at start. A session in use is re-stamped at most once a minute. The SPA’s <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> tokens are not subject to it (see <a class="reference internal" href="../guide/security.html"><span class="std std-doc">Security</span></a>).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_id</span></code></p></td>
 <td><p>string</p></td>
 <td><p>(none)</p></td>
 <td><p>GitHub OAuth App client ID. Create one at <a class="reference external" href="https://github.com/settings/developers">https://github.com/settings/developers</a>. The callback URL must match <code class="docutils literal notranslate"><span class="pre">&lt;base_url&gt;/auth/github/callback</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_secret</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.github_client_secret</span></code></p></td>
 <td><p>string</p></td>
 <td><p>(none)</p></td>
 <td><p>GitHub OAuth App client secret.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_id</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_id</span></code></p></td>
 <td><p>string</p></td>
 <td><p>(none)</p></td>
 <td><p>GitLab OAuth Application ID. Create one at <a class="reference external" href="https://gitlab.com/-/profile/applications">https://gitlab.com/-/profile/applications</a> (or your self-hosted instance’s <code class="docutils literal notranslate"><span class="pre">/admin/applications</span></code>).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_secret</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_client_secret</span></code></p></td>
 <td><p>string</p></td>
 <td><p>(none)</p></td>
 <td><p>GitLab OAuth Application secret.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_base_url</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.gitlab_base_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;https://gitlab.com&quot;</span></code></p></td>
 <td><p>GitLab base URL for OAuth (the HTML site, NOT the API URL — the OAuth endpoints and the <code class="docutils literal notranslate"><span class="pre">/api/v4/user</span></code> read are appended to it). Override for self-hosted GitLab; a trailing slash is dropped and an empty value means gitlab.com. From 0.29.101 the value must be an absolute <code class="docutils literal notranslate"><span class="pre">http://</span></code> or <code class="docutils literal notranslate"><span class="pre">https://</span></code> URL with no <code class="docutils literal notranslate"><span class="pre">/api/v4</span></code> suffix, query, fragment or user name, or the process refuses to start naming the field (it used to fail at the first sign-in). Accounts signed in through GitLab belong to this instance (v0.29.69): after moving to another instance, the same people sign in as new accounts, and a name the old instance’s accounts hold is refused until an administrator frees it (see <a class="reference internal" href="../guide/web-gui.html#login-flow"><span class="std std-ref">Login Flow</span></a>). GitLab accounts from before v0.29.69 carry no instance; <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> records this value on them at every start with GitLab sign-in configured (<code class="docutils literal notranslate"><span class="pre">web.gitlab_client_id</span></code> set), so start 0.29.69 once that way, with the instance those accounts came from, before you change this setting or turn GitLab sign-in on under another instance.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.api_internal_url</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.api_internal_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;http://127.0.0.1:8383&quot;</span></code></p></td>
 <td><p>Server-to-server URL where the web process reaches <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">api</span></code>. The web server reverse-proxies <code class="docutils literal notranslate"><span class="pre">/api/*</span></code> requests to this URL so the browser only talks to the web origin. Set this to a remote URL if running the API on a different host.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>Trusted origin of the separate-repo SPA (aveloxis-gui), e.g. <code class="docutils literal notranslate"><span class="pre">https://gui.example.org</span></code> (or <code class="docutils literal notranslate"><span class="pre">http://localhost:8000</span></code> in dev). Since 0.29.102 it is also the one foreign origin whose <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/auth/token</span></code> and <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/logout</span></code> the web process accepts (the cross-site guard refuses every other origin), so a GUI on its own origin needs it set. When set, the OAuth flow honors a <code class="docutils literal notranslate"><span class="pre">?next=</span></code> URL under this origin so signing in from the SPA returns the user to the SPA instead of the server-rendered <code class="docutils literal notranslate"><span class="pre">/dashboard</span></code>. Relative <code class="docutils literal notranslate"><span class="pre">next</span></code> paths are always honored; anything else is rejected (open-redirect protection). When set, the emails the web AND api processes send link to that front end’s pages (its group, pending-approvals and profile pages; the confirmation link carries its token in the URL fragment) instead of the web process’s own — restart both processes after changing it; empty keeps the web process’s pages. Must be the origin exactly as the browser’s address bar shows it (lowercase scheme and ASCII host, no default port, no path, no trailing slash, query or fragment): the loader refuses anything else and names the key.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.auto_approve_add_limit</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.auto_approve_add_limit</span></code></p></td>
 <td><p>int</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
 <td><p>Per-add approval (v0.27.20): when &gt; 0, a non-admin batch of NOT-yet-tracked repo URLs at or under this size is collected immediately (with an auto-approved audit request); larger batches — and a NEW org registration — wait for admin approval on the Approvals page. An org already registered in a group that is not rejected auto-approves (it adds no new collection). <code class="docutils literal notranslate"><span class="pre">0</span></code> (default) = every non-admin addition of new repos requires approval. Already-collected repos always link instantly for everyone; approval gates collection load, never visibility. The repositories an automatically approved paste adds count toward <code class="docutils literal notranslate"><span class="pre">capacity.repo_links_per_day</span></code> (v0.29.91).</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>The address of the proxy in front of the web GUI (<code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code> for nginx on the same host), in canonical form (v0.29.89). Only from it is <code class="docutils literal notranslate"><span class="pre">X-Forwarded-For</span></code> believed, which gives the sign-in callback the browser’s address for <code class="docutils literal notranslate"><span class="pre">capacity.signups_per_address_per_day</span></code>. Behind nginx without it, every sign-up looks like nginx’s address and the quota counts them all as one. Empty believes no header. It also decides the one client address the web’s <code class="docutils literal notranslate"><span class="pre">/api</span></code> proxy forwards to the api (v0.29.91).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">web.signup_escrow_recipient</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">web.signup_escrow_recipient</span></code></p></td>
 <td><p>string</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code></p></td>
 <td><p>Your age public key (<code class="docutils literal notranslate"><span class="pre">age1…</span></code>, v0.29.89). Each new account’s network address is sealed to it and kept for one year, so it can be opened offline with the matching private key if a legal requirement demands it; the server can never open it. Empty keeps no address past its UTC day. Make the pair with <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">signup-escrow</span> <span class="pre">keygen</span></code> on an offline machine. The whole procedure, including opening an envelope, is in <a class="reference internal" href="../guide/signup-escrow.html"><span class="std std-doc">Sign-up address escrow</span></a>. An invalid key is refused at startup.</p></td>

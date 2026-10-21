@@ -81,13 +81,18 @@ var smokeRecipes = map[string]smokeRecipe{
 	// 2026-10-04 profile routes: the harness has no mailer, so a submission
 	// is refused with the "not configured" message (422); a token nobody
 	// issued is "invalid" (200), never an error.
-	"POST /api/v1/me/email":                     {auth: "user", body: `{"email":"smoke@example.com"}`, wantStatus: []int{422}},
-	"POST /api/v1/me/email/confirm":             {auth: "user", body: `{"token":"smoke-no-such-token"}`},
-	"GET /api/v1/groups":                        {auth: "user"},
-	"POST /api/v1/groups":                       {auth: "user", body: `{"name":"smoke-extra-group"}`},
-	"GET /api/v1/groups/{groupID}/repos":        {auth: "user"},
-	"GET /api/v1/groups/{groupID}/orgs":         {auth: "user"}, // 2026-07-21 tracked-orgs section
-	"GET /api/v1/groups/{groupID}/pending-adds": {auth: "user"}, // v0.27.20
+	"POST /api/v1/me/email":         {auth: "user", body: `{"email":"smoke@example.com"}`, wantStatus: []int{422}},
+	"POST /api/v1/me/email/confirm": {auth: "user", body: `{"token":"smoke-no-such-token"}`},
+	// 0.29.113 sessions: the list is a read; the two revocations end the
+	// smoke user's own sessions and run last (see the terminal pass).
+	"GET /api/v1/me/sessions":                           {auth: "user"},
+	"POST /api/v1/admin/users/{userID}/sessions/revoke": {auth: "admin"},
+	"POST /api/v1/me/sessions/revoke":                   {auth: "user", wantStatus: []int{401}}, // after the admin revoke above ended the fixture's own sessions
+	"GET /api/v1/groups":                                {auth: "user"},
+	"POST /api/v1/groups":                               {auth: "user", body: `{"name":"smoke-extra-group"}`},
+	"GET /api/v1/groups/{groupID}/repos":                {auth: "user"},
+	"GET /api/v1/groups/{groupID}/orgs":                 {auth: "user"}, // 2026-07-21 tracked-orgs section
+	"GET /api/v1/groups/{groupID}/pending-adds":         {auth: "user"}, // v0.27.20
 	// The urls-array body exercises the 2026-07-21 bulk-add path (the
 	// legacy single-url body is a parse-layer fallback into the same
 	// code, pinned by portal_bulk_add_test.go).
@@ -350,7 +355,11 @@ func TestEveryEndpointExecutes(t *testing.T) {
 	// add and the add-request decision answer 409), so the rejection runs
 	// after every other recipe (0.29.100: the admin reject route; in the
 	// unordered pass it hit those writes in map order).
-	last := []string{"POST /api/v1/admin/groups/{groupID}/reject"}
+	// 0.29.113: the two session revocations end the fixture user's own
+	// sessions (the fixture user is {userID}), so they close the run — the
+	// admin route first (200), then the account's own, already signed out
+	// (401).
+	last := []string{"POST /api/v1/admin/groups/{groupID}/reject", "POST /api/v1/admin/users/{userID}/sessions/revoke", "POST /api/v1/me/sessions/revoke"}
 	isLast := map[string]bool{}
 	for _, route := range last {
 		if _, ok := smokeRecipes[route]; !ok {

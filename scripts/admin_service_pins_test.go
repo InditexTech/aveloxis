@@ -140,6 +140,7 @@ var adminStoreWrites = map[string]bool{
 	"CreateUserGroup": true, "AddReposToGroup": true, "AddOrgToGroup": true, "RemoveRepoFromGroup": true, "RejectGroup": true,
 	"DecideAddRequest": true, "ProcessApprovedAddRequest": true,
 	"SetUserAdmin":        true,
+	"DeleteUserSessions":  true, "ListUserSessions": false, // 0.29.113 sessions
 	"SetUserPendingEmail": true, "ClearUserPendingEmailIf": true, "CreateEmailConfirmation": true, "ConfirmEmailToken": true,
 	"AdoptPendingForgeIDChange": true,
 	// Stage 3b (0.29.109): tokens, capacity, collections.
@@ -354,6 +355,9 @@ var adminParity = map[string]adminParityRow{
 	"NotifyAddRequestSubmitted": {API: "-", Web: "-", CLI: "-", Why: "called by AddToGroup and AddOrgToGroup, never by an adapter"},
 	"RejectGroup":               {API: "POST /api/v1/admin/groups/{groupID}/reject", Web: "POST /admin/groups/{id}/reject", CLI: "-", Why: "an administrator's decision in a GUI"},
 	"SetUserAdmin":              {API: "POST /api/v1/admin/users/{userID}/admin", Web: "POST /admin/users/{id}/admin", CLI: "-", Why: "the first account is the administrator (OAuth); no CLI command sets roles"},
+	// 0.29.113 (ASVS V7.5.2, V7.4.5): an account's sessions.
+	"ListSessions":              {API: "GET /api/v1/me/sessions", Web: "GET /account", CLI: "-", Why: "an account's own sessions; the CLI has no account"},
+	"RevokeSessions":            {API: "POST /api/v1/me/sessions/revoke, POST /api/v1/admin/users/{userID}/sessions/revoke", Web: "POST /account/sessions/revoke, POST /admin/users/{id}/sessions/revoke", CLI: "-", Why: "an account's own, or an administrator's decision in a GUI"},
 	"AdoptForgeID":              {API: "POST /api/v1/admin/forge-id-changes/{repoID}/adopt", Web: "POST /admin/forge-id-changes/{repoID}/adopt", CLI: "- (aveloxis adopt-forge-id is a different operation: it asks the forge for the current id and writes through store.AdoptForgeID)", Why: "the CLI probes the forge first"},
 	// Stages 3b and 3c (0.29.109): the console's operations, each with its
 	// API route and its page's form; the CLI has no token, capacity or

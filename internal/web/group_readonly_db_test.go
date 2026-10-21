@@ -96,7 +96,7 @@ func TestAdministratorOpensAnotherAccountsGroupReadOnly(t *testing.T) {
 	h := s.Handler()
 	get := func(path, tok string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: tok})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: tok})
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		return w
@@ -142,7 +142,7 @@ func TestAdministratorOpensAnotherAccountsGroupReadOnly(t *testing.T) {
 	form := url.Values{"group_id": {fmt.Sprint(groupID)}, "repo_id": {fmt.Sprint(repoID)}, "csrf_token": {"test-csrf-token"}}
 	r := httptest.NewRequest(http.MethodPost, "/groups/remove-repo", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin-tok"})
+	r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "admin-tok"})
 	csrf(r)
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, r)

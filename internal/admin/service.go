@@ -179,6 +179,9 @@ type addRequestStore interface {
 type userStore interface {
 	IsUserAdmin(ctx context.Context, userID int) (bool, error)
 	SetUserAdmin(ctx context.Context, userID int, isAdmin bool) error
+	// 0.29.113 (ASVS V7.5.2, V7.4.5): an account's sessions, listed and ended.
+	ListUserSessions(ctx context.Context, userID int) ([]db.UserSession, error)
+	DeleteUserSessions(ctx context.Context, userID int) (int64, error)
 	UserLabel(ctx context.Context, userID int) (string, error)
 }
 

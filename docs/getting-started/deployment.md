@@ -268,6 +268,12 @@ server {
 Do not expose the monitor (`127.0.0.1:5555`); reach it over SSH port
 forwarding. `nginx -t && systemctl reload nginx`.
 
+Both processes send `Strict-Transport-Security` and `X-Content-Type-Options`
+themselves (0.29.113; the web outside `dev_mode`), so the block above adds
+neither — nginx passes upstream headers through, and an `add_header
+Strict-Transport-Security` here would send the value twice. A proxy that
+hides upstream headers (`proxy_hide_header`) must add its own.
+
 ## 10. Verify
 
 ```bash

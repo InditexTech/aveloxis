@@ -29,19 +29,20 @@ import (
 // text: a flag the table does not hold shows nothing, so a page never
 // echoes a query value.
 var adminNotices = map[string]string{
-	"revoked":       "The token is revoked; every client that used it is refused from now on.",
-	"defaults":      "The defaults are saved.",
-	"quota":         "The quota is saved; the api processes apply it within a minute.",
-	"contact":       "The contact address is saved.",
-	"override":      "The account's own values are saved; the api processes apply them within a minute.",
-	"cleared":       "The account's own values are removed; the quotas apply to it again.",
-	"allowlisted":   "The network is on the sign-up allowlist.",
-	"unlisted":      "The network is off the sign-up allowlist.",
-	"created":       "The collection is created.",
-	"saved":         "The collection is saved.",
-	"deleted":       "The collection is deleted.",
-	"group_added":   "The group is in the collection.",
-	"group_removed": "The group is out of the collection.",
+	"revoked":        "The token is revoked; every client that used it is refused from now on.",
+	"defaults":       "The defaults are saved.",
+	"quota":          "The quota is saved; the api processes apply it within a minute.",
+	"contact":        "The contact address is saved.",
+	"override":       "The account's own values are saved; the api processes apply them within a minute.",
+	"cleared":        "The account's own values are removed; the quotas apply to it again.",
+	"allowlisted":    "The network is on the sign-up allowlist.",
+	"unlisted":       "The network is off the sign-up allowlist.",
+	"created":        "The collection is created.",
+	"saved":          "The collection is saved.",
+	"deleted":        "The collection is deleted.",
+	"group_added":    "The group is in the collection.",
+	"group_removed":  "The group is out of the collection.",
+	"sessions_ended": "The account's sessions are ended; its next request signs in again.",
 }
 
 func adminNotice(r *http.Request) string { return adminNotices[r.URL.Query().Get("ok")] }

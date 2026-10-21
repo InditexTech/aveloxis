@@ -77,7 +77,7 @@ func TestDemotingTheLastAdminIsRefusedNotA500(t *testing.T) {
 	}
 	r := httptest.NewRequest(http.MethodPost, "/admin/users/"+strconv.Itoa(target)+"/admin", strings.NewReader(url.Values{"admin": {"false"}}.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "stale-admin"})
+	r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "stale-admin"})
 	csrf(r) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)

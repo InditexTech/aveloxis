@@ -54,7 +54,7 @@ func (a *recordedAPI) calls() (auth, cook []string) {
 func proxied(s *Server, cookie string, extra http.Header) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/groups", nil)
 	if cookie != "" {
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: cookie})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: cookie})
 	}
 	for k, v := range extra {
 		r.Header[k] = v
@@ -197,7 +197,7 @@ func TestAPIProxyRefusesTheAPIsOwnLogout(t *testing.T) {
 	s := newTestServerWithAPIURL(t, api.srv.URL)
 	cookie := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: time.Now().Add(time.Hour)})
 	r := httptest.NewRequest(http.MethodPost, apiSessionLogoutPath, nil)
-	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: cookie})
+	r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: cookie})
 	csrf(r)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)

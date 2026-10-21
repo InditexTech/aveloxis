@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Web GUI &mdash; Aveloxis 0.29.112 documentation</title>
+  <title>Web GUI &mdash; Aveloxis 0.29.113 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,13 +14,13 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=79d6e248"></script>
+      <script src="../_static/documentation_options.js?v=ddae6651"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="REST API" href="api.html" />
+    <link rel="next" title="Security" href="security.html" />
     <link rel="prev" title="Commands Reference" href="commands.html" /> 
 </head>
 
@@ -332,7 +332,18 @@
 <li class="toctree-l2"><a class="reference internal" href="#security-considerations">Security Considerations</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="security.html#credentials-and-their-strength">Credentials and their strength</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#where-sign-in-strength-comes-from">Where sign-in strength comes from</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#sessions">Sessions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#cryptography">Cryptography</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#data">Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#logs">Logs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#why-the-web-process-has-no-request-limiter-of-its-own">Why the web process has no request limiter of its own</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-113">Changes for API clients in 0.29.113</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
 <li class="toctree-l2"><a class="reference internal" href="api.html#changes-for-api-clients-in-0-29-100">Changes for API clients in 0.29.100</a></li>
@@ -2012,8 +2023,23 @@ a GET answers <code class="docutils literal notranslate"><span class="pre">405</
 <li><p>Sessions are rows of <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.user_session_tokens</span></code> (since 0.29.102;
 only the token’s hash is stored), so a restart of <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> signs
 nobody out.</p></li>
-<li><p>Each session expires <strong>24 hours after login</strong> (not refreshed by use);
-expired rows are swept whenever a session or token is minted.</p></li>
+<li><p>Each session expires <strong>24 hours after login</strong> (not refreshed by use), or
+after <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code> without a request (30 by default,
+0.29.113; the last request is re-stamped at most once a minute); expired
+rows are swept whenever a session or token is minted. The <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code>
+token the front end holds has no inactivity bound (see
+<a class="reference internal" href="security.html"><span class="std std-doc">Security</span></a>).</p></li>
+<li><p>The account page (<code class="docutils literal notranslate"><span class="pre">/account</span></code>, the login name in the navigation bar)
+lists every live session and token of the account — this browser’s,
+other browsers’, the front end’s token, the web process’s own token for
+each session — with sign-in time, last use and expiry, and “Sign out
+everywhere” ends them all (0.29.113). An administrator ends any
+account’s from the Users page.</p></li>
+<li><p>A sign-in from a browser that still carries a session replaces it: the
+old row is deleted before the new one is minted (0.29.113).</p></li>
+<li><p>Changing the account’s e-mail address (<code class="docutils literal notranslate"><span class="pre">/account/email</span></code>) needs a sign-in
+within the inactivity bound: an older session is sent to sign in again
+first, and comes back to the form (0.29.113).</p></li>
 <li><p>Administrator privilege is read from the account’s row on every request:
 a demotion takes effect at the next request, not at the next login.</p></li>
 <li><p>Signing out deletes the session and every token minted from it — the
@@ -2022,7 +2048,7 @@ process holds to reach the API for the session’s own pages (0.29.110) —
 so sign-out means signed out everywhere. A <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> token minted
 from a session that merely expired keeps its own 30-day life; the web
 process’s token expires with its session.</p></li>
-<li><p>The session cookie carries a random token whose hash is a row of <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.user_session_tokens</span></code> (kind <code class="docutils literal notranslate"><span class="pre">web</span></code>); nothing is signed, and <code class="docutils literal notranslate"><span class="pre">web.session_secret</span></code> was removed in 0.29.102.</p></li>
+<li><p>The session cookie carries a random token whose hash is a row of <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.user_session_tokens</span></code> (kind <code class="docutils literal notranslate"><span class="pre">web</span></code>); nothing is signed, and <code class="docutils literal notranslate"><span class="pre">web.session_secret</span></code> was removed in 0.29.102. In production the cookies are <code class="docutils literal notranslate"><span class="pre">__Host-</span></code> prefixed (<code class="docutils literal notranslate"><span class="pre">__Host-aveloxis_session</span></code>, <code class="docutils literal notranslate"><span class="pre">__Host-aveloxis_csrf</span></code>, the two OAuth cookies; 0.29.113): a browser accepts the prefix only over HTTPS, for the whole host, with no <code class="docutils literal notranslate"><span class="pre">Domain</span></code>, so a cookie another host or a plain-HTTP page sets cannot stand in for them. With <code class="docutils literal notranslate"><span class="pre">dev_mode</span></code> the names are bare (<code class="docutils literal notranslate"><span class="pre">aveloxis_session</span></code>, …), since the prefix would refuse plain HTTP.</p></li>
 </ul>
 </section>
 <section id="running-alongside-aveloxis-serve">
@@ -2067,8 +2093,11 @@ and re-created under the same URL on its forge. Adopting one, with an
 optional note (at most 1,000 characters), treats the new repository as the
 continuation of the old; a change another adoption superseded is not offered.</p>
 <p><strong>Users</strong> (<code class="docutils literal notranslate"><span class="pre">/admin/users</span></code>) is every account with its login, e-mail, forge,
-role, join date and last sign-in; promote or demote with one button. The
-last administrator cannot be demoted, and nobody demotes themselves.
+role, join date and last sign-in; promote or demote with one button, and
+“End sessions” (a confirm page) ends every session and token of the
+account — a lost device, a suspected takeover — leaving its operator-issued
+API tokens to the API-tokens page (0.29.113). The last administrator cannot
+be demoted, and nobody demotes themselves.
 Privilege is read from the account row at every request: a demoted
 administrator’s open session loses the console at once.</p>
 <p><strong>Capacity</strong> (<code class="docutils literal notranslate"><span class="pre">/admin/capacity</span></code>) is the fair-use quotas as applied: each
@@ -2106,9 +2135,9 @@ change to its signed-in callers within about a minute of its next request
 <h2>Security Considerations<a class="headerlink" href="#security-considerations" title="Link to this heading"></a></h2>
 <ul class="simple">
 <li><p><strong>OAuth tokens</strong>: The access token obtained during login is used only to fetch the user’s profile and is dropped once the callback has done so. The session row holds the user id, never the token.</p></li>
-<li><p><strong>Session cookies</strong>: a random 256-bit token whose hash is a row of <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.user_session_tokens</span></code> (since 0.29.102; unguessable rather than signed, and it survives a restart of <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code>). All cookies set <code class="docutils literal notranslate"><span class="pre">HttpOnly</span></code>, <code class="docutils literal notranslate"><span class="pre">SameSite=Lax</span></code> and, in production, <code class="docutils literal notranslate"><span class="pre">Secure</span></code>.</p></li>
+<li><p><strong>Session cookies</strong>: a random 256-bit token whose hash is a row of <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.user_session_tokens</span></code> (since 0.29.102; unguessable rather than signed, and it survives a restart of <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code>). All cookies set <code class="docutils literal notranslate"><span class="pre">HttpOnly</span></code>, <code class="docutils literal notranslate"><span class="pre">SameSite=Lax</span></code> and, in production, <code class="docutils literal notranslate"><span class="pre">Secure</span></code> and the <code class="docutils literal notranslate"><span class="pre">__Host-</span></code> prefix (0.29.113).</p></li>
 <li><p><strong>Cross-site request forgery</strong> (since 0.29.102): every state change a page can start is a <code class="docutils literal notranslate"><span class="pre">POST</span></code> (the e-mail confirmation link and the OAuth callbacks are <code class="docutils literal notranslate"><span class="pre">GET</span></code>s each guarded by a one-time secret), and every <code class="docutils literal notranslate"><span class="pre">POST</span></code> is checked before its handler — the request’s <code class="docutils literal notranslate"><span class="pre">Origin</span></code> (or <code class="docutils literal notranslate"><span class="pre">Referer</span></code>) must be the web GUI’s own host or the origin in <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code>, a browser’s <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site:</span> <span class="pre">cross-site</span></code> is refused, and a signed-in form must carry the session’s form token (the <code class="docutils literal notranslate"><span class="pre">csrf_token</span></code> field every server-rendered form includes, matched against the <code class="docutils literal notranslate"><span class="pre">aveloxis_csrf</span></code> cookie). A refusal is a <code class="docutils literal notranslate"><span class="pre">403</span></code> and a WARN line in the log. If aveloxis-gui runs on another origin, set <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code> to it, or its sign-in and sign-out calls are refused. A proxy that rewrites the <code class="docutils literal notranslate"><span class="pre">Host</span></code> header has the same effect as another origin: the guard compares the browser’s origin (host and port) with <code class="docutils literal notranslate"><span class="pre">Host</span></code>, so a proxy must forward the public host — <code class="docutils literal notranslate"><span class="pre">proxy_set_header</span> <span class="pre">Host</span> <span class="pre">$host</span></code>, or <code class="docutils literal notranslate"><span class="pre">$http_host</span></code> when the public port is not the default.</p></li>
-<li><p><strong>Response headers</strong> (since 0.29.102): every answer carries a <code class="docutils literal notranslate"><span class="pre">Content-Security-Policy</span></code> that names the web process as the only script source (the pages carry no inline script and load no CDN; Chart.js is served from <code class="docutils literal notranslate"><span class="pre">/static/</span></code>), forbids framing (<code class="docutils literal notranslate"><span class="pre">frame-ancestors</span> <span class="pre">'none'</span></code>, <code class="docutils literal notranslate"><span class="pre">X-Frame-Options:</span> <span class="pre">DENY</span></code>), plugins and a <code class="docutils literal notranslate"><span class="pre">&lt;base&gt;</span></code>, plus <code class="docutils literal notranslate"><span class="pre">X-Content-Type-Options:</span> <span class="pre">nosniff</span></code> and <code class="docutils literal notranslate"><span class="pre">Referrer-Policy:</span> <span class="pre">strict-origin-when-cross-origin</span></code>. Inline <code class="docutils literal notranslate"><span class="pre">style</span></code> attributes stay allowed (<code class="docutils literal notranslate"><span class="pre">style-src</span> <span class="pre">'unsafe-inline'</span></code>); they are not a script vector.</p></li>
+<li><p><strong>Response headers</strong> (since 0.29.102): every answer carries a <code class="docutils literal notranslate"><span class="pre">Content-Security-Policy</span></code> that names the web process as the only script source (the pages carry no inline script and load no CDN; Chart.js is served from <code class="docutils literal notranslate"><span class="pre">/static/</span></code>), forbids framing (<code class="docutils literal notranslate"><span class="pre">frame-ancestors</span> <span class="pre">'none'</span></code>, <code class="docutils literal notranslate"><span class="pre">X-Frame-Options:</span> <span class="pre">DENY</span></code>), plugins and a <code class="docutils literal notranslate"><span class="pre">&lt;base&gt;</span></code>, plus <code class="docutils literal notranslate"><span class="pre">X-Content-Type-Options:</span> <span class="pre">nosniff</span></code> and <code class="docutils literal notranslate"><span class="pre">Referrer-Policy:</span> <span class="pre">strict-origin-when-cross-origin</span></code>. Inline <code class="docutils literal notranslate"><span class="pre">style</span></code> attributes stay allowed (<code class="docutils literal notranslate"><span class="pre">style-src</span> <span class="pre">'unsafe-inline'</span></code>); they are not a script vector. Outside <code class="docutils literal notranslate"><span class="pre">dev_mode</span></code> every answer also carries <code class="docutils literal notranslate"><span class="pre">Strict-Transport-Security:</span> <span class="pre">max-age=31536000;</span> <span class="pre">includeSubDomains</span></code> (0.29.113), and the api process sends the same header and <code class="docutils literal notranslate"><span class="pre">nosniff</span></code> on every answer of its own: the proxy in front need not add them (a second <code class="docutils literal notranslate"><span class="pre">add_header</span></code> would duplicate the value), only pass them through.</p></li>
 <li><p><strong>HTTPS</strong>: In production, run <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> behind a reverse proxy (nginx, Caddy, etc.) that terminates TLS. OAuth providers require HTTPS callback URLs for production apps (localhost is exempt during development). Leave <code class="docutils literal notranslate"><span class="pre">dev_mode</span></code> at its default (<code class="docutils literal notranslate"><span class="pre">false</span></code>) in production — this ensures cookies are only sent over HTTPS.</p></li>
 <li><p><strong>Development mode</strong>: For local development over plain HTTP, set <code class="docutils literal notranslate"><span class="pre">&quot;dev_mode&quot;:</span> <span class="pre">true</span></code> in the <code class="docutils literal notranslate"><span class="pre">web</span></code> section of <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code>. This disables the <code class="docutils literal notranslate"><span class="pre">Secure</span></code> cookie flag so session cookies work without HTTPS, and lets a loopback request build email confirmation links when <code class="docutils literal notranslate"><span class="pre">mail.site_url</span></code> is unset. <code class="docutils literal notranslate"><span class="pre">HttpOnly</span></code> remains enabled even in dev mode. Never deploy with <code class="docutils literal notranslate"><span class="pre">dev_mode</span></code> enabled; production confirmation links need <code class="docutils literal notranslate"><span class="pre">mail.site_url</span></code>.</p></li>
 <li><p><strong>Client secrets</strong>: The <code class="docutils literal notranslate"><span class="pre">web.github_client_secret</span></code> and <code class="docutils literal notranslate"><span class="pre">web.gitlab_client_secret</span></code> values in <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> are sensitive. Protect the config file with appropriate file permissions (<code class="docutils literal notranslate"><span class="pre">chmod</span> <span class="pre">600</span> <span class="pre">aveloxis.json</span></code>).</p></li>
@@ -2122,7 +2151,7 @@ change to its signed-in callers within about a minute of its next request
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="commands.html" class="btn btn-neutral float-left" title="Commands Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="api.html" class="btn btn-neutral float-right" title="REST API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="security.html" class="btn btn-neutral float-right" title="Security" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
