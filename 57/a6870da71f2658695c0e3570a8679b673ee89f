@@ -1,0 +1,24 @@
+docs/guide/collection-pipeline.md
+  h_e3804906c674bd 50,52
+internal/collector/staged.go
+  h_e3804906c674bd 1874-1879,1891-1892
+internal/collector/staged_traffic_test.go
+  h_e3804906c674bd 149,168-169,186-189,212-213,237-238,263-264,288-289,298-323,328
+internal/platform/gitlab/client.go
+  h_e3804906c674bd 1576-1581,1591-1592,1597-1599,1603
+internal/platform/gitlab/clone_stats_test.go
+  h_e3804906c674bd 270-276
+internal/platform/gitlab/types.go
+  h_e3804906c674bd 28-32,35-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "57a6870da71f2658695c0e3570a8679b673ee89f",
+  "prompts": {},
+  "humans": {
+    "h_e3804906c674bd": {
+      "author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
