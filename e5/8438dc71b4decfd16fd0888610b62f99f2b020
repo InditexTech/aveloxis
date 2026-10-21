@@ -1,0 +1,14 @@
+internal/db/traffic_integration_test.go
+  h_e3804906c674bd 277-278,313,364,374,479
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e58438dc71b4decfd16fd0888610b62f99f2b020",
+  "prompts": {},
+  "humans": {
+    "h_e3804906c674bd": {
+      "author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
