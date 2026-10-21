@@ -32,7 +32,9 @@ func plantSession(t testing.TB, s *Server, name string, sess *Session) string {
 		// a planted session mints a planted Bearer, so the proxy tests of
 		// forwarding and bounds run as before. A test of the minting itself
 		// sets its own minter after planting.
-		s.mintProxyToken = func(_ context.Context, cookie string) (string, error) { return "planted-" + cookie, nil }
+		s.mintProxyToken = func(_ context.Context, cookie string, _ time.Time) (string, error) {
+			return "planted-" + cookie, nil
+		}
 	}
 	if s.store != nil {
 		raw, err := s.store.CreateWebSession(context.Background(), sess.UserID)
@@ -50,11 +52,11 @@ func plantSession(t testing.TB, s *Server, name string, sess *Session) string {
 		// minter needs the real session (round-1 review of 0.29.110, I-3):
 		// map the name back for the mint too.
 		prevMint := s.mintProxyToken
-		s.mintProxyToken = func(ctx context.Context, cookie string) (string, error) {
+		s.mintProxyToken = func(ctx context.Context, cookie string, expiresAt time.Time) (string, error) {
 			if cookie == name {
 				cookie = raw
 			}
-			return prevMint(ctx, cookie)
+			return prevMint(ctx, cookie, expiresAt)
 		}
 		return name
 	}

@@ -46,31 +46,39 @@ var adminNotices = map[string]string{
 
 func adminNotice(r *http.Request) string { return adminNotices[r.URL.Query().Get("ok")] }
 
-// optionalInt64 reads a numeric form field; an empty field is nil (the
-// default or the quota's value), a non-number is the field's own 400.
+// optionalInt64 reads an optional number from a console form: an empty
+// field is nil (the default or the quota's value), a non-number is the
+// field's own 400. Every
+// number a console form carries is an int4 in the store (a quota, an
+// allowance, a lifetime in days, a position), so it is parsed at that width:
+// a value past int32 is "out of range" here, and the int the service and
+// the store take can never narrow it (CodeQL go/incorrect-integer-conversion
+// on the 0.29.111 tree, seven sites, all this reader's). The service's own
+// rules stay the authority for the API path, which decodes JSON.
 func optionalInt64(w http.ResponseWriter, r *http.Request, name string) (*int64, bool) {
 	v := strings.TrimSpace(r.FormValue(name))
 	if v == "" {
 		return nil, true
 	}
-	n, err := strconv.ParseInt(v, 10, 64)
+	n, err := strconv.ParseInt(v, 10, 32)
 	if err != nil {
-		http.Error(w, name+" must be a number", http.StatusBadRequest)
+		if errors.Is(err, strconv.ErrRange) {
+			http.Error(w, name+" is out of range", http.StatusBadRequest)
+		} else {
+			http.Error(w, name+" must be a number", http.StatusBadRequest)
+		}
 		return nil, false
 	}
 	return &n, true
 }
 
+// optionalInt is optionalInt64 for a field the service takes as an int.
 func optionalInt(w http.ResponseWriter, r *http.Request, name string) (*int, bool) {
 	n64, ok := optionalInt64(w, r, name)
 	if !ok || n64 == nil {
 		return nil, ok
 	}
-	if *n64 > int64(admin.MaxAPITokenRateLimit) || *n64 < -int64(admin.MaxAPITokenRateLimit) {
-		http.Error(w, name+" is out of range", http.StatusBadRequest)
-		return nil, false
-	}
-	n := int(*n64)
+	n := int(*n64) // parsed at 32 bits above: never a narrowing
 	return &n, true
 }
 
@@ -477,20 +485,16 @@ func collectionFormFields(w http.ResponseWriter, r *http.Request) (admin.Collect
 		http.Error(w, "invalid form data", http.StatusBadRequest)
 		return admin.CollectionFields{}, false
 	}
-	// The adapter parses; the int4 range is the service's rule
-	// (whole-branch review of 0.29.109: the console bounded it here and
-	// the API answered 500).
-	position, ok := optionalInt64(w, r, "position")
+	// The adapter parses (at the column's width, optionalInt64); the int4
+	// rule the service applies is the authority for the API path too
+	// (whole-branch review of 0.29.109).
+	position, ok := optionalInt(w, r, "position")
 	if !ok {
 		return admin.CollectionFields{}, false
 	}
 	f := admin.CollectionFields{Name: strings.TrimSpace(r.FormValue("name")), Description: strings.TrimSpace(r.FormValue("description"))}
 	if position != nil {
-		if int64(int(*position)) != *position { // does not fit this platform's int: a parse failure, not the rule
-			http.Error(w, "position is out of range", http.StatusBadRequest)
-			return admin.CollectionFields{}, false
-		}
-		f.Position = int(*position)
+		f.Position = *position
 	}
 	return f, true
 }

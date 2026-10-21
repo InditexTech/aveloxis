@@ -74,10 +74,13 @@ func TestAPIProxyAttachesTheSessionsBearerAndNoCookie(t *testing.T) {
 	if auth, _ := api.calls(); len(auth) != 0 {
 		t.Fatalf("an anonymous request reached the api: %v", auth)
 	}
-	cookie := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: time.Now().Add(time.Hour)})
+	sessionExpiry := time.Now().Add(time.Hour).Truncate(time.Second)
+	cookie := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: sessionExpiry})
 	var mints atomic.Int32
-	s.mintProxyToken = func(_ context.Context, cookie string) (string, error) {
+	var expiries []time.Time
+	s.mintProxyToken = func(_ context.Context, cookie string, expiresAt time.Time) (string, error) {
 		mints.Add(1)
+		expiries = append(expiries, expiresAt)
 		return "minted-for-" + cookie, nil
 	}
 	// A Bearer the browser sent itself is replaced; the cookie never leaves.
@@ -101,6 +104,11 @@ func TestAPIProxyAttachesTheSessionsBearerAndNoCookie(t *testing.T) {
 	if n := mints.Load(); n != 1 {
 		t.Errorf("minted %d times for one session; want once (held)", n)
 	}
+	// The child expires with its session (ASVS V7.4.1): the mint is asked
+	// for the session's own expiry, never the 30-day default.
+	if len(expiries) != 1 || !expiries[0].Equal(sessionExpiry) {
+		t.Errorf("mint expiries %v; want the session's own %v", expiries, sessionExpiry)
+	}
 	// Sign-out forgets the held token: the next request mints again.
 	s.proxyTokens.forget(db.HashToken(cookie))
 	if w := proxied(s, cookie, nil); w.Code != http.StatusOK || mints.Load() != 2 {
@@ -113,12 +121,12 @@ func TestAPIProxyRefusesWhenNoTokenCanBeMinted(t *testing.T) {
 	s := newTestServerWithAPIURL(t, api.srv.URL)
 	cookie := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: time.Now().Add(time.Hour)})
 	// Signed out between the gate's read and the mint: a definitive 401.
-	s.mintProxyToken = func(context.Context, string) (string, error) { return "", db.ErrNoWebSession }
+	s.mintProxyToken = func(context.Context, string, time.Time) (string, error) { return "", db.ErrNoWebSession }
 	if w := proxied(s, cookie, nil); w.Code != http.StatusUnauthorized {
 		t.Errorf("mint after sign-out = %d; want 401", w.Code)
 	}
 	// A store failure: a 500, logged; the api never sees a Bearer-less request.
-	s.mintProxyToken = func(context.Context, string) (string, error) { return "", errors.New("pool closed") }
+	s.mintProxyToken = func(context.Context, string, time.Time) (string, error) { return "", errors.New("pool closed") }
 	if w := proxied(s, cookie, nil); w.Code != http.StatusInternalServerError {
 		t.Errorf("mint failure = %d; want 500", w.Code)
 	}
@@ -126,7 +134,7 @@ func TestAPIProxyRefusesWhenNoTokenCanBeMinted(t *testing.T) {
 		t.Errorf("a request without a minted Bearer reached the api: %v", auth)
 	}
 	// A failed mint holds nothing: the next request mints again.
-	s.mintProxyToken = func(context.Context, string) (string, error) { return "later", nil }
+	s.mintProxyToken = func(context.Context, string, time.Time) (string, error) { return "later", nil }
 	if w := proxied(s, cookie, nil); w.Code != http.StatusOK {
 		t.Errorf("mint after a failure = %d; want 200", w.Code)
 	}
@@ -223,7 +231,9 @@ func TestAPIProxyForgetsABearerTheAPIRefused(t *testing.T) {
 	s := newTestServerWithAPIURL(t, api.URL)
 	cookie := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: time.Now().Add(time.Hour)})
 	var mints atomic.Int32
-	s.mintProxyToken = func(context.Context, string) (string, error) { return "mint-" + strconv.Itoa(int(mints.Add(1))), nil }
+	s.mintProxyToken = func(context.Context, string, time.Time) (string, error) {
+		return "mint-" + strconv.Itoa(int(mints.Add(1))), nil
+	}
 	if w := proxied(s, cookie, nil); w.Code != http.StatusUnauthorized {
 		t.Fatalf("the api's refusal = %d; want it passed through once", w.Code)
 	}
@@ -280,4 +290,12 @@ func TestProxyTokensWaiterMintsWhenTheLeaderWasCancelled(t *testing.T) {
 	if mints.Load() != 2 {
 		t.Errorf("mints = %d; want 2 (the leader's aborted one and the waiter's)", mints.Load())
 	}
+}
+
+// size is the number of held tokens: a test-side reader (the unused-symbol
+// ratchet keeps production code free of symbols only tests call).
+func (c *proxyTokens) size() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.held)
 }

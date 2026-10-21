@@ -61,7 +61,7 @@ type Server struct {
 	// session (0.29.110, stage 4): New sets it to the store's
 	// MintTokenForWebSession (kind "api", parent = the session); tests
 	// without a store plant their own. proxyTokens holds the answers.
-	mintProxyToken func(ctx context.Context, cookie string) (string, error)
+	mintProxyToken func(ctx context.Context, cookie string, expiresAt time.Time) (string, error)
 	proxyTokens    proxyTokens
 	tmpl           *template.Template
 	apiProxy       http.Handler   // reverse proxy for /api/* → cfg.APIInternalURL; nil on parse failure
@@ -110,11 +110,11 @@ func New(store *db.PostgresStore, cfg config.WebConfig, ghAPIBase string, logger
 		logger:    logger,
 	}
 	s.lookupSession = s.storeSession
-	s.mintProxyToken = func(ctx context.Context, cookie string) (string, error) {
+	s.mintProxyToken = func(ctx context.Context, cookie string, expiresAt time.Time) (string, error) {
 		if store == nil { // a test server without a store plants its own minter
 			return "", errors.New("no store to mint a proxy token")
 		}
-		return store.MintTokenForWebSession(ctx, cookie)
+		return store.MintTokenForWebSession(ctx, cookie, expiresAt)
 	}
 
 	baseURL := strings.TrimSuffix(cfg.BaseURL, "/")
@@ -406,6 +406,13 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, name string, dat
 	// templates put it in each POST form as csrf_token.
 	if m, ok := data.(map[string]any); ok {
 		m["CSRF"] = s.csrfToken(w, r)
+	}
+	// Every rendered page is one visitor's (a session's groups, the console's
+	// accounts, tokens and addresses): never stored by a browser's back
+	// cache or a shared cache (ASVS V14.3.2, the 0.29.112 review). A handler
+	// that set the header first keeps its value.
+	if w.Header().Get("Cache-Control") == "" {
+		w.Header().Set("Cache-Control", "no-store")
 	}
 	if err := s.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		// No request here: a render refused after the bound is http.ErrHandlerTimeout, which RequestEnded recognises on any context.

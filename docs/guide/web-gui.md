@@ -208,10 +208,12 @@ a GET answers `405`): a state change never rides a link a page could prefetch.
   expired rows are swept whenever a session or token is minted.
 - Administrator privilege is read from the account's row on every request:
   a demotion takes effect at the next request, not at the next login.
-- Signing out deletes the session and every API token the sign-in minted
-  through `/auth/token` (aveloxis-gui's token), so sign-out means signed
-  out everywhere; a token minted from a session that merely expired keeps
-  its own 30-day life.
+- Signing out deletes the session and every token minted from it — the
+  one aveloxis-gui exchanges through `/auth/token`, and the one the web
+  process holds to reach the API for the session's own pages (0.29.110) —
+  so sign-out means signed out everywhere. A `/auth/token` token minted
+  from a session that merely expired keeps its own 30-day life; the web
+  process's token expires with its session.
 - The session cookie carries a random token whose hash is a row of `aveloxis_ops.user_session_tokens` (kind `web`); nothing is signed, and `web.session_secret` was removed in 0.29.102.
 
 ## Running Alongside `aveloxis serve`

@@ -111,15 +111,19 @@ func (s *PostgresStore) DeleteWebSession(ctx context.Context, raw string) error 
 	return nil
 }
 
-// MintTokenForWebSession mints the Bearer token /auth/token answers for a
-// live web session (the default Bearer lifetime), recording the session
-// as its parent; ErrNoWebSession when the raw token names none — read and
+// MintTokenForWebSession mints a Bearer token for a live web session,
+// recording the session as its parent: /auth/token's, for the SPA, with
+// the default Bearer lifetime; the web proxy's (0.29.110), with the
+// session's own expiry, so the child expires with its parent and no
+// orphaned row outlives the session (ASVS V7.4.1, the 0.29.112 review G1);
+// expiresAt is absolute (no lifetime re-anchored at a second clock), and
+// /auth/token's token keeps its own life past the session on purpose; ErrNoWebSession when the raw token names none — read and
 // written in one statement that holds the session row KEY SHARE, so a
 // concurrent sign-out either waits for the mint and sweeps the token, or
 // finishes first and the mint answers ErrNoWebSession (see
 // DeleteWebSession).
-func (s *PostgresStore) MintTokenForWebSession(ctx context.Context, webRaw string) (string, error) {
-	return s.createSessionToken(ctx, 0, DefaultSessionTokenLifetime, sessionKindAPI, hashToken(webRaw))
+func (s *PostgresStore) MintTokenForWebSession(ctx context.Context, webRaw string, expiresAt time.Time) (string, error) {
+	return s.createSessionTokenUntil(ctx, 0, expiresAt, sessionKindAPI, hashToken(webRaw))
 }
 
 // deleteSessionTreeSQL deletes the sessions `where` selects AND every

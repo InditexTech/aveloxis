@@ -133,6 +133,10 @@ func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) (authInfo,
 		return authInfo{}, false
 	}
 	if !info.IsAdmin {
+		// Logged like the web twin's refusal (ASVS V16.3.2, the 0.29.82
+		// review P6, closed on this side by the 0.29.112 review): once a
+		// minute per user and kind, never the body.
+		s.logRefusal("not_admin", info, "path", r.URL.Path)
 		writeAuthError(w, http.StatusForbidden, "administrator access required")
 		return authInfo{}, false
 	}

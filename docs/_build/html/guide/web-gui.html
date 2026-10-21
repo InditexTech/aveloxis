@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Web GUI &mdash; Aveloxis 0.29.111 documentation</title>
+  <title>Web GUI &mdash; Aveloxis 0.29.112 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=4e2e6822"></script>
+      <script src="../_static/documentation_options.js?v=79d6e248"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -2016,10 +2016,12 @@ nobody out.</p></li>
 expired rows are swept whenever a session or token is minted.</p></li>
 <li><p>Administrator privilege is read from the account’s row on every request:
 a demotion takes effect at the next request, not at the next login.</p></li>
-<li><p>Signing out deletes the session and every API token the sign-in minted
-through <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> (aveloxis-gui’s token), so sign-out means signed
-out everywhere; a token minted from a session that merely expired keeps
-its own 30-day life.</p></li>
+<li><p>Signing out deletes the session and every token minted from it — the
+one aveloxis-gui exchanges through <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code>, and the one the web
+process holds to reach the API for the session’s own pages (0.29.110) —
+so sign-out means signed out everywhere. A <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> token minted
+from a session that merely expired keeps its own 30-day life; the web
+process’s token expires with its session.</p></li>
 <li><p>The session cookie carries a random token whose hash is a row of <code class="docutils literal notranslate"><span class="pre">aveloxis_ops.user_session_tokens</span></code> (kind <code class="docutils literal notranslate"><span class="pre">web</span></code>); nothing is signed, and <code class="docutils literal notranslate"><span class="pre">web.session_secret</span></code> was removed in 0.29.102.</p></li>
 </ul>
 </section>

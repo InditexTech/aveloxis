@@ -38,14 +38,24 @@ func (s *Server) handleAPIProxy(w http.ResponseWriter, r *http.Request, sess *Se
 		http.Error(w, "sign out of the web GUI through POST /logout", http.StatusForbidden)
 		return
 	}
+	// The child token expires with its session (ASVS V7.4.1, the 0.29.112
+	// review G1: minted for the default 30 days it outlived its 24-hour
+	// parent as an orphaned, still valid row): the session's own expiry —
+	// the value of its row's column — is passed as an absolute instant, so
+	// the child's row expires at the parent's instant by construction, and
+	// the held entry ends then too.
 	now := time.Now()
 	expires := now.Add(db.DefaultSessionTokenLifetime)
 	if !sess.ExpiresAt.IsZero() && sess.ExpiresAt.Before(expires) {
-		expires = sess.ExpiresAt // the entry ends with the session
+		expires = sess.ExpiresAt
+	}
+	if !expires.After(now) { // the session ended between the gate's read and now
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
 	}
 	key := db.HashToken(sess.cookie)
 	bearer, err := s.proxyTokens.bearer(r.Context(), key, now, expires, func(ctx context.Context) (string, error) {
-		return s.mintProxyToken(ctx, sess.cookie)
+		return s.mintProxyToken(ctx, sess.cookie, expires)
 	})
 	if errors.Is(err, db.ErrNoWebSession) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)

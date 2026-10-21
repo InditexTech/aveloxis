@@ -675,6 +675,10 @@ var deployChecklists = map[string][]deployStep{
 	// v0.29.111 (stage 5 of summary/59): documentation only — 0.29.110's
 	// ladder with a note on the start step.
 	"0.29.111": v029111DeployChecklist,
+	// v0.29.112 (the CodeQL and ASVS passes on stages 3–5): console numbers
+	// parsed at the column's width; no schema change — 0.29.111's ladder
+	// with a note on the start step.
+	"0.29.112": v029112DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,
@@ -1798,3 +1802,7 @@ var v029110DeployChecklist = withStartNote(v029109DeployChecklist, "0.29.110 (st
 // v0.29.111 (2026-10-20): stage 5 of the admin-console program —
 // documentation. 0.29.110's ladder; the notes accumulate.
 var v029111DeployChecklist = withStartNote(v029110DeployChecklist, "0.29.111 (stage 5 of the admin-console program): documentation only — the web GUI guide's Administration section, the serve monitor's loopback-only note, the GitLab-group parity statement, the API convention on the value field, and the REST API guide trimmed to prose with pointers into the reference. Nothing to run beyond the ladder. ")
+
+// v0.29.112 (2026-10-21): the CodeQL and OWASP ASVS passes over stages 3–5.
+// 0.29.111's ladder; the notes accumulate.
+var v029112DeployChecklist = withStartNote(v029111DeployChecklist, "0.29.112 (the CodeQL and ASVS passes on the admin console): no schema change. The web console's number fields (quotas, allowances, lifetimes, positions) are parsed at the store's int4 width, so a value past it is refused at the form as out of range instead of reaching the service. Nothing to change in aveloxis.json. ")

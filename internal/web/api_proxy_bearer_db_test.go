@@ -61,9 +61,22 @@ func TestAPIProxyBearerIsTheSessionsOwnToken(t *testing.T) {
 	if uid, err := store.ValidateSessionToken(ctx, bearer); err != nil || uid != userID {
 		t.Errorf("the api's validator answers %d, %v for the proxy's Bearer; want the session's user %d", uid, err, userID)
 	}
-	var parentIsSession bool
-	if err := store.Pool().QueryRow(ctx, `SELECT parent_token = $2 FROM aveloxis_ops.user_session_tokens WHERE token = $1`, db.HashToken(bearer), db.HashToken(raw)).Scan(&parentIsSession); err != nil || !parentIsSession {
-		t.Errorf("the minted token's parent is not the web session (%v, %v)", parentIsSession, err)
+	var parentIsSession, expiresWithParent bool
+	if err := store.Pool().QueryRow(ctx, `SELECT c.parent_token = p.token, c.expiration <= p.expiration
+		FROM aveloxis_ops.user_session_tokens c JOIN aveloxis_ops.user_session_tokens p ON p.token = $2
+		WHERE c.token = $1`, db.HashToken(bearer), db.HashToken(raw)).Scan(&parentIsSession, &expiresWithParent); err != nil || !parentIsSession || !expiresWithParent {
+		t.Errorf("the minted token must be the web session's child and expire no later than it (parent %v, expires-with %v, %v)", parentIsSession, expiresWithParent, err)
+	}
+	// The SPA's exchange is not capped at the session: a /auth/token token
+	// keeps its own 30-day life past the session on purpose (the documented
+	// contract; a first cut of 0.29.112 capped every child and was withdrawn).
+	exchanged, err := store.MintTokenForWebSession(ctx, raw, time.Now().Add(db.DefaultSessionTokenLifetime))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outlives bool
+	if err := store.Pool().QueryRow(ctx, `SELECT c.expiration > p.expiration FROM aveloxis_ops.user_session_tokens c JOIN aveloxis_ops.user_session_tokens p ON p.token = $2 WHERE c.token = $1`, db.HashToken(exchanged), db.HashToken(raw)).Scan(&outlives); err != nil || !outlives {
+		t.Errorf("the /auth/token exchange must keep its 30-day life past the 24-hour session (outlives %v, %v)", outlives, err)
 	}
 	// Sign-out: the store revokes the child and the process forgets it.
 	r := httptest.NewRequest(http.MethodPost, "/logout", nil)

@@ -4180,7 +4180,9 @@ paths:
                     type: integer
                   page_size:
                     type: integer
-                    const: 100
+                    description: The page size applied (the request's, at most 100; 100 when none was given).
+                    minimum: 1
+                    maximum: 100
                   sort:
                     type: string
                     description: The sort key applied; empty for the default order.

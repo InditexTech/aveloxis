@@ -158,6 +158,9 @@ func TestUsersPageShowsJoinedAndLastSeen(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("GET /admin/users = %d; want 200", w.Code)
 	}
+	if cc := w.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("a console page's Cache-Control = %q; want no-store (ASVS V14.3.2)", cc)
+	}
 	page := w.Body.String()
 	// The date the page shows is the row's, read back (not time.Now(): the
 	// fixture and the page can straddle midnight UTC — round-3 review).

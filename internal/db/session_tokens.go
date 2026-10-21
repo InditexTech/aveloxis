@@ -75,11 +75,25 @@ func newSecretBytes() ([]byte, error) {
 // /auth/token minted it from a web session ("" otherwise, NULL). The
 // expired rows are swept after every mint.
 func (s *PostgresStore) createSessionToken(ctx context.Context, userID int, lifetime time.Duration, kind, parentHash string) (string, error) {
+	return s.createSessionTokenUntil(ctx, userID, time.Now().Add(lifetime), kind, parentHash)
+}
+
+// createSessionTokenUntil is createSessionToken with the expiry absolute:
+// the row expires at expiresAt as given, never re-anchored at this clock
+// (round-1 review of 0.29.112, F1: a lifetime re-anchored at the store's
+// clock could land a second past the parent). The web proxy passes its
+// session's own expiry — the value of that row's column — so its child
+// expires at the parent's instant by construction; /auth/token passes
+// now + the default lifetime, and that token keeps its own life past the
+// session on purpose (the documented SPA behaviour), so no cap at the
+// parent is applied here.
+func (s *PostgresStore) createSessionTokenUntil(ctx context.Context, userID int, expiresAt time.Time, kind, parentHash string) (string, error) {
 	token, err := newSecretToken()
 	if err != nil {
 		return "", err
 	}
 	now := time.Now().Unix()
+	expiration := expiresAt.Unix()
 	if parentHash != "" {
 		// Minted FROM a web session: the user is the session's, and the
 		// row is written only while that session is live, under KEY SHARE
@@ -89,7 +103,7 @@ func (s *PostgresStore) createSessionToken(ctx context.Context, userID int, life
 			SELECT $1, p.user_id, $2, $3, TRUE, $4, p.token
 			FROM aveloxis_ops.user_session_tokens p
 			WHERE p.token = $5 AND p.kind = $6 AND p.expiration > $2
-			FOR KEY SHARE`, hashToken(token), now, now+int64(lifetime.Seconds()), kind, parentHash, sessionKindWeb)
+			FOR KEY SHARE`, hashToken(token), now, expiration, kind, parentHash, sessionKindWeb)
 		if err != nil {
 			return "", fmt.Errorf("create %s session token: %w", kind, err)
 		}
@@ -99,7 +113,7 @@ func (s *PostgresStore) createSessionToken(ctx context.Context, userID int, life
 	} else {
 		_, err = s.pool.Exec(ctx, `
 		INSERT INTO aveloxis_ops.user_session_tokens (token, user_id, created_at, expiration, token_hashed, kind, parent_token)
-		VALUES ($1, $2, $3, $4, TRUE, $5, NULL)`, hashToken(token), userID, now, now+int64(lifetime.Seconds()), kind)
+		VALUES ($1, $2, $3, $4, TRUE, $5, NULL)`, hashToken(token), userID, now, expiration, kind)
 		if err != nil {
 			return "", fmt.Errorf("create %s session token: %w", kind, err)
 		}

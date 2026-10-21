@@ -108,10 +108,3 @@ func (c *proxyTokens) forget(key string) {
 	delete(c.held, key)
 	c.mu.Unlock()
 }
-
-// size is the number of held tokens (tests).
-func (c *proxyTokens) size() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return len(c.held)
-}

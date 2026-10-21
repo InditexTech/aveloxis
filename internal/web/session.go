@@ -201,7 +201,7 @@ func generateToken() string {
 // the SPA can store it (localStorage) and attach it as a Bearer.
 func (s *Server) handleAuthToken(w http.ResponseWriter, r *http.Request, sess *Session) {
 	// Minted FROM the web session (B4): signing the browser out deletes it.
-	token, err := s.store.MintTokenForWebSession(r.Context(), sess.cookie)
+	token, err := s.store.MintTokenForWebSession(r.Context(), sess.cookie, time.Now().Add(db.DefaultSessionTokenLifetime))
 	if errors.Is(err, db.ErrNoWebSession) {
 		// Signed out in another tab between the gate's read and the mint:
 		// a definitive answer, not a failure (review A4).
