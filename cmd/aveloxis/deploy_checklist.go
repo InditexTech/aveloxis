@@ -691,6 +691,10 @@ var deployChecklists = map[string][]deployStep{
 	// keeps the GUI host's /api/ on the web process; documentation only —
 	// 0.29.114's ladder with a note on the start step.
 	"0.29.115": v029115DeployChecklist,
+	// v0.29.116 (the closing suite's home-cache flake): one redundant
+	// background load fixed; no schema change — 0.29.115's ladder with a
+	// note on the start step.
+	"0.29.116": v029116DeployChecklist,
 	"0.29.103": v029102DeployChecklist,
 	"0.29.102": v029102DeployChecklist,
 	"0.29.101": v029101DeployChecklist,
@@ -1832,3 +1836,7 @@ var v029114DeployChecklist = withStartNote(v029113DeployChecklist, "0.29.114 (Co
 // v0.29.115 (2026-10-21): Copilot's second review of PR #241.
 // 0.29.114's ladder; the notes accumulate.
 var v029115DeployChecklist = withStartNote(v029114DeployChecklist, "0.29.115 (Copilot on PR #241): documentation only. With api.require_auth true, the GUI host's /api/ must reach the web process, which attaches the signed-in session's Bearer: an nginx location that sends the GUI host's /api/ straight to the api port (the deployment guide's earlier recipe) answers 401 to every browser outside exempt_cidrs. Check the site before start all: remove such a location so /api/ falls to the web's location, and give scripts that call the api with their own token a host of their own (the guide's second server block); aveloxis-gui's own host forwards /api/ to the api itself and needs no change. ")
+
+// v0.29.116 (2026-10-21): the home-repos refresh claim re-checks the entry.
+// 0.29.115's ladder; the notes accumulate.
+var v029116DeployChecklist = withStartNote(v029115DeployChecklist, "0.29.116: no schema change. The api's home-page cache no longer starts a second background reload of an account's ranking when one finished a moment before (one redundant query, and the test that expected one reload failed about once in sixty runs). Nothing to change in aveloxis.json. ")

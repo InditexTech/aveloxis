@@ -348,3 +348,30 @@ func TestServeHomeReposNilLoaderFailsClosed(t *testing.T) {
 }
 
 func strconvAtoi(v string) (int, error) { return strconv.Atoi(v) }
+
+// TestHomeCacheRefreshClaimRechecksTheEntry (2026-10-21, a pre-existing
+// flake of TestHomeCacheServesStaleAndRefreshesInBackground, about one run
+// in sixty under -race): get() and tryBeginRefresh() take the lock apart,
+// so a request that read the entry stale while a refresh was running could
+// claim the slot just after that refresh stored a fresh body and released
+// it — a second, redundant load that replaced the body the first had just
+// stored. The claim re-checks the entry under its own lock: a fresh entry
+// is not refreshed.
+func TestHomeCacheRefreshClaimRechecksTheEntry(t *testing.T) {
+	var c homeReposCache
+	c.setIfGen(7, 50, []byte(`{"repos":[]}`), 0) // fresh: the refresh that just finished
+	if _, ok := c.tryBeginRefresh(7, 50); ok {
+		t.Fatal("a refresh was claimed for a fresh entry; the request that read it stale must not start a second load")
+	}
+	c.mu.Lock()
+	e := c.entries[homeCacheKey{7, 50}]
+	e.expires = time.Now().Add(-time.Minute)
+	c.entries[homeCacheKey{7, 50}] = e
+	c.mu.Unlock()
+	if _, ok := c.tryBeginRefresh(7, 50); !ok {
+		t.Fatal("a stale entry must be refreshable")
+	}
+	if _, ok := c.tryBeginRefresh(7, 50); ok {
+		t.Fatal("a second claim while one refresh is in flight must fail (single-flight)")
+	}
+}

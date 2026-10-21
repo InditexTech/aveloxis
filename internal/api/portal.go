@@ -1054,7 +1054,11 @@ func (c *homeReposCache) setIfGen(userID, limit int, body []byte, gen uint64) {
 
 // tryBeginRefresh claims the per-user refresh slot and returns the
 // generation the refresh is conditioned on; ok=false means a refresh
-// is already in flight.
+// is already in flight, or the entry is fresh again. The second arm is
+// checked here, under the claim's own lock (2026-10-21): get() released
+// the lock before the caller got here, so a refresh that stored a fresh
+// body and freed the slot in between would otherwise be followed by a
+// redundant second load overwriting it (TestHomeCacheRefreshClaimRechecksTheEntry).
 func (c *homeReposCache) tryBeginRefresh(userID, limit int) (gen uint64, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1064,6 +1068,9 @@ func (c *homeReposCache) tryBeginRefresh(userID, limit int) (gen uint64, ok bool
 	k := homeCacheKey{userID, limit}
 	if c.refreshing[k] {
 		return 0, false
+	}
+	if e, present := c.entries[k]; present && !time.Now().After(e.expires) {
+		return 0, false // fresh since the caller read it: nothing to refresh
 	}
 	c.refreshing[k] = true
 	return c.gen[userID], true
