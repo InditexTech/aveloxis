@@ -17,11 +17,11 @@ import (
 func TestWebQueueDueAtIncludesDate(t *testing.T) {
 	code := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleMonitor(")
 
-	idx := strings.Index(code, "row.Due = j.DueAt.Format(")
+	idx := strings.Index(code, "Due: j.DueAt.Format(")
 	if idx < 0 {
-		t.Fatal("cannot find row.Due = j.DueAt.Format(...) in handleMonitor")
+		t.Fatal("cannot find Due: j.DueAt.Format(...) in handleMonitor")
 	}
-	tail := code[idx+len("row.Due = j.DueAt.Format("):]
+	tail := code[idx+len("Due: j.DueAt.Format("):]
 	end := strings.Index(tail, ")")
 	if end < 0 {
 		t.Fatal("malformed DueAt.Format call")

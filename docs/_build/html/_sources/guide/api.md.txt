@@ -8,6 +8,140 @@ aveloxis api            # listens on api.addr, 127.0.0.1:8383 by default; --addr
 
 The API runs as a separate process alongside `aveloxis serve` (collection) and `aveloxis web` (GUI). All three share the same PostgreSQL database. It refuses to start until `aveloxis migrate` has brought the schema to its own version.
 
+## Changes for API clients in 0.29.114
+
+`POST /api/v1/me/sessions/revoke` is never refused by a spent request quota
+and is not counted, like `POST /api/v1/auth/logout`: an account at its hourly
+or daily limit could not sign out everywhere (it got `429`).
+
+## Changes for API clients in 0.29.113
+
+Sessions (OWASP ASVS 5.0 review, release notes 0.29.113). Three routes:
+`GET /api/v1/me/sessions` lists the account's live sessions (browser
+sessions, `/auth/token` tokens, the web proxy's tokens; the one presenting
+the request is `current`), `POST /api/v1/me/sessions/revoke` ends them
+all (the caller's own included — its next request is `401`), and
+`POST /api/v1/admin/users/{userID}/sessions/revoke` lets an administrator
+end an account's. `POST /api/v1/me/email` now answers `403
+{"error": "reauthentication_required"}` when the token's sign-in is older
+than `web.session_idle_minutes` (30 by default; every session token — the
+SPA's from `/auth/token`, the web proxy's — is judged by the sign-in of the
+browser session it was minted from, and one whose browser session has
+expired is refused): sign in again and retry. A
+browser session of the web GUI idle past that bound is signed out; a
+`/auth/token` token is not (it lives its 30 days, and the SPA can keep its
+own idle rule). Every answer of the api process's handlers carries
+`X-Content-Type-Options: nosniff` and `Strict-Transport-Security` (the
+`http_timeout_seconds` 503 is written outside them and carries neither). The
+per-IP `429` is logged once a minute per address.
+
+## Changes for API clients in 0.29.110
+
+Stage 4 of the admin-console program (release notes 0.29.110) changes how the
+**built-in web GUI** reaches this API, not the API itself: the web process
+attaches a Bearer token of the signed-in session to every `/api/` request it
+forwards (minted on the session's first such request, held in the web
+process, revoked by sign-out, replaced when the API refuses it) and forwards
+no cookie. For a client of the web process: `POST /api/v1/auth/logout`
+through the web's `/api/` proxy is refused (`403`) — the built-in GUI signs
+out through `POST /logout`, which revokes the proxy's token with the session
+— and the pages' requests now count against the account's session quotas
+(shadow by default). Nothing changes for a client that calls the API with its
+own token.
+
+## Changes for API clients in 0.29.109
+
+Stage 3 of the admin-console program (release notes 0.29.109). Each line
+gives the new answer and the reason.
+
+- **`GET /api/v1/admin/monitor/queue` accepts `page_size`** (at most 100;
+  earlier releases always answered 100), carries `warnings` only when a
+  batched read behind the page failed (the rows then show the repository id,
+  never a bare slash, and the counts 0 — said, not shown as the truth), and
+  answers an absurd `page` with the last addressable (empty) page and a `q`
+  longer than any repository name with an empty page and a warning, where
+  both were a `500` (an overflowed offset; a trigram scan nothing could
+  match).
+- **A collection's name is at most 200 characters and a whitespace-only name
+  is refused** (`name required`; it was stored as given); **its description
+  at most 1,000**; **a `position` outside int4 is a `400`** (`position must
+  be between -2147483648 and 2147483647`) where the encoder's refusal was a
+  `500`. One rule per text, in the service, so the API and the web console
+  refuse alike.
+- **`GET /api/v1/admin/capacity/accounts?login=` answers `404`** for an empty
+  login or one longer than 255 characters (no forge issues one) without a
+  query; the value is trimmed first in both GUIs.
+- **A forge-ID adoption `note` is bounded at 1,000 characters** (it was 1,000
+  bytes), the unit a form counts.
+- **A value the database refuses on an operation that takes no URL** (SQLSTATE
+  class 22, such as a NUL byte in a name) answers `400` `a value in the
+  request was refused by the database (invalid text, or out of range)` where
+  it answered `500`; the URL-taking operations keep their URL sentence.
+- **A collection id of 0 or less is a `404`** (`no collection with that id`),
+  as it was before the rules moved into the service.
+- **The comparison page's "100%" mode is gone** (the built-in GUI draws
+  `/api/v1/compare`, raw counts or z-scores); the API's comparison is
+  unchanged.
+
+## Changes for API clients in 0.29.100
+
+Stage 1 of the admin-console program (release notes 0.29.100; the 58 §7
+handler fixes): the administrative rules moved into one service, and
+several answers changed with them. Each line gives the new answer and the
+reason; the per-route notes below carry the detail.
+
+- **A group that is not the caller's is a `404` on every group route**
+  (`/groups/{id}/repos`, `/orgs`, `/pending-adds`, the add, the removal),
+  the same answer as for a group that does not exist: a group's existence
+  is not disclosed. An administrator's session reads any group; an API
+  token only its owner's.
+- **A rejected group refuses an add with `409`**; before, the add went
+  through and the scan skipped it.
+- **Every refusal body on the group, decision, role, removal and forge-ID
+  adopt routes is JSON `{"error": "…"}`**; some were plain text. (The
+  supply-chain routes' `?group=` refusals — `400` for a group id that is not
+  one, `404` for a group that is not the caller's — stay plain text, as the
+  reference says.)
+- **A paste's lines are each parsed as a repository URL first**: a missing
+  scheme is supplied, GitHub, GitLab and any git host are accepted, a line
+  that is not a repository URL comes back in `invalid` (`url: why`,
+  credentials redacted) and is skipped while the rest go through; a paste
+  with no usable line is a `400`. A GitHub deep link into a repository
+  (`github.com/o/r/tree/main`, `/issues/…`) is not a repository URL; a GitLab
+  path is taken as given, since a GitLab repository may sit at any depth.
+- **Collections answer what they hold**: an id that does not exist is a `404`
+  on the detail, the copy (which answered `200` and linked nothing), the
+  update, the delete and the member-group routes (which answered `200` or
+  `500`); a duplicate name is a `409` (it was a `500`).
+- **The legacy pending-group approval is gone**: `GET /api/v1/admin/groups/pending`
+  and the group decision route `POST /api/v1/admin/groups/{id}/{decision}`
+  with its `approve` arm are removed — groups have been born approved
+  since v0.27.20 and the migrate converted every pending one; the
+  add-requests queue is the approval unit, and its own `approve`/`reject`
+  decisions (`POST /api/v1/admin/add-requests/{id}/{decision}`) are
+  unchanged. `POST /api/v1/admin/groups/{id}/reject` remains.
+- **`POST /api/v1/admin/users/{id}/admin` requires the `admin` field** (`{}`
+  used to demote the account); self-demotion is a `400`, no such user a `404`.
+- **`POST /api/v1/admin/capacity/contact` requires `contact_email`** (`{}`
+  used to clear the address; send `""` to clear).
+- **An API token never administers**, whoever owns it (`403` on every
+  `/admin/*` route), and never reads as an administrator. A demoted
+  administrator's open session is refused by every operation of the service
+  at once (privilege is read per operation); the administrative listing
+  routes follow within a minute (the API's authorization cache).
+- **GitLab groups are enumerated**, by `serve`, by full group path on the
+  configured `gitlab.base_url` instance when GitLab API keys exist; an
+  organization URL on that instance is registered as a GitLab group and a
+  repository URL on it is collected as a GitLab repository, whatever its
+  host name says. A GitLab group on another instance (or on any instance
+  while `gitlab.base_url` is empty) is refused at the add (`400`) and at the
+  decision (`409`), as a GitHub organization off `github.base_url` is.
+- **A forge ID is a positive decimal integer**: `POST /api/v1/admin/forge-id-changes/{repoID}/adopt`
+  refuses anything else with `400` instead of recording it.
+- **A collection copy's `group_name` is bounded** like any group name (at
+  most 200 characters, `400` JSON past it; the copy created the group
+  unbounded before).
+
 ## Changes for API clients in 0.29.102
 
 Stage 2 of the admin-console program (release notes 0.29.102) makes the web
@@ -30,7 +164,7 @@ web`, the OAuth origin aveloxis-gui signs in through):
   origin; a browser's `Sec-Fetch-Site: cross-site` is refused. aveloxis-gui
   on its own origin therefore needs `web.spa_url` set to that origin. A
   signed-in HTML form also carries a form token; the two GUI calls do not.
-- **Every answer of the web process carries security headers**: a
+- **Every answer of the web process's handlers carries security headers** (the `http_timeout_seconds` 503 is written outside them): a
   Content-Security-Policy with one script source (`/static/`, which now
   serves the page scripts and Chart.js — no CDN), `frame-ancestors 'none'`,
   `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and a
@@ -115,11 +249,7 @@ monitor's queue view). v0.27.77 adds `commits`, `issues`, and `prs`
 totals — never a live scan of the data tables) and `contributors`
 (the contributor catalog count). Served from a 60-second cache that
 keeps the last good values if the database hiccups. Still subject to
-the per-IP rate limiter.
-
-```json
-{"repos": 94104, "commits": 512345678, "issues": 9123456, "prs": 8123456, "contributors": 1712345}
-```
+the per-IP rate limiter. The fields are in the [reference](../api/reference.rst) (`publicFleetStats`).
 
 ### Repository Statistics
 
@@ -127,22 +257,7 @@ the per-IP rate limiter.
 GET /api/v1/repos/{repoID}/stats
 ```
 
-Returns gathered (collected totals) vs metadata (API-reported totals) for a single repo. An id no repository has is a `404` (since 0.29.99; see "Changes for API clients").
-
-```json
-{
-  "repo_id": 42,
-  "gathered_prs": 1500,
-  "gathered_issues": 800,
-  "gathered_commits": 5000,
-  "metadata_prs": 1520,
-  "metadata_issues": 810,
-  "metadata_commits": 5100,
-  "vulnerabilities": 12,
-  "critical_vulns": 2,
-  "forked_from": "NixOS/nixpkgs"
-}
-```
+Returns gathered (collected totals) vs metadata (API-reported totals) for a single repo. An id no repository has is a `404` (since 0.29.99; see "Changes for API clients"). The fields are in the [reference](../api/reference.rst) (`repositoryStats`). What the counts mean:
 
 - **Gathered** counts are the collection queue's cached cumulative
   totals, as of the repo's last completed collection cycle (v0.27.85 —
@@ -212,12 +327,11 @@ Operator-issued API tokens for people who need more than the per-IP limit
 authenticates as that account, with its repository scope; it is counted
 against its own hourly and daily allowances instead of the per-IP limit.
 
-- `GET /api/v1/admin/api-tokens` lists every granted token, newest first:
-  `token_id`, `user_id`, `owner_login`, `label`, `created_by`,
-  `created_by_login`, `created_at`, `expires_at`, `rate_limit_per_hour`,
-  `rate_limit_per_day`, `last_used_at` and `revoked_at`, plus the current
-  `settings`. It never
-  carries a token or its hash: only the hash is stored.
+- `GET /api/v1/admin/api-tokens` lists every granted token, newest first
+  (its owner, label, who granted it and when, expiry, allowances, last use
+  and revocation; the fields are in the reference, `apiTokens`), plus the
+  current `settings`. It never carries a token or its hash: only the hash
+  is stored.
 - `POST /api/v1/admin/api-tokens` grants one. Body:
   `{"user_id": 12, "label": "who or what it is for", "lifetime_days": 30,
   "rate_limit_per_hour": 1000, "rate_limit_per_day": 10000}`; the last
@@ -266,12 +380,13 @@ The fair-use quotas (see "Rate limits" below and the `capacity` section
 of the configuration guide), for aveloxis-gui's Capacity page.
 Administrator sessions only, like the token routes.
 
-- `GET /api/v1/admin/capacity` answers every quota as applied
-  (`name`, `allowed`, `mode` — `enforce`, `shadow` or `off` — `source`,
-  the `aveloxis.json` word, and `editable`), the `contact_email` refusals
-  name, `signups_per_day` (new accounts per UTC day over the last 30
-  days), the `signup_allowlist`, the accounts with `overrides`, and the
-  `busiest_today` accounts by saved session requests (at most 25).
+- `GET /api/v1/admin/capacity` answers every quota as applied (its value,
+  mode — `enforce`, `shadow` or `off` — and `source`, the `aveloxis.json`
+  word, with `editable` for the ones this route may change), the contact
+  address refusals name, sign-ups per UTC day over the last 30 days, the
+  sign-up allowlist, the accounts with their own values, and the busiest
+  accounts today by saved session requests (at most 25). The fields are in
+  the reference (`capacityOverview`).
 - `GET …/capacity/largest` lists the accounts with the most repositories
   in their groups (at most 25). It reads every group link, so the page
   loads it only when asked.
@@ -335,27 +450,9 @@ Returns weekly aggregated counts for commits, PRs opened, PRs merged, and issues
 
 Every commit window on this API — this series, `/contributors/top`, `/contributions/*`, `/compare` — ends no later than the latest plausible commit time, two UTC days after now, and starts no earlier than the earliest, 1970-01-02, whatever `since` and `until` say. An author timestamp is an absolute instant, so only a wrong committer clock can place one in the future (the margin is a day of skew rounded to a day-aligned edge), and a Unix clock cannot place one before the epoch, which is what an unset clock stamps. Repositories carry the occasional author date in 2080 or 1970, and such a date must not stretch a window. The rows stay stored; only the windows are bounded.
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `since` | date (YYYY-MM-DD) | 2 years ago | Start date for time series |
-| `until` | date (YYYY-MM-DD) | the latest plausible commit time | Last day of the window, inclusive |
-
-A value that does not parse as `YYYY-MM-DD` is a `400` (since 0.29.99).
-
-```jsonc
-{
-  "repo_id": 42,
-  "repo_name": "augur",
-  "repo_owner": "aveloxis",
-  "commits": [
-    {"week_start": "2024-01-01T00:00:00Z", "count": 15},
-    {"week_start": "2024-01-08T00:00:00Z", "count": 22}
-  ],
-  "prs_opened": [ /* ... */ ],
-  "prs_merged": [ /* ... */ ],
-  "issues": [ /* ... */ ]
-}
-```
+`since` (default: two years ago) and `until` (default: the latest plausible
+commit time; the last day of the window, inclusive) are `YYYY-MM-DD`; a value
+that does not parse is a `400` (since 0.29.99). The fields are in the [reference](../api/reference.rst) (`repositoryTimeSeries`).
 
 Weeks are Monday-aligned via PostgreSQL `date_trunc('week', timestamp)`. Queries use indexed timestamp columns for fast responses even on large databases.
 
@@ -365,15 +462,7 @@ Weeks are Monday-aligned via PostgreSQL `date_trunc('week', timestamp)`. Queries
 GET /api/v1/repos/{repoID}/licenses
 ```
 
-Returns a summary of dependency licenses with counts and OSI compliance status.
-
-```json
-[
-  {"license": "MIT", "count": 45, "is_osi": true},
-  {"license": "Apache-2.0", "count": 12, "is_osi": true},
-  {"license": "Unknown", "count": 3, "is_osi": false}
-]
-```
+Returns a summary of dependency licenses with counts and OSI compliance status, in an envelope that says whether the repository has been scanned at all (see "Vulnerabilities and home tab" below). The fields are in the [reference](../api/reference.rst) (`repositoryLicenses`).
 
 `license` is the table's row key: the license normalized to canonical SPDX, with the operands of `OR` and `AND` in a fixed order, so `MIT OR Apache-2.0`, `Apache-2.0 OR MIT` and `MIT/Apache-2.0` are one row (since v0.29.67). `is_osi` follows the SPDX license list's `isOsiApproved` (the list is embedded; no network): an `OR` is approved when any option is, an `AND` when every term is, and `X WITH exception` follows `X`. `Unknown` and free text are never approved, including an `OR` with free text in one option (`MIT OR proprietary` is not an expression); a `LicenseRef-` option counts as recognized.
 
@@ -387,14 +476,7 @@ Returns a summary of dependency licenses with counts and OSI compliance status.
 GET /api/v1/repos/search?q=augur
 ```
 
-Case-insensitive search across repo name, owner, and URL. Returns up to 20 matches; `[]` when nothing matches. `%` and `_` in the query match themselves (since 0.29.99). Used by the comparison page's autocomplete search.
-
-```json
-[
-  {"id": 2, "owner": "aveloxis", "name": "augur"},
-  {"id": 31, "owner": "chaoss", "name": "augur-license"}
-]
-```
+Case-insensitive search across repo name, owner, and URL. Returns up to 20 matches (id, owner, name); `[]` when nothing matches. `%` and `_` in the query match themselves (since 0.29.99). Used by the comparison page's autocomplete search. The fields are in the [reference](../api/reference.rst) (`repositorySearch`).
 
 ### SBOM Download
 
@@ -434,25 +516,7 @@ The `until` date is treated as **inclusive** of the entire calendar day — the 
 
 A date that does not parse as `YYYY-MM-DD` is a `400` naming the parameter (since 0.29.99; it fell back to the default before, which hid a client's typo as a default window), and so is `since >= until`.
 
-Response shape:
-
-```jsonc
-[
-  {
-    "cntrb_id": "01000001-0000-4000-8000-000000000000",
-    "login": "alice",
-    "full_name": "Alice Anderson",
-    "email": "alice@example.com",
-    "profile_company": "Acme Corp",
-    "location": "Berlin",
-    "activity_class": "private-active",
-    "public_contribs_year": 0,
-    "restricted_contribs_year": 812,
-    "last_contribution_year": 2026
-  }
-  // ...more rows
-]
-```
+One row per person: the identity (`cntrb_id`, `login`, `full_name`, `email`, `profile_company`, `location`) and the activity classification below. The fields are in the [reference](../api/reference.rst) (`repositoryContributorIdentities`).
 
 All string fields are normalized server-side: `""` represents "no value recorded" (no per-field null handling needed on the client). Ordering is by `login NULLS LAST, full_name NULLS LAST` so unidentifiable contributors sort to the bottom of the roster.
 
@@ -506,15 +570,7 @@ Returns the count of **distinct contributors** per affiliation, using the same w
 
 Same `since` / `until` parameters as the identities endpoint; same behavior on malformed input and `since >= until`.
 
-Response shape:
-
-```json
-[
-  {"affiliation": "Acme Corp", "contributor_count": 47},
-  {"affiliation": "RedHat",    "contributor_count": 12},
-  {"affiliation": "(unknown)", "contributor_count": 31}
-]
-```
+One row per affiliation with its distinct-contributor count. The fields are in the [reference](../api/reference.rst) (`repositoryContributorAffiliations`).
 
 Ordered by `contributor_count DESC` then `affiliation ASC`. The `(unknown)` bucket is included rather than hidden so callers can decide whether to surface unaffiliated contributors (often the right call on community projects) or omit them.
 
@@ -590,25 +646,7 @@ same repo scope as every other per-repo endpoint. This endpoint's answers
 are cached as the caching paragraph above describes; `/contributors/elsewhere`
 reads other repositories' activity and keeps a 60-second cache.
 
-Response:
-
-```json
-{
-  "since": "2024-07-31T00:00:00Z",
-  "until": "0001-01-01T00:00:00Z",
-  "limit": 20,
-  "contributors": [
-    {
-      "cntrb_id": "01001234-...",
-      "login": "octocat",
-      "full_name": "Octo Cat",
-      "activity_class": "active",
-      "commits": 412, "issues": 38, "prs": 91, "reviews": 130, "comments": 505,
-      "total": 1176
-    }
-  ]
-}
-```
+The answer echoes the window and the limit and ranks the contributors with their per-kind counts and a total. The fields are in the [reference](../api/reference.rst) (`repositoryTopContributors`).
 
 What counts, per column: `commits` = DISTINCT commit hashes authored
 (windowed on the commit's author timestamp); `issues` = issues opened;
@@ -639,25 +677,7 @@ For the repo's top contributors (same ranking as `/contributors/top`;
 v0.27.58 contributor daily-history tables (GitHub
 contributionsCollection data), aggregated over the window (`since`
 defaults to the trailing 180 days — the standard history window).
-Response rows per contributor:
-
-```json
-{
-  "since": "2026-02-01", "limit": 10,
-  "contributors": [
-    {
-      "cntrb_id": "0100...", "login": "octocat",
-      "backfilled_at": "2026-07-30T02:11:00Z",
-      "elsewhere": [
-        {"repo_full_name": "kubernetes/kubernetes", "repo_id": 4021,
-         "active_days": 14, "commits": 33, "issues": 2, "prs": 5, "reviews": 9},
-        {"repo_full_name": "torvalds/linux",
-         "active_days": 3, "commits": 4, "issues": 0, "prs": 0, "reviews": 0}
-      ]
-    }
-  ]
-}
-```
+Each contributor carries `backfilled_at` and an `elsewhere` list of other repositories with active days and per-kind counts. The fields are in the [reference](../api/reference.rst) (`repositoryContributorsElsewhere`).
 
 **Reading `backfilled_at`** (the honesty rule): a `null` stamp means
 the v0.27.58 history backfill has not reached this contributor yet —
@@ -710,24 +730,7 @@ Returns the enrichment-state snapshot for the same cohort as `/contributions/ide
 
 Same `since` / `until` parameters as the other two endpoints; same behavior on malformed input and `since >= until`.
 
-Response shape:
-
-```json
-{
-  "window_since": "2024-05-21T00:00:00Z",
-  "window_until": "2026-05-21T00:00:00Z",
-  "total_contributors":       412,
-  "enriched":                  389,
-  "canonical_email":           356,
-  "gh_user_id_resolved":       401,
-  "search_resolve_attempted":   47,
-  "breadth_attempted":         378,
-  "affiliation_resolved":      318,
-  "affiliation_unknown":        94,
-  "enrichment_oldest_pending": "2026-05-12T18:31:04Z",
-  "enrichment_stalest":        "2024-08-15T03:22:11Z"
-}
-```
+The answer carries the window and the counts the field-by-field table below explains. The fields are in the [reference](../api/reference.rst) (`repositoryContributionsCoverage`).
 
 The two timestamp fields are omitted entirely when the cohort has no rows in the relevant state (no pointer → field absent in JSON rather than emitting zero-time, which is operator-confusing).
 
@@ -794,27 +797,7 @@ GET /api/v1/mailing-list/stats
 
 Fleet-wide rollup of the mailing-list ingestion subsystem ([architecture](../architecture/mailing-list.md)) — the same data as `aveloxis mailing-list-stats`. No parameters. Returns 500 if the query fails.
 
-Response (note: keys are PascalCase — the rollup struct carries no JSON tags):
-
-```json
-{
-  "Lists": 16,
-  "ScanComplete": 14,
-  "EmailMessages": 68514,
-  "Mirrors": 41841,
-  "SignaledCaptured": 40044,
-  "SignaledResolved": 25591,
-  "SenderTotal": 26673,
-  "SenderResolved": 17012,
-  "ByClass": {
-    "github_mirror": 40044,
-    "issue_event": 5251,
-    "patch_submission": 4568,
-    "discuss": 1161,
-    "review": 953
-  }
-}
-```
+The keys are PascalCase (the rollup struct carries no JSON tags); the fields are in the [reference](../api/reference.rst) (`mailingListStats`). What they mean:
 
 | Field | Meaning |
 |---|---|
@@ -921,8 +904,13 @@ instance; run one per host unless that is what you want.
 
 The web GUI's charts fetch the API through the web process, which proxies
 `/api/*` to `web.api_internal_url` (`http://127.0.0.1:8383` by default);
-when the API moves, that URL must follow. Behind a reverse proxy, send
-`/api/` to the API directly so its per-visitor limits see the visitor.
+when the API moves, that URL must follow. Behind a reverse proxy, keep the
+GUI host's `/api/` on the web process — it attaches the signed-in session's
+Bearer, so a direct route answers `401` under `api.require_auth` — and set
+`web.trusted_proxy` and `api.trusted_proxy` so the per-visitor limits see
+each visitor (since 0.29.91). A script with its own token reaches the API on
+a host of its own (aveloxis-gui's host forwards `/api/` to the API itself);
+see "Reverse proxy" in Production Deployment.
 
 ## Comparison analytics (v0.27.2)
 
@@ -1092,8 +1080,12 @@ except `GET /api/v1/health` and `GET /api/v1/public/stats`) requires a session t
 by default) bypass this for the read endpoints; the portal endpoints
 above always require a token regardless.
 
-**Using the web GUI**: nothing to do — the login page exchanges your
-OAuth session for a token automatically and stores it in the browser.
+**Using the web GUI**: nothing to do. The built-in GUI's web process mints a
+token for your session and attaches it to every `/api/` request it forwards
+(0.29.110; the browser never holds it, and signing out revokes it), so the
+pages count against your session's request quotas like the SPA's. The SPA
+exchanges your session for a token through `POST /auth/token` and stores it
+in the browser.
 
 **For scripts, curl, or notebooks**, mint a token through the same
 exchange:
@@ -1331,17 +1323,9 @@ Token semantics:
   must render `null` distinctly (e.g. "not yet scanned"), never as a
   clean result.
 
-  The envelope also gains `lockfile_certainty`, derived at read time:
-
-  ```json
-  "lockfile_certainty": {
-    "overall": "partial",
-    "ecosystems": [
-      {"ecosystem": "npm", "lockfile_kind": "package-lock.json", "locked_packages": 14},
-      {"ecosystem": "go", "lockfile_kind": "go.mod", "locked_packages": 9}
-    ]
-  }
-  ```
+  The envelope also gains `lockfile_certainty`, derived at read time: an
+  `overall` verdict and, per ecosystem, the lockfile kind and how many
+  packages it locks (the reference, `repositoryVulnerabilities`).
 
   `overall` is `full` when every ecosystem that has dependencies also
   has a committed lockfile (Go counts as covered by construction),
@@ -1566,7 +1550,9 @@ Per-user:
   the owner's groups' (v0.29.86). The GUI uses
   `is_admin` to decide whether to render the admin navigation.
 - `POST /api/v1/me/email` (a signed-in session only: an API token is
-  refused `403`, v0.29.88) — body `{"email": "…"}`: stores the address as
+  refused `403`, v0.29.88; a sign-in older than `web.session_idle_minutes`
+  is `403 {"error": "reauthentication_required"}`, 0.29.113) — body
+  `{"email": "…"}`: stores the address as
   pending and mails the confirmation link, for an account whose forge gave
   no email (a private GitHub address). `200 {"sent": true}`, or `422
   {"sent": false, "message": "…"}` with the reason (not a deliverable
@@ -1575,6 +1561,20 @@ Per-user:
   profile page when `web.spa_url` is set, on the web process's
   `/account/email/confirm` otherwise. The same submission the web
   process's `/account/email` form runs.
+- `GET /api/v1/me/sessions` (0.29.113) — the account's live sessions:
+  `{sessions: [{kind, from_web_session, current, created_at,
+  last_used_at, expires_at}]}`; `kind` is `web` (a browser session of the
+  web GUI) or `api` (a Bearer token: `/auth/token`'s or the web proxy's,
+  both minted from a browser session: `from_web_session` is `true` while
+  that session lives, `false` once it has expired — the SPA's token
+  outlives it by up to 29 days);
+  `current` marks the one presenting the request; `last_used_at` moves
+  (at most once a minute (every half bound when the bound is under two minutes)) for browser sessions only, and is a token's
+  mint time. Operator-issued API tokens are not sessions.
+- `POST /api/v1/me/sessions/revoke` (0.29.113) — ends every session of the
+  account, this one included: `200 {"ok": true, "ended": N}`, then `401`
+  for each of them. Like sign-out, it is never refused by a spent request
+  quota and is not counted (0.29.114).
 - `POST /api/v1/me/email/confirm` — body `{"token": "…"}` from that link,
   for the signed-in account: `200 {"status": "confirmed"}`; `200 {"status":
   "invalid"}` for a token that is not live for this account (unknown,
@@ -1688,6 +1688,12 @@ Admin-only:
   first` (it was a `500` before PR #218 review); the count and the write
   are one locked transaction, so two demotions deciding at once cannot
   both pass. No such user is a `404`.
+- `POST /api/v1/admin/users/{userID}/sessions/revoke` (0.29.113) — end
+  every session of an account (a lost device, a suspected takeover): its
+  web sessions, `/auth/token` tokens and the web proxy's tokens are
+  deleted, each `401` at its next request; operator-issued API tokens are
+  not touched. `200 {"ok": true, "ended": N}` (`0` for an account with
+  none); a non-integer id is `400`. Logged.
 - `POST /api/v1/admin/groups/{groupID}/reject` — reject a group: the
   group-level abuse lever (v0.27.20); it takes no further additions and
   its organizations stop being listed; its repositories stay. `404` for a
@@ -1730,7 +1736,8 @@ Admin-only:
   `queued`, `collecting` (real jobs), `draining` (repos parked by the
   startup staging drain or by heal-collection-gaps, v0.29.64) and `total`.
 - `GET /api/v1/admin/monitor/queue?page=1&q=augur` — the collection
-  queue, 100 rows per page, optional search. Each job carries the
+  queue, up to 100 rows per page (`page_size`, default 100; since
+  0.29.109 — earlier releases always answered 100), optional search. Each job carries the
   repo label (`owner/name`), status, priority, due_at,
   last_collected, last_error, gathered issue/PR/commit counts, AND
   the forge-reported meta counts (`meta_issues`, `meta_prs`,
@@ -1745,7 +1752,11 @@ Admin-only:
   composite ordering has no single direction, so a caller's `dir` is
   never parroted when it was not applied). The `meta_*` keys order by the latest repo_info snapshot
   and are API-only — the SPA's paired "(ours / meta)" headers sort the
-  gathered half.
+  gathered half. When a batched read behind the page fails (since
+  0.29.109) the envelope carries `warnings` (an array of sentences:
+  names unreadable — every `repo` is then the id; counts unreadable —
+  the counts show 0) and the failure is logged; the key is absent
+  otherwise.
 - `POST /api/v1/admin/monitor/queue/{repoID}/prioritize` — the SPA
   monitor's "Boost" button (v0.27.14). Pushes the repo to priority 0,
   makes it immediately due, and resets its status to `queued` — the
@@ -1795,7 +1806,7 @@ Reads (any authenticated user):
   EFFECTIVE sort/dir.
 - `POST /api/v1/collections/{collectionID}/copy` with `{group_id}`
   (must be the caller's) or `{group_name}` (find-or-create for the
-  caller) — links every repo of the collection into that group and
+  caller; at most 200 characters, a `400` past it since 0.29.100) — links every repo of the collection into that group and
   returns `{added, group_id}` (repos already in the group no-op); a
   collection that does not exist is a `404` (0.29.100; it answered 200
   and linked nothing).

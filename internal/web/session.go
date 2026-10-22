@@ -28,7 +28,7 @@ import (
 // sites, and the deletions had no SameSite.
 func (s *Server) cookie(name, value string, maxAge int) *http.Cookie {
 	return &http.Cookie{
-		Name:     name,
+		Name:     s.cookieName(name),
 		Value:    value,
 		MaxAge:   maxAge,
 		Path:     "/",
@@ -36,6 +36,25 @@ func (s *Server) cookie(name, value string, maxAge int) *http.Cookie {
 		Secure:   !s.cfg.DevMode,
 		SameSite: http.SameSiteLaxMode,
 	}
+}
+
+// cookieName is the one spelling of a cookie's name (0.29.113, ASVS
+// V3.3.1/V3.3.3): the __Host- prefix whenever the cookie is Secure — the
+// browser then refuses the cookie from a non-secure origin, from a
+// Domain attribute or a path other than /, so no sibling host can plant a
+// session — and the bare name under web.dev_mode (plain HTTP cannot carry
+// a __Host- cookie). Every Set-Cookie, read and deletion goes through it.
+func (s *Server) cookieName(name string) string {
+	if s.cfg.DevMode {
+		return name
+	}
+	return "__Host-" + name
+}
+
+// readCookie is the one cookie read: the request's cookie under the name
+// cookieName spells.
+func (s *Server) readCookie(r *http.Request, name string) (*http.Cookie, error) {
+	return r.Cookie(s.cookieName(name))
 }
 
 // sessionCookie is the web session cookie; it lives as long as the row
@@ -72,6 +91,22 @@ func pathUserID(r *http.Request, name string) (int, bool) {
 	return id, err == nil
 }
 
+// pathName reads a textual path value (a quota's name, 0.29.109): the
+// third and last reader of a path value beside the two id parsers. The
+// service decides whether the name exists; this bounds it to what a route
+// segment can be so an unbounded value never reaches a log line.
+func pathName(r *http.Request, name string) string {
+	v := r.PathValue(name)
+	if len(v) > maxPathNameBytes {
+		return v[:maxPathNameBytes]
+	}
+	return v
+}
+
+// maxPathNameBytes bounds a textual path value: every shipped quota name
+// fits in it many times over, and a longer one is no name.
+const maxPathNameBytes = 64
+
 // createSession records a signed-in user as a row of
 // aveloxis_ops.user_session_tokens (0.29.102, stage 2c of summary/59,
 // B2/N12: sessions survive a restart of the web process and a sign-out is
@@ -86,7 +121,7 @@ func (s *Server) createSession(ctx context.Context, userID int) (string, error) 
 // names no live session; a database failure is returned, never read as
 // "no session" (SR-5).
 func (s *Server) getSession(r *http.Request) (*Session, error) {
-	cookie, err := r.Cookie("aveloxis_session")
+	cookie, err := s.readCookie(r, "aveloxis_session")
 	if err != nil {
 		return nil, nil
 	}
@@ -109,7 +144,7 @@ func (s *Server) storeSession(ctx context.Context, raw string) (*Session, error)
 	if err != nil {
 		return nil, err
 	}
-	return &Session{UserID: ws.UserID, LoginName: ws.LoginName, AvatarURL: ws.AvatarURL, Provider: ws.Provider, IsAdmin: ws.IsAdmin, ExpiresAt: ws.ExpiresAt}, nil
+	return &Session{UserID: ws.UserID, LoginName: ws.LoginName, AvatarURL: ws.AvatarURL, Provider: ws.Provider, IsAdmin: ws.IsAdmin, ExpiresAt: ws.ExpiresAt, CreatedAt: ws.CreatedAt}, nil
 }
 
 // authedHandler is a handler behind requireAuth or requireAdmin: it takes
@@ -185,7 +220,7 @@ func generateToken() string {
 // the SPA can store it (localStorage) and attach it as a Bearer.
 func (s *Server) handleAuthToken(w http.ResponseWriter, r *http.Request, sess *Session) {
 	// Minted FROM the web session (B4): signing the browser out deletes it.
-	token, err := s.store.MintTokenForWebSession(r.Context(), sess.cookie)
+	token, err := s.store.MintTokenForWebSession(r.Context(), sess.cookie, time.Now().Add(db.DefaultSessionTokenLifetime))
 	if errors.Is(err, db.ErrNoWebSession) {
 		// Signed out in another tab between the gate's read and the mint:
 		// a definitive answer, not a failure (review A4).

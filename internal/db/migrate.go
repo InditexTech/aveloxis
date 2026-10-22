@@ -870,6 +870,8 @@ func migrateStage3ScancodeDistribution(ctx context.Context, pg *PostgresStore, l
 func addWebSessionColumns(ctx context.Context, pg *PostgresStore, logger *slog.Logger, errs *[]error) {
 	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.user_session_tokens", "kind", "TEXT NOT NULL DEFAULT 'api'")
 	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.user_session_tokens", "parent_token", "TEXT REFERENCES aveloxis_ops.user_session_tokens(token) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED")
+	// 0.29.113 (ASVS V7.3.1, the stages 3–5 review): the inactivity stamp.
+	addColumnIfMissing(ctx, pg, logger, errs, "aveloxis_ops.user_session_tokens", "last_used_at", "BIGINT")
 	execCreateIndexConcurrently(ctx, pg, logger, errs, "aveloxis_ops", "idx_user_session_tokens_parent",
 		`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_session_tokens_parent
 		 ON aveloxis_ops.user_session_tokens (parent_token) WHERE parent_token IS NOT NULL`)

@@ -68,7 +68,7 @@ func TestGateWithFailedAdminLookupIs500NotARefusal(t *testing.T) {
 	for _, path := range []string{"/dashboard", "/monitor"} {
 		logs.Reset()
 		r := httptest.NewRequest(http.MethodGet, path, nil)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "fault"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "fault"})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
@@ -120,7 +120,7 @@ func TestDemotionTakesEffectOnTheNextRequest(t *testing.T) {
 	h := s.Handler()
 	get := func() int {
 		r := httptest.NewRequest(http.MethodGet, "/monitor", nil)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
@@ -170,7 +170,7 @@ func TestAuthTokenDiesWithTheWebSession(t *testing.T) {
 	h := s.Handler()
 	post := func(path string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, path, nil)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: cookieValue})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: cookieValue})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)

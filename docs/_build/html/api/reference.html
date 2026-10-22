@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API reference &mdash; Aveloxis 0.29.107 documentation</title>
+  <title>API reference &mdash; Aveloxis 0.29.117 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=4510acb2"></script>
+      <script src="../_static/documentation_options.js?v=21df7cf6"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -328,10 +328,26 @@
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#how-repos-get-queued-for-collection">How Repos Get Queued for Collection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#session-management">Session Management</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#running-alongside-aveloxis-serve">Running Alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#administration">Administration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#security-considerations">Security Considerations</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="../guide/security.html">Security</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#credentials-and-their-strength">Credentials and their strength</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#where-sign-in-strength-comes-from">Where sign-in strength comes from</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#sessions">Sessions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#cryptography">Cryptography</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#data">Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#logs">Logs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#why-the-web-process-has-no-request-limiter-of-its-own">Why the web process has no request limiter of its own</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-114">Changes for API clients in 0.29.114</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-113">Changes for API clients in 0.29.113</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-100">Changes for API clients in 0.29.100</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#endpoints">Endpoints</a><ul>
@@ -2168,16 +2184,28 @@ window whose <code class="docutils literal notranslate"><span class="pre">since<
 <li><p><strong>repo_id</strong> (<em>integer:int64, required</em>)</p></li>
 <li><p><strong>repo_name</strong> (<em>string, required</em>)</p></li>
 <li><p><strong>repo_owner</strong> (<em>string, required</em>)</p></li>
-<li><p><strong>commits[]</strong> (<em>object</em>)</p></li>
+<li><p><strong>commits[]</strong> (<em>object</em>) – One week of the repository time series. Its number is <code class="docutils literal notranslate"><span class="pre">count</span></code>, the
+one native series that predates the <code class="docutils literal notranslate"><span class="pre">value</span></code> convention (see the
+conventions page, “One field name for a metric’s number”); <code class="docutils literal notranslate"><span class="pre">/compare</span></code>
+and the Augur-compatible metrics carry <code class="docutils literal notranslate"><span class="pre">value</span></code>.</p></li>
 <li><p><strong>commits[].week_start</strong> (<em>string:date-time, required</em>) – The Monday that starts the week (UTC).</p></li>
 <li><p><strong>commits[].count</strong> (<em>integer, required</em>)</p></li>
-<li><p><strong>prs_opened[]</strong> (<em>object</em>)</p></li>
+<li><p><strong>prs_opened[]</strong> (<em>object</em>) – One week of the repository time series. Its number is <code class="docutils literal notranslate"><span class="pre">count</span></code>, the
+one native series that predates the <code class="docutils literal notranslate"><span class="pre">value</span></code> convention (see the
+conventions page, “One field name for a metric’s number”); <code class="docutils literal notranslate"><span class="pre">/compare</span></code>
+and the Augur-compatible metrics carry <code class="docutils literal notranslate"><span class="pre">value</span></code>.</p></li>
 <li><p><strong>prs_opened[].week_start</strong> (<em>string:date-time, required</em>) – The Monday that starts the week (UTC).</p></li>
 <li><p><strong>prs_opened[].count</strong> (<em>integer, required</em>)</p></li>
-<li><p><strong>prs_merged[]</strong> (<em>object</em>)</p></li>
+<li><p><strong>prs_merged[]</strong> (<em>object</em>) – One week of the repository time series. Its number is <code class="docutils literal notranslate"><span class="pre">count</span></code>, the
+one native series that predates the <code class="docutils literal notranslate"><span class="pre">value</span></code> convention (see the
+conventions page, “One field name for a metric’s number”); <code class="docutils literal notranslate"><span class="pre">/compare</span></code>
+and the Augur-compatible metrics carry <code class="docutils literal notranslate"><span class="pre">value</span></code>.</p></li>
 <li><p><strong>prs_merged[].week_start</strong> (<em>string:date-time, required</em>) – The Monday that starts the week (UTC).</p></li>
 <li><p><strong>prs_merged[].count</strong> (<em>integer, required</em>)</p></li>
-<li><p><strong>issues[]</strong> (<em>object</em>)</p></li>
+<li><p><strong>issues[]</strong> (<em>object</em>) – One week of the repository time series. Its number is <code class="docutils literal notranslate"><span class="pre">count</span></code>, the
+one native series that predates the <code class="docutils literal notranslate"><span class="pre">value</span></code> convention (see the
+conventions page, “One field name for a metric’s number”); <code class="docutils literal notranslate"><span class="pre">/compare</span></code>
+and the Augur-compatible metrics carry <code class="docutils literal notranslate"><span class="pre">value</span></code>.</p></li>
 <li><p><strong>issues[].week_start</strong> (<em>string:date-time, required</em>) – The Monday that starts the week (UTC).</p></li>
 <li><p><strong>issues[].count</strong> (<em>integer, required</em>)</p></li>
 </ul>
@@ -3829,6 +3857,100 @@ reports the token’s own allowances.</p>
 </dl>
 </dd></dl>
 
+<dl class="http get">
+<dt class="sig sig-object http" id="get--api-v1-me-sessions">
+<span class="sig-name descname"><span class="pre">GET</span> </span><span class="sig-name descname"><span class="pre">/api/v1/me/sessions</span></span><a class="headerlink" href="#get--api-v1-me-sessions" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Operation<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">mySessions</span></code></p>
+</dd>
+<dt class="field-even">Access<span class="colon">:</span></dt>
+<dd class="field-even"><p>a signed-in session; an API token is refused.</p>
+</dd>
+</dl>
+<p><strong>Returns the caller’s live sessions.</strong></p>
+<p>Every live session of the account (0.29.113, OWASP ASVS V7.5.2): the
+browser sessions of the web GUI (<code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">web</span></code>), the tokens
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/auth/token</span></code> minted and the tokens the web process’s
+<code class="docutils literal notranslate"><span class="pre">/api/</span></code> proxy holds (<code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">api</span></code>; both are minted from a browser
+session: <code class="docutils literal notranslate"><span class="pre">from_web_session</span></code> is <code class="docutils literal notranslate"><span class="pre">true</span></code> while that session lives and
+<code class="docutils literal notranslate"><span class="pre">false</span></code> once it has expired, which the SPA’s 30-day token outlives).
+The session presenting
+this request is <code class="docutils literal notranslate"><span class="pre">current</span></code>. Operator-issued API tokens are not
+sessions and are not listed. A browser session idle past
+<code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code> is not live and not listed.
+<code class="docutils literal notranslate"><span class="pre">last_used_at</span></code> moves, at most once a minute (every half bound when the bound is under two minutes), for <code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">web</span></code> only;
+a token’s is its mint time.</p>
+<p>Handler: <code class="docutils literal notranslate"><span class="pre">handleMeSessions</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Response JSON Object<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sessions[]</strong> (<em>object</em>) – One live session of an account (0.29.113).</p></li>
+<li><p><strong>sessions[].kind</strong> (<em>string:enum, required</em>) – <code class="docutils literal notranslate"><span class="pre">web</span></code> is a browser session of the web GUI; <code class="docutils literal notranslate"><span class="pre">api</span></code> is a Bearer token.</p></li>
+<li><p><strong>sessions[].from_web_session</strong> (<em>boolean, required</em>) – The token’s browser session is still live (every <code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">api</span></code> session is minted from one; <code class="docutils literal notranslate"><span class="pre">false</span></code> once it has expired, and for <code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">web</span></code>).</p></li>
+<li><p><strong>sessions[].current</strong> (<em>boolean, required</em>) – This session presented the request.</p></li>
+<li><p><strong>sessions[].created_at</strong> (<em>string:date-time, required</em>) – When the session was signed in or the token minted.</p></li>
+<li><p><strong>sessions[].last_used_at</strong> (<em>string:date-time, required</em>) – A browser session’s last request, to the minute (<code class="docutils literal notranslate"><span class="pre">created_at</span></code> until its first); for <code class="docutils literal notranslate"><span class="pre">kind</span></code> <code class="docutils literal notranslate"><span class="pre">api</span></code>, the mint time.</p></li>
+<li><p><strong>sessions[].expires_at</strong> (<em>string:date-time, required</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Status Codes<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/200">200 OK</a></span> – The sessions, newest first.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/401">401 Unauthorized</a></span> – No valid Bearer token: missing, unknown, expired or revoked. <a class="reference internal" href="#shared-response-unauthorized"><span class="std std-ref">Shared response Unauthorized</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/403">403 Forbidden</a></span> – The token is valid but may not do this: an API token on an administrator or account-settings route, or a session that is not an administrator’s. <a class="reference internal" href="#shared-response-forbidden"><span class="std std-ref">Shared response Forbidden</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429">429 Too Many Requests</a></span> – Refused by a rate limit; retry after <code class="docutils literal notranslate"><span class="pre">Retry-After</span></code> seconds. <a class="reference internal" href="#shared-response-toomanyrequests"><span class="std std-ref">Shared response TooManyRequests</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/500">500 Internal Server Error</a></span> – A server-side failure. <a class="reference internal" href="#shared-response-servererror"><span class="std std-ref">Shared response ServerError</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/503">503 Service Unavailable</a></span> – Retry later; this is never a sign-out. <a class="reference internal" href="#shared-response-serviceunavailable"><span class="std std-ref">Shared response ServiceUnavailable</span></a>.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Response Headers<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>Cache-Control</strong> (<span><em>string</em></span>)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="http post">
+<dt class="sig sig-object http" id="post--api-v1-me-sessions-revoke">
+<span class="sig-name descname"><span class="pre">POST</span> </span><span class="sig-name descname"><span class="pre">/api/v1/me/sessions/revoke</span></span><a class="headerlink" href="#post--api-v1-me-sessions-revoke" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Operation<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">revokeMySessions</span></code></p>
+</dd>
+<dt class="field-even">Access<span class="colon">:</span></dt>
+<dd class="field-even"><p>a signed-in session; an API token is refused.</p>
+</dd>
+</dl>
+<p><strong>Ends every session of the caller’s account, this one included.</strong></p>
+<p>Deletes the account’s web sessions, <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> tokens and proxy
+tokens (0.29.113, OWASP ASVS V7.5.2): every other browser and client
+of the account is signed out at its next request, and this token’s
+next request is <code class="docutils literal notranslate"><span class="pre">401</span></code> too — the answer is the last one it gets. No
+body. Never refused by a spent request quota, and not counted
+(0.29.114), like sign-out.</p>
+<p>Handler: <code class="docutils literal notranslate"><span class="pre">handleMeSessionsRevoke</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Response JSON Object<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ok</strong> (<em>boolean, required</em>)</p></li>
+<li><p><strong>ended</strong> (<em>integer, required</em>) – Sessions and tokens deleted.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Status Codes<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/200">200 OK</a></span> – Done; <code class="docutils literal notranslate"><span class="pre">ended</span></code> counts the sessions and tokens deleted.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/401">401 Unauthorized</a></span> – No valid Bearer token: missing, unknown, expired or revoked. <a class="reference internal" href="#shared-response-unauthorized"><span class="std std-ref">Shared response Unauthorized</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/403">403 Forbidden</a></span> – The token is valid but may not do this: an API token on an administrator or account-settings route, or a session that is not an administrator’s. <a class="reference internal" href="#shared-response-forbidden"><span class="std std-ref">Shared response Forbidden</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429">429 Too Many Requests</a></span> – Refused by a rate limit; retry after <code class="docutils literal notranslate"><span class="pre">Retry-After</span></code> seconds. <a class="reference internal" href="#shared-response-toomanyrequests"><span class="std std-ref">Shared response TooManyRequests</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/500">500 Internal Server Error</a></span> – A server-side failure. <a class="reference internal" href="#shared-response-servererror"><span class="std std-ref">Shared response ServerError</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/503">503 Service Unavailable</a></span> – Retry later; this is never a sign-out. <a class="reference internal" href="#shared-response-serviceunavailable"><span class="std std-ref">Shared response ServiceUnavailable</span></a>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="http post">
 <dt class="sig sig-object http" id="post--api-v1-me-email">
 <span class="sig-name descname"><span class="pre">POST</span> </span><span class="sig-name descname"><span class="pre">/api/v1/me/email</span></span><a class="headerlink" href="#post--api-v1-me-email" title="Link to this definition"></a></dt>
@@ -3862,7 +3984,14 @@ the web form shows. Bodies over 4 KiB are refused.</p>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/200">200 OK</a></span> – The confirmation link was mailed.</p></li>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/400">400 Bad Request</a></span> – The body is not the JSON object <code class="docutils literal notranslate"><span class="pre">{&quot;email&quot;:</span> <span class="pre">&quot;…&quot;}</span></code>.</p></li>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/401">401 Unauthorized</a></span> – No valid Bearer token: missing, unknown, expired or revoked. <a class="reference internal" href="#shared-response-unauthorized"><span class="std std-ref">Shared response Unauthorized</span></a>.</p></li>
-<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/403">403 Forbidden</a></span> – The token is valid but may not do this: an API token on an administrator or account-settings route, or a session that is not an administrator’s. <a class="reference internal" href="#shared-response-forbidden"><span class="std std-ref">Shared response Forbidden</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/403">403 Forbidden</a></span> – An operator-issued API token (<code class="docutils literal notranslate"><span class="pre">error</span></code> is a sentence saying an
+API token cannot change account settings), or a sign-in older
+than <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code> (since 0.29.113, OWASP ASVS
+V7.5.1: <code class="docutils literal notranslate"><span class="pre">error</span></code> is <code class="docutils literal notranslate"><span class="pre">reauthentication_required</span></code> and <code class="docutils literal notranslate"><span class="pre">message</span></code>
+says what to do — the recovery address changes only after a
+recent sign-in; every session token is judged by the sign-in of
+the browser session it was minted from, and a token whose
+browser session expired has none that counts).</p></li>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/422">422 Unprocessable Entity</a></span> – Nothing was mailed; <code class="docutils literal notranslate"><span class="pre">message</span></code> says why, in the words the web form uses.</p></li>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429">429 Too Many Requests</a></span> – Refused by a rate limit; retry after <code class="docutils literal notranslate"><span class="pre">Retry-After</span></code> seconds. <a class="reference internal" href="#shared-response-toomanyrequests"><span class="std std-ref">Shared response TooManyRequests</span></a>.</p></li>
 <li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/500">500 Internal Server Error</a></span> – A server-side failure. <a class="reference internal" href="#shared-response-servererror"><span class="std std-ref">Shared response ServerError</span></a>.</p></li>
@@ -4723,6 +4852,51 @@ with no collection.</p>
 </dd></dl>
 
 <dl class="http post">
+<dt class="sig sig-object http" id="post--api-v1-admin-users-userID-sessions-revoke">
+<span class="sig-name descname"><span class="pre">POST</span> </span><span class="sig-name descname"><span class="pre">/api/v1/admin/users/{userID}/sessions/revoke</span></span><a class="headerlink" href="#post--api-v1-admin-users-userID-sessions-revoke" title="Link to this definition"></a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Operation<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">revokeUserSessions</span></code></p>
+</dd>
+<dt class="field-even">Access<span class="colon">:</span></dt>
+<dd class="field-even"><p>an administrator’s signed-in session.</p>
+</dd>
+</dl>
+<p><strong>Ends every session of an account.</strong></p>
+<p>An administrator’s answer to a lost device or a suspected account
+takeover (0.29.113, OWASP ASVS V7.4.5): the account’s web sessions,
+<code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> tokens and proxy tokens are deleted, and each is <code class="docutils literal notranslate"><span class="pre">401</span></code>
+at its next request. Operator-issued API tokens are not touched
+(revoke those on the API-tokens page). An administrator may end its
+own account’s sessions this way. The action is logged. No body.</p>
+<p>Handler: <code class="docutils literal notranslate"><span class="pre">handleAdminUserSessionsRevoke</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>userID</strong> (<em>integer, required</em>) – An account’s id.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Response JSON Object<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ok</strong> (<em>boolean, required</em>)</p></li>
+<li><p><strong>ended</strong> (<em>integer, required</em>) – Sessions and tokens deleted.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Status Codes<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/200">200 OK</a></span> – Done; <code class="docutils literal notranslate"><span class="pre">ended</span></code> counts the sessions and tokens deleted (<code class="docutils literal notranslate"><span class="pre">0</span></code> for an account with none, and for an id no account has).</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/400">400 Bad Request</a></span> – The user id is not an integer.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/401">401 Unauthorized</a></span> – No valid Bearer token: missing, unknown, expired or revoked. <a class="reference internal" href="#shared-response-unauthorized"><span class="std std-ref">Shared response Unauthorized</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/403">403 Forbidden</a></span> – The token is valid but may not do this: an API token on an administrator or account-settings route, or a session that is not an administrator’s. <a class="reference internal" href="#shared-response-forbidden"><span class="std std-ref">Shared response Forbidden</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/429">429 Too Many Requests</a></span> – Refused by a rate limit; retry after <code class="docutils literal notranslate"><span class="pre">Retry-After</span></code> seconds. <a class="reference internal" href="#shared-response-toomanyrequests"><span class="std std-ref">Shared response TooManyRequests</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/500">500 Internal Server Error</a></span> – A server-side failure. <a class="reference internal" href="#shared-response-servererror"><span class="std std-ref">Shared response ServerError</span></a>.</p></li>
+<li><p><span><a class="reference external" href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/503">503 Service Unavailable</a></span> – Retry later; this is never a sign-out. <a class="reference internal" href="#shared-response-serviceunavailable"><span class="std std-ref">Shared response ServiceUnavailable</span></a>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="http post">
 <dt class="sig sig-object http" id="post--api-v1-admin-users-userID-admin">
 <span class="sig-name descname"><span class="pre">POST</span> </span><span class="sig-name descname"><span class="pre">/api/v1/admin/users/{userID}/admin</span></span><a class="headerlink" href="#post--api-v1-admin-users-userID-admin" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
@@ -4982,6 +5156,7 @@ read is labelled with its id.</p>
 <dt class="field-odd">Query Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>page</strong> (<em>integer</em>) – 1-based page; values below 1 read as 1.</p></li>
+<li><p><strong>page_size</strong> (<em>integer</em>) – Rows per page, at most 100 (since 0.29.109; earlier releases always answered 100).</p></li>
 <li><p><strong>q</strong> (<em>string</em>) – Filter on the repository.</p></li>
 <li><p><strong>sort</strong> (<em>string</em>) – Sort key from the queue allowlist.</p></li>
 <li><p><strong>dir</strong> (<em>string</em>) – <code class="docutils literal notranslate"><span class="pre">desc</span></code> (any case) for descending; anything else is ascending. Ignored when <code class="docutils literal notranslate"><span class="pre">sort</span></code> is not an allowlisted key.</p></li>
@@ -5005,9 +5180,10 @@ read is labelled with its id.</p>
 <li><p><strong>jobs[].meta_commits</strong> (<em>integer, required</em>)</p></li>
 <li><p><strong>total</strong> (<em>integer, required</em>)</p></li>
 <li><p><strong>page</strong> (<em>integer, required</em>)</p></li>
-<li><p><strong>page_size</strong> (<em>integer, required</em>)</p></li>
+<li><p><strong>page_size</strong> (<em>integer, required</em>) – The page size applied (the request’s, at most 100; 100 when none was given).</p></li>
 <li><p><strong>sort</strong> (<em>string, required</em>) – The sort key applied; empty for the default order.</p></li>
 <li><p><strong>dir</strong> (<em>string:enum, required</em>)</p></li>
+<li><p><strong>warnings[]</strong> (<em>string</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-odd">Status Codes<span class="colon">:</span></dt>
@@ -8356,6 +8532,7 @@ network excepted). Never stored.</p>
 <p>Body, <code class="docutils literal notranslate"><span class="pre">application/json</span></code> (<code class="docutils literal notranslate"><span class="pre">Error</span></code>):</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">error</span></code> (string, required) — A machine-readable code or a sentence; see each operation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">message</span></code> (string) — A sentence for a person, present when <code class="docutils literal notranslate"><span class="pre">error</span></code> is a code (<code class="docutils literal notranslate"><span class="pre">reauthentication_required</span></code>).</p></li>
 </ul>
 </section>
 <section id="forbidden">
@@ -8366,6 +8543,7 @@ administrator’s. Never stored.</p>
 <p>Body, <code class="docutils literal notranslate"><span class="pre">application/json</span></code> (<code class="docutils literal notranslate"><span class="pre">Error</span></code>):</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">error</span></code> (string, required) — A machine-readable code or a sentence; see each operation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">message</span></code> (string) — A sentence for a person, present when <code class="docutils literal notranslate"><span class="pre">error</span></code> is a code (<code class="docutils literal notranslate"><span class="pre">reauthentication_required</span></code>).</p></li>
 </ul>
 </section>
 <section id="repooutofscope">
@@ -8536,6 +8714,7 @@ and was cut off (plain text, <code class="docutils literal notranslate"><span cl
 <p>Body, <code class="docutils literal notranslate"><span class="pre">application/json</span></code> (<code class="docutils literal notranslate"><span class="pre">Error</span></code>):</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">error</span></code> (string, required) — A machine-readable code or a sentence; see each operation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">message</span></code> (string) — A sentence for a person, present when <code class="docutils literal notranslate"><span class="pre">error</span></code> is a code (<code class="docutils literal notranslate"><span class="pre">reauthentication_required</span></code>).</p></li>
 </ul>
 <p>Body, <code class="docutils literal notranslate"><span class="pre">text/plain</span></code>: <code class="docutils literal notranslate"><span class="pre">request</span> <span class="pre">exceeded</span> <span class="pre">http_timeout_seconds</span></code> and a newline.</p>
 </section>

@@ -51,17 +51,3 @@ func (s *PostgresStore) SetAveloxisStatus(ctx context.Context, statusName, statu
 	}
 	return nil
 }
-
-// GetAveloxisStatus returns one subsystem's status, or (nil, nil) if unrecorded.
-func (s *PostgresStore) GetAveloxisStatus(ctx context.Context, statusName string) (*AveloxisStatus, error) {
-	var a AveloxisStatus
-	err := s.pool.QueryRow(ctx, `
-		SELECT status_name, status, COALESCE(status_detail,''), COALESCE(tool_version,''),
-		       COALESCE(data_source,''), COALESCE(data_collection_date::text,'')
-		FROM aveloxis_ops.aveloxis_status WHERE status_name = $1`, statusName).
-		Scan(&a.StatusName, &a.Status, &a.StatusDetail, &a.ToolVersion, &a.DataSource, &a.DataCollectionDate)
-	if err != nil {
-		return nil, nil //nolint:nilerr // unrecorded subsystem is not an error
-	}
-	return &a, nil
-}

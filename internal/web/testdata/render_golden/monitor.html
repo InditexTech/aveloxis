@@ -13,11 +13,11 @@
 <a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
 <div class="nav-user">
 <img src="https://avatars.example/7.png" alt="">
-<span>golden</span>
+<a href="/account" class="nav-link nav-login" title="Your sessions">golden</a>
 <form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="golden-csrf"><button type="submit" class="nav-link">Logout</button></form>
 </div>
 </div>
-<div class="breadcrumb"><a href="/dashboard">Home</a><span class="sep">|</span><span class="current">Monitor</span></div>
+<div class="breadcrumb"><a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">|</span><a href="/admin/groups/pending">Approvals</a><span class="sep">|</span><a href="/admin/users">Users</a><span class="sep">|</span><a href="/admin/capacity">Capacity</a><span class="sep">|</span><a href="/admin/api-tokens">API tokens</a><span class="sep">|</span><a href="/admin/collections">Collections</a><span class="sep">/</span><span class="current">Monitor</span></div>
 <div class="container" style="max-width:1600px">
 <div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap">
 <div class="card" style="flex:1;min-width:120px;text-align:center;padding:1rem"><div style="font-size:2rem;font-weight:bold">3</div><div style="color:#666;font-size:0.85rem">Total</div></div>
@@ -34,24 +34,25 @@
 <button type="submit" class="btn" style="padding:5px 12px;font-size:0.85rem">Search</button>
 <a href="/monitor" class="btn" style="padding:5px 12px;font-size:0.85rem;text-decoration:none">Clear</a>
 </form>
-<div style="color:#666;font-size:0.85rem">Page 2 of 3 (3 repos) &mdash; auto-refreshes every 10s</div>
+<div style="color:#666;font-size:0.85rem">Page 2 of 3 (3 repos) &mdash; auto-refreshes every 10s &mdash; counts as of 12:30:00 UTC, next 12:31:00</div>
 </div>
+<div class="notice notice-warn">Repository counts could not be read; the counts show 0.</div>
 <table class="repo-table tbl-stack" style="width:100%">
 <thead>
 <tr>
   <th>#</th>
-  <th>Repository</th>
+  <th><a href="/monitor?dir=desc&amp;q=gold&amp;sort=repo">Repository</a> <span class="sort-arrow">&#9652;</span></th>
   <th>Platform</th>
-  <th>Status</th>
-  <th>Priority</th>
-  <th>Due</th>
-  <th>Last Run</th>
-  <th style="text-align:right">Issues</th>
-  <th style="text-align:right">Meta</th>
-  <th style="text-align:right">PRs</th>
-  <th style="text-align:right">Meta</th>
-  <th style="text-align:right">Commits</th>
-  <th style="text-align:right">Meta</th>
+  <th><a href="/monitor?dir=asc&amp;q=gold&amp;sort=status">Status</a></th>
+  <th><a href="/monitor?dir=asc&amp;q=gold&amp;sort=priority">Priority</a></th>
+  <th><a href="/monitor?dir=asc&amp;q=gold&amp;sort=due">Due</a></th>
+  <th><a href="/monitor?dir=asc&amp;q=gold&amp;sort=last_run">Last Run</a></th>
+  <th style="text-align:right"><a href="/monitor?dir=asc&amp;q=gold&amp;sort=issues">Issues</a></th>
+  <th style="text-align:right"><a href="/monitor?dir=asc&amp;q=gold&amp;sort=meta_issues">Meta</a></th>
+  <th style="text-align:right"><a href="/monitor?dir=asc&amp;q=gold&amp;sort=prs">PRs</a></th>
+  <th style="text-align:right"><a href="/monitor?dir=asc&amp;q=gold&amp;sort=meta_prs">Meta</a></th>
+  <th style="text-align:right"><a href="/monitor?dir=asc&amp;q=gold&amp;sort=commits">Commits</a></th>
+  <th style="text-align:right"><a href="/monitor?dir=asc&amp;q=gold&amp;sort=meta_commits">Meta</a></th>
   <th>Action</th>
 </tr>
 </thead>
@@ -93,13 +94,13 @@
 
 <div class="pagination">
 
-<a href="/monitor?page=1&q=gold" title="First page">First</a>
-<a href="/monitor?page=1&q=gold">Previous</a>
+<a href="/monitor?page=1&q=gold&sort=repo&dir=asc" title="First page">First</a>
+<a href="/monitor?page=1&q=gold&sort=repo&dir=asc">Previous</a>
 
 
 
 
-<a href="/monitor?page=1&q=gold">1</a>
+<a href="/monitor?page=1&q=gold&sort=repo&dir=asc">1</a>
 
 
 
@@ -107,13 +108,13 @@
 
 
 
-<a href="/monitor?page=3&q=gold">3</a>
+<a href="/monitor?page=3&q=gold&sort=repo&dir=asc">3</a>
 
 
 
 
-<a href="/monitor?page=3&q=gold">Next</a>
-<a href="/monitor?page=3&q=gold" title="Last page">Last</a>
+<a href="/monitor?page=3&q=gold&sort=repo&dir=asc">Next</a>
+<a href="/monitor?page=3&q=gold&sort=repo&dir=asc" title="Last page">Last</a>
 
 </div>
 

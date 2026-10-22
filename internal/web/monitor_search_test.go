@@ -82,8 +82,10 @@ func TestMonitorPaginationPreservesSearch(t *testing.T) {
 func TestMonitorHandlerReadsSearchParam(t *testing.T) {
 	fnBody := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleMonitor(")
 
-	if !strings.Contains(fnBody, `Get("q")`) {
-		t.Error("handleMonitor must read the 'q' query parameter for search")
+	// Since 0.29.109 the parameters are read by the one parser,
+	// queueview.ParseParams (q, page, sort, dir; pinned in its package).
+	if !strings.Contains(fnBody, "queueview.ParseParams(r.URL.Query()") {
+		t.Error("handleMonitor must read q (and page, sort, dir) through queueview.ParseParams")
 	}
 }
 

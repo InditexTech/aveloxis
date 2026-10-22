@@ -81,7 +81,7 @@ func TestAPIProxyForwardsToInternalURL(t *testing.T) {
 	// Authenticated request: must proxy.
 	token := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: time.Now().Add(time.Hour)})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/repos/search?q=av", nil)
-	req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+	req.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 	csrf(req) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)
@@ -111,7 +111,7 @@ func TestAPIProxyReturns502WhenBackendDown(t *testing.T) {
 	token := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: time.Now().Add(time.Hour)})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/repos/search?q=a", nil)
-	req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+	req.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 	csrf(req) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 

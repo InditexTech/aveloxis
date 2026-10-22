@@ -97,7 +97,7 @@ func TestAdminAddRequestReapproveResumesProcessing(t *testing.T) {
 	adminUID := seedAdminAccount(t, store, login+"-admin")
 	plantSession(t, s, "admin", &Session{UserID: adminUID, LoginName: login + "-admin", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
 	r := httptest.NewRequest(http.MethodPost, "/admin/add-requests/"+strconv.FormatInt(out.RequestID, 10)+"/approve", nil)
-	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin"})
+	r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "admin"})
 	csrf(r) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
@@ -128,7 +128,7 @@ func TestAdminAddRequestReapproveResumesProcessing(t *testing.T) {
 		t.Fatalf("reject: changed=%v err=%v", changed, err)
 	}
 	rr := httptest.NewRequest(http.MethodPost, "/admin/add-requests/"+strconv.FormatInt(rejected.RequestID, 10)+"/approve", nil)
-	rr.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin"})
+	rr.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "admin"})
 	csrf(rr) // the session's form token (stage 2f)
 	rw := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rw, rr)
@@ -206,7 +206,7 @@ func TestAdminOrgReapproveDoesNotRescan(t *testing.T) {
 	approve := func() {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodPost, "/admin/add-requests/"+strconv.FormatInt(out.RequestID, 10)+"/approve", nil)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "admin"})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)

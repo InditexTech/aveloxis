@@ -64,7 +64,7 @@ func TestOAuthCallbackUserBodyStallIsAUserReadFailure(t *testing.T) {
 			if provider == "github" {
 				ctx, refuse := githubCallbackFixture(t, stallingForge("/login/oauth/access_token", "/user", &bodyStarted))
 				s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, "", logger)
-				s.handleGitHubCallback(rec, githubCallbackRequest(ctx))
+				s.handleGitHubCallback(rec, githubCallbackRequest(s, ctx))
 				if hosts := refuse.leaked(); len(hosts) > 0 {
 					t.Fatalf("a request to %v bypassed the fixture", hosts)
 				}

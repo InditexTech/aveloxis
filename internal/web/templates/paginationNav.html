@@ -5,6 +5,7 @@
     Page        int     — 1-based current page
     TotalPages  int     — always >= 1
     Query       string  — search term (optional; empty means no search)
+    Sort, Dir   string  — the effective sort (optional; stage 3d): every link keeps it
     PageWindow  []int   — sliding window of page numbers to display
 
   Renders First / Previous / page-numbers / Next / Last controls.
@@ -36,8 +37,8 @@
 {{if gt .TotalPages 1}}
 <div class="pagination">
 {{if gt .Page 1}}
-<a href="{{.BasePath}}?page=1{{if .Query}}&q={{.Query}}{{end}}" title="First page">First</a>
-<a href="{{.BasePath}}?page={{subtract .Page 1}}{{if .Query}}&q={{.Query}}{{end}}">Previous</a>
+<a href="{{.BasePath}}?page=1{{if .Query}}&q={{.Query}}{{end}}{{if .Sort}}&sort={{.Sort}}&dir={{.Dir}}{{end}}{{if .PageSize}}&page_size={{.PageSize}}{{end}}" title="First page">First</a>
+<a href="{{.BasePath}}?page={{subtract .Page 1}}{{if .Query}}&q={{.Query}}{{end}}{{if .Sort}}&sort={{.Sort}}&dir={{.Dir}}{{end}}{{if .PageSize}}&page_size={{.PageSize}}{{end}}">Previous</a>
 {{else}}
 <span class="disabled">First</span>
 <span class="disabled">Previous</span>
@@ -47,13 +48,13 @@
 {{if eq . $.Page}}
 <span class="current-page">{{.}}</span>
 {{else}}
-<a href="{{$.BasePath}}?page={{.}}{{if $.Query}}&q={{$.Query}}{{end}}">{{.}}</a>
+<a href="{{$.BasePath}}?page={{.}}{{if $.Query}}&q={{$.Query}}{{end}}{{if $.Sort}}&sort={{$.Sort}}&dir={{$.Dir}}{{end}}{{if $.PageSize}}&page_size={{$.PageSize}}{{end}}">{{.}}</a>
 {{end}}
 {{end}}
 
 {{if lt .Page .TotalPages}}
-<a href="{{.BasePath}}?page={{add .Page 1}}{{if .Query}}&q={{.Query}}{{end}}">Next</a>
-<a href="{{.BasePath}}?page={{.TotalPages}}{{if .Query}}&q={{.Query}}{{end}}" title="Last page">Last</a>
+<a href="{{.BasePath}}?page={{add .Page 1}}{{if .Query}}&q={{.Query}}{{end}}{{if .Sort}}&sort={{.Sort}}&dir={{.Dir}}{{end}}{{if .PageSize}}&page_size={{.PageSize}}{{end}}">Next</a>
+<a href="{{.BasePath}}?page={{.TotalPages}}{{if .Query}}&q={{.Query}}{{end}}{{if .Sort}}&sort={{.Sort}}&dir={{.Dir}}{{end}}{{if .PageSize}}&page_size={{.PageSize}}{{end}}" title="Last page">Last</a>
 {{else}}
 <span class="disabled">Next</span>
 <span class="disabled">Last</span>

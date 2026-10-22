@@ -1,0 +1,33 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aveloxis - Revoke API token</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/avx.js"></script>
+</head>
+<body>
+<div class="nav">
+<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
+<div class="nav-user">
+<img src="https://avatars.example/7.png" alt="">
+<a href="/account" class="nav-link nav-login" title="Your sessions">golden</a>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="golden-csrf"><button type="submit" class="nav-link">Logout</button></form>
+</div>
+</div>
+<div class="breadcrumb"><a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">|</span><a href="/admin/groups/pending">Approvals</a><span class="sep">|</span><a href="/admin/users">Users</a><span class="sep">|</span><a href="/admin/capacity">Capacity</a><span class="sep">|</span><a href="/admin/api-tokens">API tokens</a><span class="sep">|</span><a href="/admin/collections">Collections</a><span class="sep">/</span><span class="current">Revoke API token</span></div>
+<div class="container">
+<div class="card confirm-box">
+<h2>Revoke API token</h2>
+<p>Revoke token 9?</p>
+<form method="POST" action="/admin/api-tokens/9/revoke" class="form-row">
+<input type="hidden" name="csrf_token" value="golden-csrf">
+<input type="hidden" name="cidr" value="192.0.2.0/24">
+<button type="submit" class="btn btn-danger">Revoke</button>
+<a href="/admin/api-tokens" class="btn">Cancel</a>
+</form>
+</div>
+</div>
+</body></html>

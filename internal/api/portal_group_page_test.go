@@ -111,19 +111,21 @@ func TestHomeReposDefaultLimit50(t *testing.T) {
 // envelope must echo BOTH values as empty, never parrot a "desc" that
 // was not applied (the effective-value contract).
 func TestMonitorQueueEchoFallsBackBothValues(t *testing.T) {
+	// Since 0.29.109 the parameters are parsed once, by queueview.ParseParams,
+	// whose fallback (an unknown key: Sort and Dir both "") is pinned in its
+	// package (TestParseParamsEchoesEffectiveValues); the handler echoes the
+	// parsed values and nothing of the caller's.
 	src := srctest.Read(t, "internal/api/portal.go")
 	body := srctest.StripGoComments(srctest.FuncBody(t, src, "func (s *Server) handleAdminMonitorQueue("))
-	i := strings.Index(body, "if !db.QueueSortValid(sortKey) {")
-	if i < 0 {
-		t.Fatal("handleAdminMonitorQueue must gate the echo on db.QueueSortValid")
+	if !strings.Contains(body, "queueview.ParseParams(r.URL.Query()") {
+		t.Fatal("handleAdminMonitorQueue must parse page, q, sort and dir through queueview.ParseParams")
 	}
-	arm := body[i:]
-	if j := strings.Index(arm, "}"); j >= 0 {
-		arm = arm[:j]
-	}
-	for _, needle := range []string{`sortKey = ""`, `sortDir = ""`} {
-		if !strings.Contains(arm, needle) {
-			t.Errorf("the invalid-key fallback must reset %s — the composite order has no direction to echo", needle)
+	for _, needle := range []string{`"sort": p.Sort`, `"dir": p.Dir`} {
+		if !strings.Contains(body, needle) {
+			t.Errorf("handleAdminMonitorQueue must echo the EFFECTIVE values (%s missing)", needle)
 		}
+	}
+	if strings.Contains(body, `Get("sort")`) || strings.Contains(body, `Get("dir")`) {
+		t.Error("handleAdminMonitorQueue reads sort/dir itself; the one parser decides the echo")
 	}
 }

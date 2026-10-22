@@ -38,29 +38,33 @@ func TestAveloxisStatusUpsert(t *testing.T) {
 	if err := store.SetAveloxisStatus(ctx, "_av_test_sc", StatusBroken, "libmagic corrupt", "scancode preflight"); err != nil {
 		t.Fatalf("set: %v", err)
 	}
-	got, err := store.GetAveloxisStatus(ctx, "_av_test_sc")
-	if err != nil || got == nil {
-		t.Fatalf("get: %v / %v", got, err)
+	// The row as stored (the exported reader was deleted in 0.29.109, N28:
+	// no page or command read it; the scancode preflight only writes).
+	readStatus := func(name string) (status, detail, version string, found bool) {
+		err := store.pool.QueryRow(ctx, `SELECT status, COALESCE(status_detail,''), COALESCE(tool_version,'')
+			FROM aveloxis_ops.aveloxis_status WHERE status_name = $1`, name).Scan(&status, &detail, &version)
+		return status, detail, version, err == nil
 	}
-	if got.Status != StatusBroken || got.StatusDetail != "libmagic corrupt" || got.ToolVersion != ToolVersion {
-		t.Errorf("round-trip wrong: %+v (want tool_version=%s)", got, ToolVersion)
+	status, detail, version, found := readStatus("_av_test_sc")
+	if !found {
+		t.Fatal("the status row was not written")
+	}
+	if status != StatusBroken || detail != "libmagic corrupt" || version != ToolVersion {
+		t.Errorf("round-trip wrong: %s %q %s (want tool_version=%s)", status, detail, version, ToolVersion)
 	}
 	// Upsert: same status_name overwrites, no duplicate row.
 	if err := store.SetAveloxisStatus(ctx, "_av_test_sc", StatusOK, "", "scancode preflight"); err != nil {
 		t.Fatalf("re-set: %v", err)
 	}
-	got2, _ := store.GetAveloxisStatus(ctx, "_av_test_sc")
-	if got2.Status != StatusOK {
-		t.Errorf("upsert must overwrite status; got %q", got2.Status)
+	if status, _, _, _ := readStatus("_av_test_sc"); status != StatusOK {
+		t.Errorf("upsert must overwrite status; got %q", status)
 	}
 	var n int
 	store.pool.QueryRow(ctx, `SELECT count(*) FROM aveloxis_ops.aveloxis_status WHERE status_name='_av_test_sc'`).Scan(&n)
 	if n != 1 {
 		t.Errorf("must be exactly one row per status_name; got %d", n)
 	}
-	// Unrecorded subsystem → (nil, nil).
-	miss, err := store.GetAveloxisStatus(ctx, "_av_never_recorded")
-	if err != nil || miss != nil {
-		t.Errorf("unrecorded must be (nil,nil); got %v / %v", miss, err)
+	if _, _, _, found := readStatus("_av_never_recorded"); found {
+		t.Error("an unrecorded subsystem must have no row")
 	}
 }

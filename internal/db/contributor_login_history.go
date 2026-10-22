@@ -49,40 +49,7 @@ func recordLoginObservation(ctx context.Context, tx pgx.Tx, cntrbID string, plat
 	return err
 }
 
-// LoginHistoryEntry is a single observed-login row.
-type LoginHistoryEntry struct {
-	PlatformID int16
-	Login      string
-	FirstSeen  string // YYYY-MM-DD HH:MI:SS (UTC)
-	LastSeen   string
-	Source     string
-}
-
-// GetContributorLoginHistory returns every observed login for a
-// contributor, ordered by first_seen ascending (oldest first). Used
-// by the web GUI's contributor detail page and by operator audit
-// queries.
-func (s *PostgresStore) GetContributorLoginHistory(ctx context.Context, cntrbID string) ([]LoginHistoryEntry, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT platform_id, login,
-		       to_char(first_seen AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
-		       to_char(last_seen  AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
-		       source
-		FROM aveloxis_data.contributor_login_history
-		WHERE cntrb_id = $1::uuid
-		ORDER BY first_seen ASC, login ASC`,
-		cntrbID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []LoginHistoryEntry
-	for rows.Next() {
-		var e LoginHistoryEntry
-		if err := rows.Scan(&e.PlatformID, &e.Login, &e.FirstSeen, &e.LastSeen, &e.Source); err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
-}
+// The table is written by recordLoginObservation and read by operator SQL
+// (docs/architecture/contributor-resolution.md, "Rename handling"); the
+// exported per-contributor reader was deleted in 0.29.109 (N28 of
+// summary/59: no page or command read it).

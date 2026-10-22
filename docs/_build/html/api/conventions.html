@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API design conventions &mdash; Aveloxis 0.29.107 documentation</title>
+  <title>API design conventions &mdash; Aveloxis 0.29.117 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=4510acb2"></script>
+      <script src="../_static/documentation_options.js?v=21df7cf6"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -328,10 +328,26 @@
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#how-repos-get-queued-for-collection">How Repos Get Queued for Collection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#session-management">Session Management</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#running-alongside-aveloxis-serve">Running Alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#administration">Administration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#security-considerations">Security Considerations</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="../guide/security.html">Security</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#credentials-and-their-strength">Credentials and their strength</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#where-sign-in-strength-comes-from">Where sign-in strength comes from</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#sessions">Sessions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#cryptography">Cryptography</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#data">Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#logs">Logs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#why-the-web-process-has-no-request-limiter-of-its-own">Why the web process has no request limiter of its own</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-114">Changes for API clients in 0.29.114</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-113">Changes for API clients in 0.29.113</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-100">Changes for API clients in 0.29.100</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#endpoints">Endpoints</a><ul>
@@ -2097,6 +2113,18 @@ explains why both stay as they are.</p></li>
 <section id="compatibility">
 <h2>Compatibility<a class="headerlink" href="#compatibility" title="Link to this heading"></a></h2>
 <ul class="simple">
+<li><p><strong>One field name for a metric’s number.</strong> The comparison series
+(<code class="docutils literal notranslate"><span class="pre">/compare</span></code>) and the single-number Augur-compatible metric routes carry
+the number in a field named <code class="docutils literal notranslate"><span class="pre">value</span></code>. Augur names that field per metric
+(<code class="docutils literal notranslate"><span class="pre">stars</span></code>, <code class="docutils literal notranslate"><span class="pre">forks</span></code>, <code class="docutils literal notranslate"><span class="pre">commit_count</span></code>, …); a client moving from Augur reads
+<code class="docutils literal notranslate"><span class="pre">value</span></code> here instead. The exceptions, each marked in the reference:
+<code class="docutils literal notranslate"><span class="pre">/repos/{id}/watchers</span></code> keeps Augur’s <code class="docutils literal notranslate"><span class="pre">watchers</span></code> key (the one series whose
+shape already matched Augur’s when this rule was decided);
+<code class="docutils literal notranslate"><span class="pre">/repos/{id}/code-changes-lines</span></code> is a two-number row (<code class="docutils literal notranslate"><span class="pre">added</span></code>, <code class="docutils literal notranslate"><span class="pre">removed</span></code>)
+under Augur’s names; and the older native weekly series of
+<code class="docutils literal notranslate"><span class="pre">/repos/{id}/timeseries</span></code> carries <code class="docutils literal notranslate"><span class="pre">count</span></code> (unchanged since it shipped; its
+clients predate the rule). The 0.29.111 release notes record the
+decision.</p></li>
 <li><p>Adding an operation, an optional parameter or a field is a compatible
 change. Clients must ignore fields they do not know.</p></li>
 <li><p>Removing or renaming an operation, a parameter or a field, or changing

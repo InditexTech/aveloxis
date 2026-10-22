@@ -221,6 +221,19 @@ kept.
 
 ## Compatibility
 
+- **One field name for a metric's number.** The comparison series
+  (`/compare`) and the single-number Augur-compatible metric routes carry
+  the number in a field named `value`. Augur names that field per metric
+  (`stars`, `forks`, `commit_count`, …); a client moving from Augur reads
+  `value` here instead. The exceptions, each marked in the reference:
+  `/repos/{id}/watchers` keeps Augur's `watchers` key (the one series whose
+  shape already matched Augur's when this rule was decided);
+  `/repos/{id}/code-changes-lines` is a two-number row (`added`, `removed`)
+  under Augur's names; and the older native weekly series of
+  `/repos/{id}/timeseries` carries `count` (unchanged since it shipped; its
+  clients predate the rule). The 0.29.111 release notes record the
+  decision.
+
 - Adding an operation, an optional parameter or a field is a compatible
   change. Clients must ignore fields they do not know.
 - Removing or renaming an operation, a parameter or a field, or changing

@@ -27,6 +27,11 @@ import (
 // cookie but cannot read it to fill the field.
 const csrfCookieName = "aveloxis_csrf"
 
+// hstsValue is the Strict-Transport-Security every answer of a production
+// web process carries (OWASP ASVS 5.0 V3.4.1): httpserver.HSTSValue, the
+// one value the api process sends too.
+const hstsValue = httpserver.HSTSValue
+
 // csrfExempt lists the POST routes that take no form token: the two
 // aveloxis-gui calls from its own origin with credentials (the origin
 // check below is their guard — the SPA cannot read the HttpOnly cookie),
@@ -62,6 +67,12 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		if !s.cfg.DevMode {
+			// One year, subdomains included (ASVS V3.4.1; 0.29.113). A
+			// front proxy that terminates TLS may replace it; under
+			// web.dev_mode (plain HTTP) a browser would ignore it anyway.
+			h.Set("Strict-Transport-Security", hstsValue)
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -111,8 +122,8 @@ func (s *Server) csrfGuard(next http.Handler) http.Handler {
 		if !proxied {
 			r.Body = http.MaxBytesReader(w, r.Body, formBodyMaxBytes)
 		}
-		if _, err := r.Cookie("aveloxis_session"); err == nil && !csrfExempt[r.URL.Path] && !proxied {
-			cookie, err := r.Cookie(csrfCookieName)
+		if _, err := s.readCookie(r, "aveloxis_session"); err == nil && !csrfExempt[r.URL.Path] && !proxied {
+			cookie, err := s.readCookie(r, csrfCookieName)
 			given := r.Header.Get("X-CSRF-Token")
 			if given == "" {
 				if !s.parseForm(w, r) {
@@ -206,7 +217,10 @@ func (s *Server) isSPAOrigin(origin string) bool {
 // browser has none (a session from before this release, or the login
 // page's own sign-out form): the pages render it into their forms.
 func (s *Server) csrfToken(w http.ResponseWriter, r *http.Request) string {
-	if c, err := r.Cookie(csrfCookieName); err == nil && c.Value != "" {
+	// The guard's own spelling (readCookie: __Host- outside dev_mode). A
+	// bare r.Cookie here read a pre-0.29.113 aveloxis_csrf into every form
+	// while the guard compared the prefixed one (review round 1, High).
+	if c, err := s.readCookie(r, csrfCookieName); err == nil && c.Value != "" {
 		return c.Value
 	}
 	token := rand.Text()
@@ -232,5 +246,5 @@ const (
 	formLineTerminator         = "%0D%0A"
 	formFixedFieldsBytes       = len("repo_urls=&group_id=&csrf_token=") + maxInt64Digits + csrfTokenLen
 	maxInt64Digits             = 19 // len(strconv.FormatInt(math.MaxInt64, 10))
-	csrfTokenLen               = 26 // rand.Text(): 26 base32 characters (160 bits), pinned by the test
+	csrfTokenLen               = 26 // rand.Text(): 26 base32 characters (about 128 bits of randomness), pinned by the test
 )

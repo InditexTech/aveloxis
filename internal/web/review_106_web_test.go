@@ -26,7 +26,6 @@ import (
 	"github.com/aveloxis/aveloxis/internal/admin"
 	"github.com/aveloxis/aveloxis/internal/config"
 	"github.com/aveloxis/aveloxis/internal/db"
-	"github.com/aveloxis/aveloxis/internal/srctest"
 	"github.com/aveloxis/aveloxis/internal/static"
 )
 
@@ -78,7 +77,7 @@ func TestCSRFGuardBoundsAndRestrictsFormBodies(t *testing.T) {
 		_ = mw.Close()
 		r := httptest.NewRequest(http.MethodPost, "/no/such/route", &body)
 		r.Header.Set("Content-Type", mw.FormDataContentType())
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "bogus"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "bogus"})
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, r)
 		after := multipartTempFiles(t)
@@ -100,7 +99,7 @@ func TestCSRFGuardBoundsAndRestrictsFormBodies(t *testing.T) {
 	withSession := func(t *testing.T, r *http.Request) {
 		t.Helper()
 		token := plantSession(t, s, "w1-"+strconv.Itoa(len(logs.String())), &Session{UserID: 1, LoginName: "w1", ExpiresAt: time.Now().Add(time.Hour)})
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 		r.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "test-csrf-token"})
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
@@ -207,7 +206,7 @@ func TestRemoveConfirmAnswers404ForARepoThatIsGone(t *testing.T) {
 	s := New(store, config.WebConfig{Addr: ":0", APIInternalURL: "http://127.0.0.1:1", DevMode: true}, "", slog.New(slog.NewTextHandler(&logs, nil)))
 	token := plantSession(t, s, "remove-confirm", &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)})
 	r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/groups/%d/repos/%d/remove", gid, goneRepo), nil)
-	r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+	r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, r)
 	if rec.Code != http.StatusNotFound {
@@ -261,7 +260,7 @@ func TestSetUserAdminRequiresABooleanField(t *testing.T) {
 		token := plantSession(t, s, "a2-"+strconv.Itoa(i), &Session{UserID: 1, LoginName: "root", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
 		r := httptest.NewRequest(http.MethodPost, "/admin/users/5/admin", strings.NewReader(tc.body))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 		r.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "test-csrf-token"})
 		code, _, reached := serve(h, r)
 		if tc.want == 0 {
@@ -317,24 +316,35 @@ func TestChartGridsAndInputsReflow(t *testing.T) {
 }
 
 // TestAdminPagesCarryTheViewportAndStackedTables (W8, the same rule): the
-// two hand-written administrator pages (approvals, users) are outside the
-// template set and were plain seven-column tables with no viewport meta —
-// sideways scrolling on a phone. They carry the viewport meta, the shared
-// stylesheet and stacked tables (.tbl-stack with data-label cells) like
-// every template.
+// two administrator pages (approvals, users) were hand-written HTML
+// outside the template set — plain seven-column tables with no viewport
+// meta, sideways scrolling on a phone. Since 0.29.109 (stage 3a) they are
+// templates; rendered through the production parse with the golden
+// fixtures, each carries the viewport meta, the shared stylesheet and
+// stacked tables (.tbl-stack with data-label cells), and the template text
+// fixes no pixel width.
 func TestAdminPagesCarryTheViewportAndStackedTables(t *testing.T) {
-	for _, fn := range []string{"handleAdminPendingGroups", "handleAdminUsers"} {
-		body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/web", "func (s *Server) "+fn+"("))
+	tmpl := parseTemplates()
+	for _, name := range []string{"admin_approvals", "admin_users"} {
+		var buf bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&buf, name, renderFixtures[name]); err != nil {
+			t.Fatalf("render %s: %v", name, err)
+		}
+		page := buf.String()
 		for _, needle := range []string{`name="viewport"`, `href="/static/app.css"`, `class="tbl-stack"`, `data-label="`} {
-			if !strings.Contains(body, needle) {
-				t.Errorf("%s: the page lacks %s", fn, needle)
+			if !strings.Contains(page, needle) {
+				t.Errorf("%s: the page lacks %s", name, needle)
 			}
 		}
-		if m := fixedWidthInline.FindString(body); m != "" {
-			t.Errorf("%s: %q — an inline fixed width on a phone is a horizontal scroll (operator rule)", fn, m)
+		src, err := templateFS.ReadFile("templates/" + name + ".html")
+		if err != nil {
+			t.Fatal(err)
 		}
-		if strings.Contains(body, "max-width: 28rem") || strings.Contains(body, "<table><tr>") {
-			t.Errorf("%s: the page still lays its table out for a wide screen", fn)
+		if m := fixedWidthInline.FindString(string(src)); m != "" {
+			t.Errorf("%s: %q — an inline fixed width on a phone is a horizontal scroll (operator rule)", name, m)
+		}
+		if strings.Contains(page, "max-width: 28rem") || strings.Contains(page, "<table><tr>") {
+			t.Errorf("%s: the page still lays its table out for a wide screen", name)
 		}
 	}
 }

@@ -233,6 +233,12 @@ func newRepoPageCache(maxBytes int64, ttl time.Duration) *repoPageCache {
 func (c *repoPageCache) get(key string) (*pageEntry, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.getLocked(key)
+}
+
+// getLocked is get's rule with c.mu held: the one spelling of "a fresh
+// entry", read by get and by runOnce's re-check (SR-17).
+func (c *repoPageCache) getLocked(key string) (*pageEntry, bool) {
 	el, ok := c.m[key]
 	if !ok {
 		return nil, false
@@ -721,6 +727,15 @@ func (s *Server) runOnce(c *repoPageCache, key string, r *http.Request, h http.H
 			return res, store(res, cost)
 		}
 		return res, nil
+	}
+	// The caller's get() missed under an earlier lock: a leader may have
+	// stored its entry and left since. Answer that entry instead of leading
+	// a second run whose put would replace it, resetting its cost and hits
+	// (2026-10-21, the 0.29.116 home-cache race's sibling;
+	// TestRunOnceRechecksTheCacheBeforeLeading).
+	if e, ok := c.getLocked(key); ok {
+		c.mu.Unlock()
+		return pageResult{status: http.StatusOK, cacheable: true}, e
 	}
 	f := &pageFlight{done: make(chan struct{})}
 	c.inflight[key] = f

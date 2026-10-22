@@ -31,6 +31,7 @@ import (
 	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
+	"github.com/aveloxis/aveloxis/internal/queueview"
 	"github.com/aveloxis/aveloxis/internal/safego"
 )
 
@@ -132,6 +133,10 @@ func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request) (authInfo,
 		return authInfo{}, false
 	}
 	if !info.IsAdmin {
+		// Logged like the web twin's refusal (ASVS V16.3.2, the 0.29.82
+		// review P6, closed on this side by the 0.29.112 review): once a
+		// minute per user and kind, never the body.
+		s.logRefusal("not_admin", info, "path", r.URL.Path)
 		writeAuthError(w, http.StatusForbidden, "administrator access required")
 		return authInfo{}, false
 	}
@@ -657,51 +662,19 @@ func (s *Server) handleAdminMonitorQueue(w http.ResponseWriter, r *http.Request)
 	if _, ok := s.requireAdmin(w, r); !ok {
 		return
 	}
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 1 {
-		page = 1
-	}
+	// The one queue-page view model (queueview, stage 3d of summary/59):
+	// the parameters echo their EFFECTIVE values (an unknown sort key means
+	// the store's default composite and no direction — never the caller's
+	// input parroted; Copilot round 8 on PR #193), and a failed enrichment
+	// read leaves the ids bare, logged (58 §7 item 10).
 	const pageSize = 100
-	sortKey := r.URL.Query().Get("sort")
-	sortDir := r.URL.Query().Get("dir")
-	jobs, total, err := s.store.ListQueuePage(r.Context(), pageSize, (page-1)*pageSize, r.URL.Query().Get("q"), sortKey, sortDir)
-	// Echo the EFFECTIVE sort values (the handleGroupRepos contract —
-	// the log-the-effective-value rule applied to response envelopes):
-	// an unknown key means the store used the default composite, and
-	// the envelope must say so, never parrot the caller's input.
-	if !db.QueueSortValid(sortKey) {
-		// Copilot round 8 on PR #193 (suppressed #1): when the key
-		// falls back, the store used the collecting-first COMPOSITE and
-		// ignored dir entirely — echoing the caller's "desc" would
-		// claim a direction that was never applied. Both echo empty.
-		sortKey = ""
-		sortDir = ""
-	} else if strings.EqualFold(sortDir, "desc") {
-		sortDir = "desc"
-	} else {
-		sortDir = "asc"
-	}
+	p := queueview.ParseParams(r.URL.Query(), pageSize, pageSize)
+	page, err := queueview.Load(r.Context(), s.store, p, s.logger)
 	if err != nil {
 		s.serverError(w, r, "handleAdminMonitorQueue", err)
 		return
 	}
-	// Attach repo names — ids alone mean nothing to users (operator) —
-	// and the repo_info meta counts so gathered-vs-metadata pairs render
-	// side by side (operator, 2026-07-15).
-	ids := make([]int64, 0, len(jobs))
-	for _, j := range jobs {
-		ids = append(ids, j.RepoID)
-	}
-	// A failed enrichment read leaves the ids bare, logged (58 §7 item 10:
-	// both errors were discarded).
-	repos, rerr := s.store.GetReposBatch(r.Context(), ids)
-	if rerr != nil {
-		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, rerr, "monitor queue: repository names unreadable — ids shown bare", "error", rerr)
-	}
-	stats, serr := s.store.GetRepoStatsBatch(r.Context(), ids)
-	if serr != nil {
-		httpserver.LogFailure(r.Context(), s.logger, slog.LevelWarn, serr, "monitor queue: repository stats unreadable — metadata counts shown as 0", "error", serr)
-	}
+	rows, total := page.Rows, page.Total
 	type jobJSON struct {
 		RepoID        int64      `json:"repo_id"`
 		Repo          string     `json:"repo"`
@@ -717,24 +690,21 @@ func (s *Server) handleAdminMonitorQueue(w http.ResponseWriter, r *http.Request)
 		MetaPRs       int        `json:"meta_prs"`
 		MetaCommits   int        `json:"meta_commits"`
 	}
-	out := make([]jobJSON, 0, len(jobs))
-	for _, j := range jobs {
-		label := strconv.FormatInt(j.RepoID, 10)
-		if rp, ok := repos[j.RepoID]; ok && rp != nil {
-			label = rp.Owner + "/" + rp.Name
-		}
-		row := jobJSON{RepoID: j.RepoID, Repo: label, Status: j.Status, Priority: j.Priority,
+	out := make([]jobJSON, 0, len(rows))
+	for _, j := range rows {
+		out = append(out, jobJSON{RepoID: j.RepoID, Repo: j.Label(), Status: j.Status, Priority: j.Priority,
 			DueAt: j.DueAt, LastCollected: j.LastCollected, LastError: j.LastError,
-			Issues: j.LastIssues, PRs: j.LastPRs, Commits: j.LastCommits}
-		if st, ok := stats[j.RepoID]; ok && st != nil {
-			row.MetaIssues, row.MetaPRs, row.MetaCommits = st.MetadataIssues, st.MetadataPRs, st.MetadataCommits
-		}
-		out = append(out, row)
+			Issues: j.LastIssues, PRs: j.LastPRs, Commits: j.LastCommits,
+			MetaIssues: j.MetaIssues, MetaPRs: j.MetaPRs, MetaCommits: j.MetaCommits})
 	}
-	s.writeJSON(w, r, map[string]any{
-		"jobs": out, "total": total, "page": page, "page_size": pageSize,
-		"sort": sortKey, "dir": sortDir,
-	})
+	env := map[string]any{
+		"jobs": out, "total": total, "page": p.Page, "page_size": p.PageSize,
+		"sort": p.Sort, "dir": p.Dir,
+	}
+	if len(page.Warnings) > 0 { // a failed enrichment read, said (never zeros as the truth)
+		env["warnings"] = page.Warnings
+	}
+	s.writeJSON(w, r, env)
 }
 
 // handleAdminPrioritizeRepo (v0.27.14) is the SPA monitor's "Boost"
@@ -1084,7 +1054,11 @@ func (c *homeReposCache) setIfGen(userID, limit int, body []byte, gen uint64) {
 
 // tryBeginRefresh claims the per-user refresh slot and returns the
 // generation the refresh is conditioned on; ok=false means a refresh
-// is already in flight.
+// is already in flight, or the entry is fresh again. The second arm is
+// checked here, under the claim's own lock (2026-10-21): get() released
+// the lock before the caller got here, so a refresh that stored a fresh
+// body and freed the slot in between would otherwise be followed by a
+// redundant second load overwriting it (TestHomeCacheRefreshClaimRechecksTheEntry).
 func (c *homeReposCache) tryBeginRefresh(userID, limit int) (gen uint64, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1094,6 +1068,9 @@ func (c *homeReposCache) tryBeginRefresh(userID, limit int) (gen uint64, ok bool
 	k := homeCacheKey{userID, limit}
 	if c.refreshing[k] {
 		return 0, false
+	}
+	if e, present := c.entries[k]; present && !time.Now().After(e.expires) {
+		return 0, false // fresh since the caller read it: nothing to refresh
 	}
 	c.refreshing[k] = true
 	return c.gen[userID], true

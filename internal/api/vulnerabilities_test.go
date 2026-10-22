@@ -121,7 +121,9 @@ func TestV0274RoutesRegistered(t *testing.T) {
 		}
 	}
 	portal := mustReadFile(t, "portal.go")
-	for _, needle := range []string{"GetRepoStatsBatch", "MetaIssues", "MetaPRs", "MetaCommits"} {
+	// The meta counts come through the one queue loader since 0.29.109
+	// (queueview.Load batches GetRepoStatsBatch; pinned in its package).
+	for _, needle := range []string{"queueview.Load(", "MetaIssues", "MetaPRs", "MetaCommits"} {
 		if !strings.Contains(portal, needle) {
 			t.Errorf("handleAdminMonitorQueue must attach repo_info meta counts (%q missing) — the monitor shows gathered vs metadata pairs", needle)
 		}

@@ -1,0 +1,86 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aveloxis - API tokens</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/avx.js"></script>
+</head>
+<body>
+<div class="nav">
+<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
+<div class="nav-user">
+<img src="https://avatars.example/7.png" alt="">
+<a href="/account" class="nav-link nav-login" title="Your sessions">golden</a>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="golden-csrf"><button type="submit" class="nav-link">Logout</button></form>
+</div>
+</div>
+<div class="breadcrumb"><a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">|</span><a href="/admin/groups/pending">Approvals</a><span class="sep">|</span><a href="/admin/users">Users</a><span class="sep">|</span><a href="/admin/capacity">Capacity</a><span class="sep">|</span><a href="/admin/api-tokens">API tokens</a><span class="sep">|</span><a href="/admin/collections">Collections</a><span class="sep">/</span><span class="current">API tokens</span></div>
+<div class="container">
+<div class="notice">The defaults are saved.</div>
+
+<div class="card">
+<h2>Grant a token</h2>
+<p class="muted">A token authenticates as the account it is granted to, with that account's data scope and never with administrator privilege. It is shown once, on the next page.</p>
+<form method="POST" action="/admin/api-tokens" class="form-stack">
+<input type="hidden" name="csrf_token" value="golden-csrf">
+<label>Account (user id)<input type="number" name="user_id" min="1" required></label>
+<label>Label<input type="text" name="label" maxlength="200" placeholder="who it is for, or what uses it" required></label>
+<label>Lifetime (days)<input type="number" name="lifetime_days" min="1" max="365" placeholder="30"></label>
+<label>Calls per hour<input type="number" name="rate_limit_per_hour" min="1" placeholder="1000"></label>
+<label>Calls per day<input type="number" name="rate_limit_per_day" min="1" placeholder="10000"></label>
+<button type="submit" class="btn btn-primary">Grant</button>
+</form>
+</div>
+
+<div class="card">
+<h2>Tokens</h2>
+
+<table class="tbl-stack">
+<thead><tr><th>Account</th><th>Status</th><th>Label</th><th>Calls per hour</th><th>Calls per day</th><th>Granted</th><th>Expires</th><th>Last used</th><th>Action</th></tr></thead>
+<tbody>
+
+<tr>
+<td data-label="Account">golden</td>
+<td data-label="Status"><span class="badge badge-org">active</span></td>
+<td data-label="Label">reporting</td>
+<td data-label="Calls per hour">1000</td>
+<td data-label="Calls per day">10000</td>
+<td data-label="Granted">2026-10-17 by golden</td>
+<td data-label="Expires">2026-11-16</td>
+<td data-label="Last used">2026-10-17 12:30</td>
+<td data-label="Action"><a href="/admin/api-tokens/9/revoke" class="btn btn-reject">Revoke</a></td>
+</tr>
+
+<tr>
+<td data-label="Account">silver</td>
+<td data-label="Status"><span class="badge badge-user">revoked</span></td>
+<td data-label="Label">old</td>
+<td data-label="Calls per hour">1</td>
+<td data-label="Calls per day">1</td>
+<td data-label="Granted">2026-10-17 by golden</td>
+<td data-label="Expires">2026-10-17</td>
+<td data-label="Last used">never</td>
+<td data-label="Action"></td>
+</tr>
+
+</tbody>
+</table>
+
+</div>
+
+<div class="card">
+<h2>Defaults</h2>
+<p class="muted">What the grant form offers when a value is left empty. The allowances are the token quotas; one that aveloxis.json decides cannot be changed here.</p>
+<form method="POST" action="/admin/api-token-settings" class="form-stack">
+<input type="hidden" name="csrf_token" value="golden-csrf">
+<label>Calls per hour<input type="number" name="default_rate_limit_per_hour" min="1" value="1000" required></label>
+<label>Calls per day<input type="number" name="default_rate_limit_per_day" min="1" value="10000"></label>
+<label>Lifetime (days)<input type="number" name="default_lifetime_days" min="1" max="365" value="30" required></label>
+<button type="submit" class="btn btn-primary">Save defaults</button>
+</form>
+</div>
+</div>
+</body></html>

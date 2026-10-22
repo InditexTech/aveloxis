@@ -68,7 +68,7 @@ func TestOAuthCallbackFailuresAreLogged(t *testing.T) {
 			if tc.provider == "github" {
 				ctx, refuse := githubCallbackFixture(t, forgeHandler("/login/oauth/access_token", "/user", tc.failExchange))
 				s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, "", logger)
-				s.handleGitHubCallback(rec, githubCallbackRequest(ctx))
+				s.handleGitHubCallback(rec, githubCallbackRequest(s, ctx))
 				// PR #218 review C10: a request that bypassed the fixture
 				// fails too, and would read here as the logged failure.
 				if hosts := refuse.leaked(); len(hosts) > 0 {

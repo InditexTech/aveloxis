@@ -269,6 +269,13 @@ type WebConfig struct {
 	// HttpOnly is always set regardless of this flag.
 	DevMode bool `json:"dev_mode"`
 
+	// SessionIdleMinutes (0.29.113, ASVS V7.3.1) signs a web session out
+	// after this many minutes without a request; 0 means the default,
+	// DefaultSessionIdleMinutes. Refused at load when negative or past the
+	// session's own 24-hour life. The SPA's /auth/token tokens are not
+	// subject to it (documented in docs/guide/security.md).
+	SessionIdleMinutes int `json:"session_idle_minutes"`
+
 	// GitHub OAuth app credentials (from https://github.com/settings/developers).
 	GitHubClientID     string `json:"github_client_id"`
 	GitHubClientSecret string `json:"github_client_secret"`
@@ -346,6 +353,27 @@ func (w WebConfig) GitLabOAuthBase() string {
 		return platform.PublicGitLabWebBase
 	}
 	return base
+}
+
+// DefaultSessionIdleMinutes is the inactivity bound when
+// web.session_idle_minutes is 0: NIST SP 800-63B's AAL2 reauthentication
+// bound (30 minutes of inactivity), the published number for a session
+// that also administers; Aveloxis delegates authentication to the forges
+// and runs no second factor itself, so it takes the stricter of the two
+// published bounds (AAL1's is 30 days).
+const DefaultSessionIdleMinutes = 30
+
+// MaxSessionIdleMinutes is the session's own absolute life
+// (db.WebSessionLifetime, 24 hours): a longer bound would never apply.
+const MaxSessionIdleMinutes = 24 * 60
+
+// SessionIdle is the effective inactivity bound as a duration (the ONE
+// default layer, SR-10; validate refused a negative or over-long value).
+func (w WebConfig) SessionIdle() time.Duration {
+	if w.SessionIdleMinutes == 0 {
+		return DefaultSessionIdleMinutes * time.Minute
+	}
+	return time.Duration(w.SessionIdleMinutes) * time.Minute
 }
 
 // AutoApproveAddLimitValue returns the effective auto-approve limit:
@@ -1690,6 +1718,11 @@ func (c *Config) validate() error {
 			// client appends to the base as given.
 			return fmt.Errorf("gitlab.base_url %q is not an absolute http:// or https:// URL of the instance's API ending in %s, such as https://gitlab.example.org%s (no query, fragment or user name); empty it to run without a GitLab instance", platform.RedactURLUserinfo(b), platform.GitLabAPISuffix, platform.GitLabAPISuffix)
 		}
+	}
+	// web.session_idle_minutes (0.29.113): 0 is the default; a negative
+	// value, or one past the session's absolute life, is refused here.
+	if c.Web.SessionIdleMinutes < 0 || c.Web.SessionIdleMinutes > MaxSessionIdleMinutes {
+		return fmt.Errorf("web.session_idle_minutes %d is not between 1 and %d (0 for the default, %d)", c.Web.SessionIdleMinutes, MaxSessionIdleMinutes, DefaultSessionIdleMinutes)
 	}
 	// web.gitlab_base_url is the instance people sign in through: the
 	// OAuth endpoints and the /api/v4/user read are appended to it and the

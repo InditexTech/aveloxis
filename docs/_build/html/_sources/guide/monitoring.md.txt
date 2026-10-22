@@ -16,12 +16,18 @@ aveloxis serve --monitor 127.0.0.1:5555
 
 # Custom port
 aveloxis serve --monitor 127.0.0.1:5556
-
-# Bind to all interfaces (for remote access)
-aveloxis serve --monitor 0.0.0.0:5555
 ```
 
 Open your browser to `http://localhost:5555` (or your configured address).
+
+**The monitor has no sign-in and must not be exposed.** It is a diagnostics
+page for the host serve runs on: anyone who can reach the address reads the
+whole queue, every repository's last error, and can re-prioritize a
+repository. Keep it on the loopback address (the default) and reach it over
+SSH port forwarding (`ssh -L 5555:127.0.0.1:5555 host`) when you are not on
+the host. Binding it to another interface (`--monitor 0.0.0.0:5555`) publishes
+it to that network. Administrators of the web GUI have the same queue, with
+sign-in, at `/monitor` (see [Web GUI](web-gui.md), "Administration").
 
 The dashboard auto-refreshes every 10 seconds.
 

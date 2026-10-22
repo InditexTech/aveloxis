@@ -152,7 +152,7 @@ func TestEveryRequestBodyIsReadThroughDecodeJSONBody(t *testing.T) {
 		}
 	}
 	srctest.MinCount(t, "functions scanned in internal/api", functions, 300)
-	srctest.MinCount(t, "decodeJSONBody call sites", callers, 17)
+	srctest.MinCount(t, "decodeJSONBody call sites", callers, 16) // 16 since 0.29.109: the two collection decodes share collectionFields (stage 3b)
 	if readers != 1 {
 		t.Errorf("%d functions touch r.Body; want exactly one (decodeJSONBody)", readers)
 	}

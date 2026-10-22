@@ -105,7 +105,7 @@ the ones a public host must get right:
   "api": {
     "addr": "127.0.0.1:8383",            // loopback only; the proxy forwards to it
     "trusted_proxy": "127.0.0.1",        // the proxy's peer IP, in canonical form; X-Forwarded-For is believed only from it
-    "require_auth": false,               // keep false for this GUI: its charts fetch the API without a Bearer token
+    "require_auth": true,                // the web process attaches each session's own Bearer on /api/ (0.29.110); true scopes the API to signed-in accounts
     "exempt_cidrs": ["127.0.0.0/8", "::1/128"],   // bypass the per-IP limits (not a valid token's own quotas) AND require_auth — narrow the RFC1918 defaults on a shared network
     "cors_origins": [],                  // empty = Access-Control-Allow-Origin: * ; list your origin to make it strict
     "response_cache_mb": 0,              // advanced, off by default: megabytes of repository answers the API keeps in memory
@@ -137,7 +137,13 @@ What the values mean:
   API token is still counted against its own quotas, v0.29.89) *and* `require_auth`. The
   defaults include the RFC1918 ranges; on a host whose private network is
   shared with others, narrow them to loopback as shown.
-- **`api.require_auth`** stays `false` with this GUI: its pages call the
+- **`api.require_auth`** can be `true` with this GUI since 0.29.110, as long
+  as the GUI host's `/api/` reaches the web process (section 9): the web
+  process mints a token for each signed-in session (revoked by sign-out) and
+  attaches it to every `/api/` request it forwards, so the pages are scoped
+  to the account like the SPA's — and counted, like the SPA's, against the
+  account's `requests_per_hour` and `requests_per_day` (shadow by default; a
+  page load is several requests). Before 0.29.110 it had to stay `false`: its pages called the
   API from the visitor's browser without a Bearer token, so turning it on
   stops the charts for everyone outside `exempt_cidrs`. It exists for a
   separate front end that holds the token the web process mints.
@@ -223,14 +229,26 @@ aveloxis -c "$CONFIG" stop all
 
 ## 9. Reverse proxy
 
-Terminate TLS in nginx on the same host and forward two paths: `/api/` to
-the API directly, everything else (the pages and `/auth/`) to the web
-process. Sending `/api/` straight to the API spares a hop. Traffic that goes
-through the web process's own `/api/` proxy instead keeps the per-visitor
-limits only when `web.trusted_proxy` is set: the web then forwards each
+Terminate TLS in nginx on the same host and forward everything on the
+GUI's host — the pages, `/auth/` and `/api/` — to the web process. The
+pages fetch `/api/` on their own origin without a token; the web process's
+`/api/` proxy attaches the signed-in session's Bearer (since 0.29.110), so
+with `api.require_auth` on (as above) a `/api/` sent straight to the API
+answers `401` to every browser outside `exempt_cidrs` (0.29.115 corrected
+this recipe, which used to do that). The per-visitor limits still see each
+visitor on this path when `web.trusted_proxy` is set: the web forwards each
 browser's address, and the API (with `api.trusted_proxy` set to the web's
 address, `127.0.0.1` on one host) counts it. With `web.trusted_proxy` empty,
-every visitor on that path reaches the API as loopback and counts as exempt.
+every visitor reaches the API as loopback and counts as exempt.
+
+The web's `/api/` serves signed-in browser sessions only (anything else is
+sent to sign in). A client that calls the API with its own Bearer token — a
+script with an operator-issued API token, or a browser front end on another
+origin — needs a host that forwards to the API: the second block below
+(`api.aveloxis.example.org`; list a browser front end's origin in
+`api.cors_origins`). Leave it out if nothing calls the API that way.
+aveloxis-gui does not need it: its own host forwards `/api/` to the API
+itself, on the GUI's origin (its deployment guide's nginx snippets).
 
 Remove Ubuntu's stock site first: it is `default_server` on port 80 with
 `root /var/www/html`, so any request whose Host is not yours (the bare
@@ -242,26 +260,39 @@ server {
     server_name aveloxis.example.org;
     # TLS: certbot --nginx -d aveloxis.example.org
 
-    location ^~ /api/ {
+    location / {                      # the pages, /auth/ and /api/ (the web attaches the session's Bearer on /api/)
+        proxy_pass http://127.0.0.1:8082;
+        proxy_set_header Host $host;                      # OAuth callbacks, cookies and the cross-site guard need the public host; on a non-default public port use $http_host (the guard compares the browser's Origin, port included)
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;   # appended: web and api read the rightmost entry, from trusted_proxy only
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 120s;      # below http_timeout_seconds (180): nginx answers 504 before the processes' own bound
+        proxy_send_timeout 120s;
+    }
+}
+
+server {                              # optional: the API for Bearer clients (aveloxis-gui, scripts)
+    server_name api.aveloxis.example.org;
+    # TLS: certbot --nginx -d api.aveloxis.example.org
+
+    location / {
         proxy_pass http://127.0.0.1:8383;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;   # appended: the API reads the rightmost entry, from trusted_proxy only
         proxy_connect_timeout 5s;
-        proxy_read_timeout 120s;      # below http_timeout_seconds (180): nginx answers 504 before the API's own bound
-        proxy_send_timeout 120s;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:8082;
-        proxy_set_header Host $host;                      # OAuth callbacks, cookies and the cross-site guard need the public host; on a non-default public port use $http_host (the guard compares the browser's Origin, port included)
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
     }
 }
 ```
 
 Do not expose the monitor (`127.0.0.1:5555`); reach it over SSH port
 forwarding. `nginx -t && systemctl reload nginx`.
+
+Both processes send `Strict-Transport-Security` and `X-Content-Type-Options`
+themselves (0.29.113; the web outside `dev_mode`), so the blocks above add
+neither — nginx passes upstream headers through, and an `add_header
+Strict-Transport-Security` here would send the value twice. A proxy that
+hides upstream headers (`proxy_hide_header`) must add its own.
 
 ## 10. Verify
 

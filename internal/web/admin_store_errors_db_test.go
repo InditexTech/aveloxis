@@ -43,7 +43,7 @@ func TestAdminDecisionStoreFailuresAreGeneric500s(t *testing.T) {
 	post := func(path string, form url.Values) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin-probe"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "admin-probe"})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)

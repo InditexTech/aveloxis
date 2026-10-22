@@ -44,8 +44,6 @@ func TestRequestHandlersLogThroughLogFailure(t *testing.T) {
 		srctest.SiteKey("internal/web", "completeOAuthLogin", "failed to upsert OAuth user"):                                                               "guarded: the httpserver.RequestEnded return just above it (the login's failure arms; the gate's privilege read is TestGateWithFailedAdminLookupIs500NotARefusal)",
 		srctest.SiteKey("internal/web", "completeOAuthLogin", "failed to send welcome email"):                                                              "the mailer's own error; the send runs off the request context",
 		srctest.SiteKey("internal/web", "handleRepoDetail", "repo page: stats unavailable"):                                                                "guarded: `err != nil && !httpserver.RequestEnded(err)`",
-		srctest.SiteKey("internal/web", "handleMonitor", "monitor page: repository details unavailable"):                                                   "guarded: `err != nil && !httpserver.RequestEnded(err)`",
-		srctest.SiteKey("internal/web", "handleMonitor", "monitor page: repository stats unavailable"):                                                     "guarded: `err != nil && !httpserver.RequestEnded(err)`",
 		srctest.SiteKey("internal/api", "capacityTick", "could not delete old daily request counts; retried next tick"):                                    "RunCapacity's own loop context, no request: guarded by `ctx.Err() == nil` (a stop is silent)",
 		srctest.SiteKey("internal/api", "capacityTick", "could not delete past sign-up secrets and keys; retried next tick"):                               "RunCapacity's own loop context, no request: guarded by `ctx.Err() == nil` (a stop is silent)",
 		srctest.SiteKey("internal/api", "FlushCapacity", "could not save daily request counts; kept for the next save"):                                    "FlushCapacity runs on RunCapacity's bounded step context or runAPI's stop context, never a request's: silent only when that context was cancelled (v0.29.91: a step's own timeout is logged)",
@@ -56,7 +54,7 @@ func TestRequestHandlersLogThroughLogFailure(t *testing.T) {
 	root := srctest.Root(t)
 	seen := map[string]bool{}
 	examined := 0
-	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor", "internal/admin"} {
+	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor", "internal/admin", "internal/queueview"} {
 		files, err := filepath.Glob(filepath.Join(root, dir, "*.go"))
 		if err != nil {
 			t.Fatal(err)
@@ -170,7 +168,7 @@ func TestLogFailureClassifiesByTheRequestsContext(t *testing.T) {
 	root := srctest.Root(t)
 	seen := map[string]bool{}
 	calls := 0
-	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor", "internal/admin"} {
+	for _, dir := range []string{"internal/api", "internal/web", "internal/monitor", "internal/admin", "internal/queueview"} {
 		files, err := filepath.Glob(filepath.Join(root, dir, "*.go"))
 		if err != nil {
 			t.Fatal(err)

@@ -34,6 +34,11 @@ type PostgresStore struct {
 	migrateNoWait    bool        // whether to fail fast on advisory-lock contention (--no-wait on migrate)
 	migrateFastPath  bool        // F13: skip RunMigrations entirely when the stamp matches (serve startup only)
 	allowSecondServe bool        // serve may start beside another aveloxis-serve (see SetAllowSecondServe)
+	// sessionIdle is web.session_idle_minutes as the process set it
+	// (SetSessionIdle, 0.29.113): a web session unused for longer is
+	// refused by LookupWebSession. Zero = no inactivity rule (a store
+	// nobody configured: tests); every process sets it from the config.
+	sessionIdle time.Duration
 
 	// v0.29.89 (summary/53): this process's aveloxis.json capacity words,
 	// and the once-a-day notifier for shadow allocation decisions.
@@ -327,6 +332,15 @@ func (s *PostgresStore) SetMigrateFastPath(enabled bool) {
 func (s *PostgresStore) SetAllowSecondServe(allowed bool) {
 	s.allowSecondServe = allowed
 }
+
+// SetSessionIdle sets the inactivity bound LookupWebSession applies
+// (web.session_idle_minutes; ASVS V7.3.1, 0.29.113). Set once at start by
+// the web and api processes from the one config accessor
+// (WebConfig.SessionIdle); zero disables the rule.
+func (s *PostgresStore) SetSessionIdle(d time.Duration) { s.sessionIdle = d }
+
+// SessionIdle is the bound SetSessionIdle set.
+func (s *PostgresStore) SessionIdle() time.Duration { return s.sessionIdle }
 
 func (s *PostgresStore) Migrate(ctx context.Context) error {
 	return RunMigrations(ctx, s, s.logger)

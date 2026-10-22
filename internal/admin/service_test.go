@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/db"
 )
 
@@ -114,6 +115,14 @@ func TestAdministrativeOperationsNeedAnAdministratorSession(t *testing.T) {
 // requireAdmin call sites (TestEveryRequireAdminSiteIsEnumerated).
 func adminOperations() map[string]func(*Service, context.Context, Actor) error {
 	return map[string]func(*Service, context.Context, Actor) error{
+		"ListSessions": func(s *Service, ctx context.Context, a Actor) error {
+			_, err := s.ListSessions(ctx, a, 77) // another account's
+			return err
+		},
+		"RevokeSessions": func(s *Service, ctx context.Context, a Actor) error {
+			_, err := s.RevokeSessions(ctx, a, 77)
+			return err
+		},
 		"DecideAddRequest": func(s *Service, ctx context.Context, a Actor) error {
 			_, err := s.DecideAddRequest(ctx, a, 1, true)
 			return err
@@ -125,6 +134,44 @@ func adminOperations() map[string]func(*Service, context.Context, Actor) error {
 		"AdoptForgeID": func(s *Service, ctx context.Context, a Actor) error {
 			return s.AdoptForgeID(ctx, a, 1, "1", "2", "")
 		},
+		// Stage 3b (0.29.109): tokens, capacity, collections.
+		"GrantAPIToken": func(s *Service, ctx context.Context, a Actor) error {
+			_, _, err := s.GrantAPIToken(ctx, a, TokenGrant{UserID: 2, Label: "x"})
+			return err
+		},
+		"RevokeAPIToken": func(s *Service, ctx context.Context, a Actor) error { return s.RevokeAPIToken(ctx, a, 1) },
+		"SetAPITokenDefaults": func(s *Service, ctx context.Context, a Actor) error {
+			hour, days := int64(10), int64(30)
+			_, err := s.SetAPITokenDefaults(ctx, a, TokenDefaults{RateLimitPerHour: &hour, LifetimeDays: &days})
+			return err
+		},
+		"SetCapacityQuota": func(s *Service, ctx context.Context, a Actor) error {
+			allowed := int64(5)
+			_, err := s.SetCapacityQuota(ctx, a, capacity.QuotaNames()[0], QuotaChange{Allowed: &allowed, Mode: "enforce"})
+			return err
+		},
+		"SetCapacityContact": func(s *Service, ctx context.Context, a Actor) error { return s.SetCapacityContact(ctx, a, "") },
+		"SetCapacityOverride": func(s *Service, ctx context.Context, a Actor) error {
+			return s.SetCapacityOverride(ctx, a, db.CapacityOverride{UserID: 2})
+		},
+		"AddSignupAllowlist": func(s *Service, ctx context.Context, a Actor) error {
+			_, err := s.AddSignupAllowlist(ctx, a, "192.0.2.0/24", "")
+			return err
+		},
+		"RemoveSignupAllowlist": func(s *Service, ctx context.Context, a Actor) error {
+			_, err := s.RemoveSignupAllowlist(ctx, a, "192.0.2.0/24")
+			return err
+		},
+		"CreateCollection": func(s *Service, ctx context.Context, a Actor) error {
+			_, err := s.CreateCollection(ctx, a, CollectionFields{Name: "x"})
+			return err
+		},
+		"UpdateCollection": func(s *Service, ctx context.Context, a Actor) error {
+			return s.UpdateCollection(ctx, a, 1, CollectionFields{Name: "x"})
+		},
+		"DeleteCollection":          func(s *Service, ctx context.Context, a Actor) error { return s.DeleteCollection(ctx, a, 1) },
+		"AddGroupToCollection":      func(s *Service, ctx context.Context, a Actor) error { return s.AddGroupToCollection(ctx, a, 1, 2) },
+		"RemoveGroupFromCollection": func(s *Service, ctx context.Context, a Actor) error { return s.RemoveGroupFromCollection(ctx, a, 1, 2) },
 	}
 }
 

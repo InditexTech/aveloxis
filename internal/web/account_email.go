@@ -4,6 +4,7 @@
 package web
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -24,6 +25,17 @@ import (
 // (v0.20.4), and the user redirects to /dashboard; users.email changes
 // only when the link is followed.
 func (s *Server) handleAccountEmailSubmit(w http.ResponseWriter, r *http.Request, sess *Session) {
+	// The recovery address changes only after a recent sign-in (ASVS
+	// V7.5.1, 0.29.113): an older session is sent to sign in again and
+	// come back here.
+	if !s.recentSignIn(sess) {
+		s.render(w, r, "account_email", map[string]any{
+			"Session": sess,
+			"Error":   fmt.Sprintf("To change the address, sign in again first: this session signed in more than %d minutes ago.", int(s.cfg.SessionIdle().Minutes())),
+			"Reauth":  true,
+		})
+		return
+	}
 	if msg := s.admin.SubmitAccountEmail(r.Context(), sessionActor(sess), sess.LoginName, r.FormValue("email"), linkOrigin(r)); msg != "" {
 		s.render(w, r, "account_email", map[string]any{
 			"Session": sess,

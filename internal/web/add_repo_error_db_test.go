@@ -88,7 +88,7 @@ func TestAddRepoFailureIsShownToTheUser(t *testing.T) {
 	s := New(store, config.WebConfig{AutoApproveAddLimit: 5}, "", logger)
 	plantSession(t, s, "probe-token", &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)})
 	serve := func(r *http.Request) *httptest.ResponseRecorder {
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "probe-token"})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
@@ -101,7 +101,7 @@ func TestAddRepoFailureIsShownToTheUser(t *testing.T) {
 		form := url.Values{"group_id": {fmt.Sprint(groupID)}, "repo_urls": {urls}}
 		r := httptest.NewRequest(http.MethodPost, "/groups/add-repo", strings.NewReader(form.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "probe-token"})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, r)

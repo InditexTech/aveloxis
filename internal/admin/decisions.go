@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
@@ -161,8 +162,11 @@ func (s *Service) RejectGroup(ctx context.Context, a Actor, groupID int64) error
 	return nil
 }
 
-// AdoptNoteMaxBytes bounds the note recorded with a forge-ID adoption.
-const AdoptNoteMaxBytes = 1000
+// AdoptNoteMaxLength bounds the note recorded with a forge-ID adoption, in
+// characters — the unit a form's maxlength counts, and the capacity
+// notes' unit (whole-branch review of 0.29.109: the bound was bytes, so a
+// 400-character note of 3-byte characters passed the form and was refused).
+const AdoptNoteMaxLength = 1000
 
 // AdoptForgeID adopts one recorded forge-ID change — the pair the
 // administrator chose, never "the newest" (review of v0.29.63) — so the
@@ -189,7 +193,7 @@ func (s *Service) AdoptForgeID(ctx context.Context, a Actor, repoID int64, oldID
 	if _, ok := model.ParseForgeID(newID); !ok {
 		return refuseInput("new_forge_id is not a forge ID (a positive integer)")
 	}
-	if len(note) > AdoptNoteMaxBytes {
+	if utf8.RuneCountInString(note) > AdoptNoteMaxLength {
 		return refuseInput("note too long")
 	}
 	adoptedBy := s.actorLabel(ctx, a)

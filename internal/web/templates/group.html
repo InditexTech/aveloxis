@@ -1,15 +1,8 @@
 {{define "group"}}
 {{template "head" (dict "Title" .Group.Name)}}
-<div class="nav">
-<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
-<div class="nav-user">
-{{if .Session.AvatarURL}}<img src="{{.Session.AvatarURL}}" alt="">{{end}}
-<span>{{.Session.LoginName}}</span>
-<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="{{.CSRF}}"><button type="submit" class="nav-link">Logout</button></form>
-</div>
-</div>
+{{template "nav" .}}
 <div class="breadcrumb">
-<a href="/dashboard">Home</a>{{if .Session.IsAdmin}}<span class="sep">|</span><a href="/monitor">Monitor</a>{{end}}<span class="sep">/</span><span class="current">{{.Group.Name}}</span>
+<a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><span class="current">{{.Group.Name}}</span>
 </div>
 <div class="container">
 <div class="card">
@@ -23,6 +16,7 @@
 {{if .Pending}}<p style="color:#735c0f;background:#fffbdd;padding:8px;border-radius:4px;margin:12px 0">{{.Pending}} {{if eq .Pending 1}}repository is{{else}}repositories are{{end}} waiting for an administrator&#39;s approval, and will be added to the group and queued for collection when approved.</p>{{end}}
 {{if eq .OrgPending "1"}}<p style="color:#735c0f;background:#fffbdd;padding:8px;border-radius:4px;margin:12px 0">That organization is waiting for an administrator&#39;s approval; its repositories are added to the group when approved.</p>{{end}}
 
+{{if .ReadOnly}}<p class="notice">You are viewing another account&#39;s group as an administrator, read-only: nothing here can be added or removed.</p>{{else}}
 <div class="section">
 <h3>Add Repositories</h3>
 <p style="color:#586069;font-size:13px;margin-bottom:8px">Paste one or more repository URLs, one per line.</p>
@@ -46,6 +40,7 @@ https://gitlab.com/group/project" style="width:100%;padding:8px 12px;border:1px 
 <button type="submit" class="btn btn-primary">Add Org</button>
 </form>
 </div>
+{{end}}
 
 {{if .Group.Orgs}}
 <div class="section">
@@ -105,7 +100,7 @@ https://gitlab.com/group/project" style="width:100%;padding:8px 12px;border:1px 
 <a href="/groups/{{$.Group.GroupID}}/repos/{{.RepoID}}/sbom?format=spdx" class="btn" style="font-size:11px;padding:2px 6px" title="Download SPDX SBOM">SPDX</a>
 </td>
 <td data-label="Remove">
-<a href="/groups/{{$.Group.GroupID}}/repos/{{.RepoID}}/remove" class="btn btn-danger">Remove</a>
+{{if not $.ReadOnly}}<a href="/groups/{{$.Group.GroupID}}/repos/{{.RepoID}}/remove" class="btn btn-danger">Remove</a>{{end}}
 </td>
 </tr>
 {{end}}
@@ -113,7 +108,7 @@ https://gitlab.com/group/project" style="width:100%;padding:8px 12px;border:1px 
 </table>
 </div>
 
-{{template "paginationNav" (dict "BasePath" (printf "/groups/%d" .Group.GroupID) "Page" .Page "TotalPages" .TotalPages "Query" .Query "PageWindow" .PageWindow)}}
+{{template "paginationNav" (dict "BasePath" (printf "/groups/%d" .Group.GroupID) "Page" .Page "TotalPages" .TotalPages "Query" .Query "PageSize" .PageSize "PageWindow" .PageWindow)}}
 {{else}}
 {{if .Query}}
 <p class="empty">No repositories match your search.</p>

@@ -89,9 +89,9 @@ func githubCallbackFixture(t *testing.T, handler http.HandlerFunc) (context.Cont
 	return context.WithValue(context.Background(), oauth2.HTTPClient, client), refuse
 }
 
-func githubCallbackRequest(ctx context.Context) *http.Request {
+func githubCallbackRequest(s *Server, ctx context.Context) *http.Request {
 	req := httptest.NewRequest(http.MethodGet, "/auth/github/callback?code=c&state=st", nil)
-	req.AddCookie(&http.Cookie{Name: "oauth_state", Value: "st"})
+	req.AddCookie(&http.Cookie{Name: s.cookieName("oauth_state"), Value: "st"}) // the server's spelling (0.29.113)
 	return req.WithContext(ctx)
 }
 
@@ -133,7 +133,7 @@ func TestGitHubCallbackUserReadIsBounded(t *testing.T) {
 	s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rec := httptest.NewRecorder()
 	start := time.Now()
-	s.handleGitHubCallback(rec, githubCallbackRequest(ctx))
+	s.handleGitHubCallback(rec, githubCallbackRequest(s, ctx))
 	if hosts := refuse.leaked(); len(hosts) > 0 {
 		t.Fatalf("a request to %v left through http.DefaultTransport instead of the oauth2 client — a ctx without oauth2.HTTPClient handed to Exchange/Client, or a client other than the one Client returned", hosts)
 	}
@@ -208,7 +208,7 @@ func TestGitHubCallbackEmailsReadIsBounded(t *testing.T) {
 	s := New(store, config.WebConfig{GitHubClientID: "id", GitHubClientSecret: "secret"}, "", logger)
 	rec := httptest.NewRecorder()
 	start := time.Now()
-	s.handleGitHubCallback(rec, githubCallbackRequest(ctx))
+	s.handleGitHubCallback(rec, githubCallbackRequest(s, ctx))
 	if hosts := refuse.leaked(); len(hosts) > 0 {
 		t.Fatalf("a request to %v left through http.DefaultTransport instead of the oauth2 client — a ctx without oauth2.HTTPClient handed to Exchange/Client, or a client other than the one Client returned", hosts)
 	}

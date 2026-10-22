@@ -286,7 +286,7 @@ Each job runs six phases. After the sequential API collection and processing pha
 | Task | Interval | Notes |
 |---|---|---|
 | Stale lock recovery | 5 min | Reclaims jobs from crashed workers via `StaleLockTimeout` |
-| Org refresh | Configurable (default 4h) | Scans GitHub orgs and GitLab groups for new/renamed repos |
+| Org refresh | Configurable (default 4h) | Scans GitHub orgs and GitLab groups for new/renamed repos. GitLab groups are listed by full path, subgroups included, on the configured instance when GitLab keys exist; a project shared into the group from another namespace is not listed (the one parity difference) |
 | User org refresh | Same as org refresh | Scans user-requested org additions |
 | Contributor breadth | 15 min | Discovers cross-repo activity via GitHub Events API (7-day per-contributor cooldown) |
 | Matview rebuild | Weekly (Saturday) | Drains all workers, rebuilds the 20 8Knot materialized views, resumes |

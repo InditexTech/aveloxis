@@ -144,7 +144,7 @@ func TestRouteMatrixGatesEveryRegisteredRoute(t *testing.T) {
 		// A signed-in non-administrator, with a session of its own.
 		token := plantSession(t, s, "route-matrix-"+strconv.Itoa(i), &Session{UserID: 1, LoginName: "matrix", IsAdmin: false, ExpiresAt: time.Now().Add(time.Hour)})
 		r := requestFor(rt.pattern)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 		if r.Method == http.MethodPost {
 			csrf(r) // a signed-in form carries its token (stage 2f); the guard is pinned apart
 		}

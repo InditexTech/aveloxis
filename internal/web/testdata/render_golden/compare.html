@@ -14,17 +14,17 @@
 <a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
 <div class="nav-user">
 <img src="https://avatars.example/7.png" alt="">
-<span>golden</span>
+<a href="/account" class="nav-link nav-login" title="Your sessions">golden</a>
 <form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value=""><button type="submit" class="nav-link">Logout</button></form>
 </div>
 </div>
 <div class="breadcrumb">
-<a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">/</span><span class="current">Compare Repos</span>
+<a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">|</span><a href="/admin/groups/pending">Approvals</a><span class="sep">|</span><a href="/admin/users">Users</a><span class="sep">|</span><a href="/admin/capacity">Capacity</a><span class="sep">|</span><a href="/admin/api-tokens">API tokens</a><span class="sep">|</span><a href="/admin/collections">Collections</a><span class="sep">/</span><span class="current">Compare Repos</span>
 </div>
 <div class="container">
 <div class="card">
 <h2>Compare Repositories</h2>
-<p style="color:#586069;font-size:13px;margin-bottom:12px">Select up to 5 repositories from your groups to compare side-by-side. Use 100% mode to normalize by relative size, or Z-Score to compare trends controlling for community size.</p>
+<p style="color:#586069;font-size:13px;margin-bottom:12px">Select up to 5 repositories from your groups to compare side-by-side. Raw counts, or Z-Score to control for community size (each series scaled by its own mean and spread).</p>
 
 <div class="compare-controls">
 <div class="search-box">
@@ -37,7 +37,6 @@
 <div class="compare-controls">
 <div class="mode-toggle">
 <button id="mode-raw" class="active" data-mode="raw" type="button">Raw Counts</button>
-<button id="mode-pct" data-mode="pct" type="button">100%</button>
 <button id="mode-zscore" data-mode="zscore" type="button">Z-Score</button>
 </div>
 </div>

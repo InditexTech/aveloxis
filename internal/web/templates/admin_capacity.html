@@ -1,0 +1,143 @@
+{{define "admin_capacity"}}
+{{template "head" (dict "Title" "Capacity")}}
+{{template "nav" .}}
+<div class="breadcrumb"><a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><span class="current">Capacity</span></div>
+<div class="container">
+{{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+
+<div class="card">
+<h2>Quotas</h2>
+<p class="muted">Each quota as applied. A quota whose source is WEB is decided here; the others take aveloxis.json's word and are changed there.</p>
+<table class="tbl-stack">
+<thead><tr><th>Quota</th><th>Value</th><th>Mode</th><th>Source</th><th>Action</th></tr></thead>
+<tbody>
+{{range .Quotas}}
+<tr>
+<td data-label="Quota">{{.Name}}</td>
+<td data-label="Value">{{.Allowed}}</td>
+<td data-label="Mode">{{.Mode}}</td>
+<td data-label="Source">{{.Source}}</td>
+<td data-label="Action">{{if .Editable}}
+<form method="POST" action="/admin/capacity/quotas/{{.Name}}" class="form-inline">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<input type="number" name="allowed" min="1" value="{{.Allowed}}" class="num-input" aria-label="Value">
+{{$row := .}}<select name="mode" aria-label="Mode">{{range $.Modes}}<option value="{{.}}"{{if eq (printf "%v" .) (printf "%v" $row.Mode)}} selected{{end}}>{{.}}</option>{{end}}</select>
+<button type="submit" class="btn btn-approve">Save</button>
+</form>
+{{else}}<span class="muted">set in aveloxis.json</span>{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h2>Contact address</h2>
+<p class="muted">The address a capacity refusal names. An empty value clears it.</p>
+<form method="POST" action="/admin/capacity/contact" class="form-row">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+<input type="email" name="contact_email" value="{{.Contact}}" placeholder="ops@example.org">
+<button type="submit" class="btn btn-primary">Save address</button>
+</form>
+</div>
+
+<div class="card">
+<h2>One account</h2>
+<form method="GET" action="/admin/capacity" class="form-row">
+<input type="text" name="login" value="{{.Lookup}}" placeholder="login, or use user_id=">
+<button type="submit" class="btn">Look up</button>
+</form>
+{{if .LookupError}}<p class="form-msg">{{.LookupError}}</p>{{end}}
+{{if .Candidates}}
+<ul class="group-list">{{range .Candidates}}<li><a href="/admin/capacity?user_id={{.UserID}}">{{.Login}}</a> <span class="muted">{{.Provider}} {{.GitLabHost}} &middot; id {{.UserID}}</span></li>{{end}}</ul>
+{{end}}
+{{with .Account}}
+<h3>{{.Login}} <span class="muted">id {{.UserID}} &middot; {{.Provider}}{{if .Admin}} &middot; administrator{{end}}</span></h3>
+<p class="muted">Repositories {{.Repos.Used}} of {{.Repos.Allowed}} ({{.Repos.Mode}}{{if .Repos.Exempt}}, exempt{{end}}) &middot; requests today {{.RequestsToday}}</p>
+<form method="POST" action="/admin/capacity/accounts/{{.UserID}}" class="form-stack">
+<input type="hidden" name="csrf_token" value="{{$.CSRF}}">
+<label>Repositories<input type="number" name="repos_allowed" min="1" value="{{.ReposAllowed}}" placeholder="quota"></label>
+<label>Requests per hour<input type="number" name="requests_per_hour" min="1" value="{{.RequestsPerHour}}" placeholder="quota"></label>
+<label>Requests per day<input type="number" name="requests_per_day" min="1" value="{{.RequestsPerDay}}" placeholder="quota"></label>
+<label>Links per day<input type="number" name="links_per_day" min="1" value="{{.LinksPerDay}}" placeholder="quota"></label>
+<label>Note<input type="text" name="note" value="{{.Override.Note}}" maxlength="{{$.MaxNote}}"></label>
+<button type="submit" class="btn btn-primary">Save</button>
+<a href="/admin/capacity/accounts/{{.UserID}}/clear" class="btn">Clear</a>
+</form>
+{{end}}
+</div>
+
+<div class="card">
+<h2>Accounts with their own values</h2>
+{{template "capacityAccounts" (dict "Accounts" .Overrides "Empty" "No account has its own values.")}}
+</div>
+
+<div class="card">
+<h2>Busiest today</h2>
+{{template "capacityAccounts" (dict "Accounts" .Busiest "Empty" "No requests today.")}}
+</div>
+
+<div class="card">
+<h2>Largest accounts</h2>
+{{if .ShowLargest}}
+{{template "capacityAccounts" (dict "Accounts" .Largest "Empty" "No account holds a repository.")}}
+{{else}}<p><a href="/admin/capacity?largest=1" class="btn">Load</a> <span class="muted">a full read of the group links</span></p>{{end}}
+</div>
+
+<div class="card">
+<h2>Sign-ups per day</h2>
+{{if .Signups}}
+<table class="tbl-stack">
+<thead><tr><th>Day</th><th>New accounts</th></tr></thead>
+<tbody>{{range .Signups}}<tr><td data-label="Day">{{.Day.UTC.Format "2006-01-02"}}</td><td data-label="New accounts">{{.Accounts}}</td></tr>{{end}}</tbody>
+</table>
+{{else}}<p class="empty">No new account in the last 30 days.</p>{{end}}
+</div>
+
+<div class="card">
+<h2>Sign-up allowlist</h2>
+<p class="muted">Sign-ups from these networks bypass the sign-up quota.</p>
+{{if .Allowlist}}
+<table class="tbl-stack">
+<thead><tr><th>Network</th><th>Note</th><th>Added</th><th>Action</th></tr></thead>
+<tbody>
+{{range .Allowlist}}
+<tr><td data-label="Network">{{.CIDR}}</td><td data-label="Note">{{.Note}}</td><td data-label="Added">{{.AddedAt.UTC.Format "2006-01-02"}}</td>
+<td data-label="Action"><a href="/admin/capacity/signup-allowlist/remove?cidr={{.CIDR}}" class="btn btn-reject">Remove</a></td></tr>
+{{end}}
+</tbody>
+</table>
+{{else}}<p class="empty">The allowlist is empty.</p>{{end}}
+<form method="POST" action="/admin/capacity/signup-allowlist" class="form-stack">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+<label>Network (CIDR)<input type="text" name="cidr" placeholder="192.0.2.0/24" required></label>
+<label>Note<input type="text" name="note" maxlength="{{.MaxNote}}"></label>
+<button type="submit" class="btn btn-primary">Add</button>
+</form>
+</div>
+</div>
+</body></html>
+{{end}}
+
+{{/*
+  capacityAccounts — one accounts table for the three lists of the
+  capacity page. Takes Accounts (accountView rows) and Empty (the sentence
+  for none).
+*/}}
+{{define "capacityAccounts"}}
+{{if .Accounts}}
+<table class="tbl-stack">
+<thead><tr><th>Account</th><th>Repositories</th><th>Requests today</th><th>Own values</th></tr></thead>
+<tbody>
+{{range .Accounts}}
+<tr>
+<td data-label="Account"><a href="/admin/capacity?user_id={{.UserID}}">{{.Login}}</a>{{if .Admin}} <span class="badge badge-admin">admin</span>{{end}}</td>
+<td data-label="Repositories">{{.Repos.Used}} of {{.Repos.Allowed}}</td>
+<td data-label="Requests today">{{.RequestsToday}}</td>
+<td data-label="Own values">{{if .ReposAllowed}}repos {{.ReposAllowed}} {{end}}{{if .RequestsPerHour}}hour {{.RequestsPerHour}} {{end}}{{if .RequestsPerDay}}day {{.RequestsPerDay}} {{end}}{{if .LinksPerDay}}links {{.LinksPerDay}} {{end}}{{if .Override.Note}}&middot; {{.Override.Note}}{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}<p class="empty">{{.Empty}}</p>{{end}}
+{{end}}

@@ -76,7 +76,7 @@ func TestApproveRefusalsAreNotServerErrors(t *testing.T) {
 	plantSession(t, s, "admin", &Session{UserID: auid, LoginName: admin, IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
 	decide := func(id int64, decision string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(http.MethodPost, "/admin/add-requests/"+strconv.FormatInt(id, 10)+"/"+decision, nil)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "admin"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "admin"})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)

@@ -1,0 +1,45 @@
+{{define "admin_collection"}}
+{{template "head" (dict "Title" .Collection.Name)}}
+{{template "nav" .}}
+<div class="breadcrumb"><a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><a href="/admin/collections">Collections</a><span class="sep">/</span><span class="current">{{.Collection.Name}}</span></div>
+<div class="container">
+{{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+<div class="card">
+<h2>{{.Collection.Name}}</h2>
+<p class="muted">{{.Collection.GroupCount}} groups, {{.Collection.RepoCount}} repositories &middot; created {{.Collection.CreatedAt.UTC.Format "2006-01-02"}}</p>
+<form method="POST" action="/admin/collections/{{.Collection.CollectionID}}" class="form-stack">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+<label>Name<input type="text" name="name" value="{{.Collection.Name}}" maxlength="{{.MaxName}}" required></label>
+<label>Description<input type="text" name="description" value="{{.Collection.Description}}" maxlength="{{.MaxDescription}}"></label>
+<label>Position<input type="number" name="position" value="{{.Collection.Position}}"></label>
+<button type="submit" class="btn btn-primary">Save</button>
+<a href="/admin/collections/{{.Collection.CollectionID}}/delete" class="btn btn-reject">Delete collection</a>
+</form>
+</div>
+<div class="card">
+<h2>Member groups</h2>
+{{if .Groups}}
+<table class="tbl-stack">
+<thead><tr><th>Group</th><th>Repositories</th><th>Action</th></tr></thead>
+<tbody>
+{{range .Groups}}
+<tr>
+<td data-label="Group"><a href="/groups/{{.GroupID}}">{{.Name}}</a></td>
+<td data-label="Repositories">{{.RepoCount}}</td>
+<td data-label="Action"><a href="/admin/collections/{{$.Collection.CollectionID}}/groups/{{.GroupID}}/remove" class="btn btn-reject">Remove</a></td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}<p class="empty">No group in this collection yet.</p>{{end}}
+{{if .Candidates}}
+<form method="POST" action="/admin/collections/{{.Collection.CollectionID}}/groups" class="form-row">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+<select name="group_id" aria-label="Group">{{range .Candidates}}<option value="{{.GroupID}}">{{.Name}} ({{.RepoCount}} repos)</option>{{end}}</select>
+<button type="submit" class="btn btn-primary">Add group</button>
+</form>
+{{else}}<p class="muted">Every group of yours is already a member; a collection holds administrator-owned groups only.</p>{{end}}
+</div>
+</div>
+</body></html>
+{{end}}
