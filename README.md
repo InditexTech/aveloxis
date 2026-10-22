@@ -61,7 +61,7 @@ aveloxis install-tools
 > export PATH="$PATH:$(go env GOPATH)/bin"
 > ```
 
-**Option 2: Build locally** (binary stays in the repo directory):
+**Option 2: Build locally** (binary stays in the repository directory):
 ```bash
 git clone https://github.com/aveloxis/aveloxis.git
 cd aveloxis
@@ -692,7 +692,7 @@ The API has grown far past this README. Every operation is in the OpenAPI 3.1 do
 The web GUI (`aveloxis web`) provides a browser-based interface for managing repository groups with OAuth authentication.
 
 - **OAuth login flow:** Users authenticate via GitHub or GitLab OAuth apps. The login redirects to the provider's authorization page, then back to the callback URL with an auth code that is exchanged for an access token. The token is used to fetch the user's profile (login, email, avatar).
-- **Group management:** Authenticated users create named groups and add repos or entire GitHub orgs / GitLab groups. Repos are automatically queued for collection.
+- **Group management:** Authenticated users create named groups and add repos or entire GitHub orgs / GitLab groups. Repos are automatically queued for collection. GitLab parity: a GitLab group is enumerated like a GitHub organization — by its full path, subgroups included, on the configured `gitlab.base_url` instance when GitLab API keys exist (0.29.100) — with one difference: a project shared into the group from another namespace is not added (GitHub has no equivalent); add it by its own URL.
 - **Bulk repo paste:** The add-repo form accepts a textarea with line-delimited URLs — paste a list and they're all added at once.
 - **Gathered vs metadata stats:** Each repo shows Gathered Issues, Meta Issues, Gathered PRs, Meta PRs, Gathered Commits, Meta Commits — collection completeness at a glance.
 - **SBOM download:** CDX and SPDX download buttons per repo, generating SBOMs on-the-fly. Authenticated users only.
@@ -717,9 +717,8 @@ The web GUI includes built-in interactive visualizations powered by [Chart.js](h
 **Comparison page** (`/compare`) — accessible from the dashboard home page:
 - **Search any repo** in the database via autocomplete
 - **Select up to 5 repos** — each shown as a color-coded tag
-- **Three comparison modes:**
+- **Two comparison modes:**
   - **Raw Counts** — actual weekly values, best for repos of similar size
-  - **100%** — each repo normalized so its peak week = 100%, best for comparing trends regardless of size
   - **Z-Score** — values as standard deviations from the mean, best for comparing trends while explicitly controlling for community size differences
 - **4 overlaid charts** with mode toggle, one per metric
 - **URL-shareable:** `/compare?repos=1,2,3` pre-populates the selection
@@ -1063,7 +1062,7 @@ Both platforms collect the same data types. Most fields have full parity; known 
 | Repo Info (metadata) | GraphQL API (counts, community profile, license, status) | `/projects/{id}?statistics=true` + `/issues_statistics` + MR counts via `X-Total` | `repo_info` (latest) + `repo_info_history` |
 | Contributors | `/repos/{o}/{r}/contributors` | `/projects/{id}/members/all` + `/repository/contributors` | `contributors` + `contributor_identities` |
 | Clone Stats | `/traffic/clones` | `/projects/{id}/statistics` (daily HTTP clone and pull counts for the last 30 days, at least the Reporter role, no unique counts) | `repo_clones` |
-| Traffic: views, top paths and referrers, 14-day and weekly unique visitors and cloners (v0.29.108) | `/traffic/views` (daily and weekly), `/traffic/clones?per=week`, `/traffic/popular/paths`, `/traffic/popular/referrers` | Not available via API | `repo_views` + `repo_traffic_paths` + `repo_traffic_referrers` + `repo_traffic_windows` + `repo_traffic_weeks` |
+| Traffic: views, top paths and referrers, 14-day and weekly unique visitors and cloners (v0.29.118) | `/traffic/views` (daily and weekly), `/traffic/clones?per=week`, `/traffic/popular/paths`, `/traffic/popular/referrers` | Not available via API | `repo_views` + `repo_traffic_paths` + `repo_traffic_referrers` + `repo_traffic_windows` + `repo_traffic_weeks` |
 | Commits (git) | `git clone --bare` + `git log --numstat` (default branch) | Same | `commits` + `commit_parents` + `commit_messages` |
 | Facade Aggregates | Computed from commits table | Same | `dm_repo_annual/monthly/weekly` |
 | Commit Author Resolution | Noreply parse + Commits API + Search API (GitHub only) | N/A (GitLab identity from API) | `contributors` + `contributor_aliases` |
@@ -1150,7 +1149,7 @@ Review bodies are stored in both `pull_request_reviews.review_body` (for quick a
 | Text sanitization | Python encode/decode with backslashreplace + null byte removal | Go sanitizer: null bytes, invalid UTF-8, control characters stripped at DB boundary |
 | Dead repo handling | Keeps retrying dead repos every cycle | Permanently sidelines (archived flag + dequeued), data preserved |
 | Gateway error retry | Basic retry | Exponential backoff with jitter (1s-64s) for 502/503/504 |
-| User interface | CLI only, except for Admin. | Web GUI with OAuth, interactive Chart.js visualizations, cross-project comparison (100%/Z-Score), dependency license analysis, SBOM download |
+| User interface | CLI only, except for Admin. | Web GUI with OAuth, interactive Chart.js visualizations, cross-project comparison (raw or Z-Score), dependency license analysis, SBOM download |
 | Visualizations | Requires external tool (8Knot/Dash) | Still 8Knot compatible, 100%! And, built-in weekly time-series charts, comparison page for up to 5 repos with Z-score normalization |
 | Vulnerability scanning | Not supported | OSV.dev batch API: direct + transitive findings by purl with `introduced_by` chains, lifecycle (first-detected/resolved) stamps, and honest version-resolution labels |
 | SBOM dependency graphs | Not supported | CycloneDX + SPDX carry the REAL parent→child graph from lockfile edges |

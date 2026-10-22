@@ -90,12 +90,11 @@ Type in the search box to search across all repositories in the Aveloxis databas
 
 ### Comparison Modes
 
-Three modes control how data is displayed:
+Two modes control how data is displayed:
 
 | Mode | Description | Best for |
 |---|---|---|
 | **Raw Counts** | Actual weekly counts per repo | Comparing repos of similar size |
-| **100%** | Each repo's data normalized so its maximum week = 100% | Comparing trends regardless of absolute size |
 | **Z-Score** | Values expressed as standard deviations from the mean | Comparing trends while explicitly controlling for community size differences |
 
 The Z-Score mode is particularly useful when comparing a small project against a large one — instead of seeing the small project's line flattened against zero, you see both projects' relative activity patterns.

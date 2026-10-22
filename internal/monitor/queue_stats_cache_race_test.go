@@ -16,7 +16,7 @@ import (
 )
 
 func TestQueueStatsCacheConcurrentAccess(t *testing.T) {
-	c := NewQueueStatsCache(10 * time.Millisecond)
+	c := NewQueueStatsCache(10*time.Millisecond, quietLogger())
 	var loads atomic.Int32
 	loader := func(ctx context.Context) (map[string]int, error) {
 		loads.Add(1)

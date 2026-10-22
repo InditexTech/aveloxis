@@ -15,6 +15,7 @@ import (
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/httpserver"
 	"github.com/aveloxis/aveloxis/internal/platform"
+	"github.com/aveloxis/aveloxis/internal/queueview"
 )
 
 func (s *Server) handleNewGroup(w http.ResponseWriter, r *http.Request, sess *Session) {
@@ -29,6 +30,9 @@ func (s *Server) handleNewGroup(w http.ResponseWriter, r *http.Request, sess *Se
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
 
+// groupPageSize is the group page's page size and its maximum.
+const groupPageSize = 25
+
 // handleGroup is the group page, GET /groups/{gid} (the repository page
 // and the SBOM download are their own routes since 0.29.102; an unknown
 // sub-path is the mux's 404, not this page).
@@ -39,15 +43,24 @@ func (s *Server) handleGroup(w http.ResponseWriter, r *http.Request, sess *Sessi
 		return
 	}
 
-	// Pagination and search parameters.
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	if page < 1 {
-		page = 1
-	}
-	perPage := 25
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	// Pagination and search through the one parser (queueview, stage 3d;
+	// whole-branch review of 0.29.109: a bare Atoi here let a huge page
+	// overflow the store's offset into a 500, the class the parser clamps).
+	p := queueview.ParseParams(r.URL.Query(), groupPageSize, groupPageSize)
+	page, perPage, query := p.Page, p.PageSize, p.Search
 
-	group, totalRepos, err := s.store.GetGroupDetail(r.Context(), sess.UserID, groupID, page, perPage, query)
+	// The one access rule (E4, stage 3e): the owner, or an administrator
+	// reading another account's group — logged by the service, and the
+	// page then offers no write. A stranger gets 404 (N11).
+	ref, err := s.admin.GroupAccess(r.Context(), sessionActor(sess), groupID, admin.Read)
+	if err != nil {
+		if !s.refusePage(w, r, err) {
+			s.serverError(w, r, "handleGroup", err)
+		}
+		return
+	}
+	readOnly := ref.OwnerID != sess.UserID
+	group, totalRepos, err := s.store.GetGroupDetail(r.Context(), ref.OwnerID, groupID, page, perPage, query)
 	if errors.Is(err, db.ErrGroupNotOwned) {
 		http.NotFound(w, r)
 		return
@@ -82,37 +95,20 @@ func (s *Server) handleGroup(w http.ResponseWriter, r *http.Request, sess *Sessi
 		}
 	}
 
-	totalPages := (totalRepos + perPage - 1) / perPage
-	if totalPages < 1 {
-		totalPages = 1
-	}
-
-	// Build a sliding window of up to 5 page numbers centered on the current page.
-	windowSize := 5
-	winStart := page - windowSize/2
-	if winStart < 1 {
-		winStart = 1
-	}
-	winEnd := winStart + windowSize - 1
-	if winEnd > totalPages {
-		winEnd = totalPages
-		winStart = winEnd - windowSize + 1
-		if winStart < 1 {
-			winStart = 1
-		}
-	}
-	var pageWindow []int
-	for i := winStart; i <= winEnd; i++ {
-		pageWindow = append(pageWindow, i)
-	}
+	// The pager is the shared one (queueview, stage 3d): the monitor page
+	// had its own copy of this window arithmetic.
+	totalPages := queueview.TotalPages(totalRepos, perPage)
+	pageWindow := queueview.Window(page, totalPages)
 
 	s.render(w, r, "group", map[string]any{
 		"Session":    sess,
+		"ReadOnly":   readOnly,
 		"Group":      group,
 		"Page":       page,
 		"TotalPages": totalPages,
 		"TotalRepos": totalRepos,
 		"Query":      query,
+		"PageSize":   pageSizeParam(p),
 		"PageWindow": pageWindow,
 		"AddError":   r.URL.Query().Get("add_error"),
 		"Capacity":   s.capacityNotice(r, sess.UserID),
@@ -253,6 +249,12 @@ func (s *Server) handleRemoveRepoConfirm(w http.ResponseWriter, r *http.Request,
 		if !s.refusePage(w, r, err) {
 			s.serverError(w, r, "handleRemoveRepoConfirm", err)
 		}
+		return
+	}
+	// A reader who is not the owner (an administrator's read-only view,
+	// E4) has no Remove: the confirm page answers as a stranger's would.
+	if group.OwnerID != sess.UserID {
+		http.NotFound(w, r)
 		return
 	}
 	repo, err := s.store.GetRepoByID(r.Context(), repoID)

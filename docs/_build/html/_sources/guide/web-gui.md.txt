@@ -204,15 +204,32 @@ a GET answers `405`): a state change never rides a link a page could prefetch.
 - Sessions are rows of `aveloxis_ops.user_session_tokens` (since 0.29.102;
   only the token's hash is stored), so a restart of `aveloxis web` signs
   nobody out.
-- Each session expires **24 hours after login** (not refreshed by use);
-  expired rows are swept whenever a session or token is minted.
+- Each session expires **24 hours after login** (not refreshed by use), or
+  after `web.session_idle_minutes` without a request (30 by default,
+  0.29.113; the last request is re-stamped at most once a minute (every half bound when the bound is under two minutes)); expired
+  rows are swept whenever a session or token is minted. The `/auth/token`
+  token the front end holds has no inactivity bound (see
+  [Security](security.md)).
+- The account page (`/account`, the login name in the navigation bar)
+  lists every live session and token of the account — this browser's,
+  other browsers', the front end's token, the web process's own token for
+  each session — with sign-in time, last use and expiry, and "Sign out
+  everywhere" ends them all (0.29.113). An administrator ends any
+  account's from the Users page.
+- A sign-in from a browser that still carries a session replaces it: the
+  old row is deleted before the new one is minted (0.29.113).
+- Changing the account's e-mail address (`/account/email`) needs a sign-in
+  within the inactivity bound: an older session is sent to sign in again
+  first, and comes back to the form (0.29.113).
 - Administrator privilege is read from the account's row on every request:
   a demotion takes effect at the next request, not at the next login.
-- Signing out deletes the session and every API token the sign-in minted
-  through `/auth/token` (aveloxis-gui's token), so sign-out means signed
-  out everywhere; a token minted from a session that merely expired keeps
-  its own 30-day life.
-- The session cookie carries a random token whose hash is a row of `aveloxis_ops.user_session_tokens` (kind `web`); nothing is signed, and `web.session_secret` was removed in 0.29.102.
+- Signing out deletes the session and every token minted from it — the
+  one aveloxis-gui exchanges through `/auth/token`, and the one the web
+  process holds to reach the API for the session's own pages (0.29.110) —
+  so sign-out means signed out everywhere. A `/auth/token` token minted
+  from a session that merely expired keeps its own 30-day life; the web
+  process's token expires with its session.
+- The session cookie carries a random token whose hash is a row of `aveloxis_ops.user_session_tokens` (kind `web`); nothing is signed, and `web.session_secret` was removed in 0.29.102. In production the cookies are `__Host-` prefixed (`__Host-aveloxis_session`, `__Host-aveloxis_csrf`, the two OAuth cookies; 0.29.113): a browser accepts the prefix only over HTTPS, for the whole host, with no `Domain`, so a cookie another host or a plain-HTTP page sets cannot stand in for them. With `dev_mode` the names are bare (`aveloxis_session`, …), since the prefix would refuse plain HTTP.
 
 ## Running Alongside `aveloxis serve`
 
@@ -233,12 +250,83 @@ Or all three in the background with `aveloxis start all`. They share the same Po
 
 You can run them on different hosts as long as both can reach the database.
 
+## Administration
+
+The first account to sign in is the administrator; an administrator
+promotes others on the Users page. An administrator's breadcrumb carries the
+console's links on every page. Every deletion and revocation has a confirm
+page; there are no dialogs, and nothing on these pages scrolls sideways.
+
+**Monitor** (`/monitor`) is the collection queue: one row per repository
+with its status, priority, due time, last run and the gathered and
+forge-reported counts, sortable by any column (the header links), searched
+by owner or name, 200 rows a page (`page_size` down to 1). The status
+counts at the top are read once a minute and say when they were read. When
+a batched read fails the rows show repository ids and zero counts under a
+banner that says so, never a bare slash. This is the same queue the serve
+process's own `--monitor` page shows; that page (`127.0.0.1:5555` by
+default) has no sign-in and is diagnostics for the host it runs on — keep it
+on the loopback address and never expose it (see
+[Monitoring](monitoring.md)).
+
+**Approvals** (`/admin/groups/pending`) lists the additions non-administrators
+asked for — repository pastes and organization registrations that would start
+new collection — with the requester, the group, the count and sample URLs;
+approve or reject each (the requester is mailed when mail is configured).
+Below them, the forge-ID changes collection observed: a repository deleted
+and re-created under the same URL on its forge. Adopting one, with an
+optional note (at most 1,000 characters), treats the new repository as the
+continuation of the old; a change another adoption superseded is not offered.
+
+**Users** (`/admin/users`) is every account with its login, e-mail, forge,
+role, join date and last sign-in; promote or demote with one button, and
+"End sessions" (a confirm page) ends every session and token of the
+account — a lost device, a suspected takeover — leaving its operator-issued
+API tokens to the API-tokens page (0.29.113). The last administrator cannot
+be demoted, and nobody demotes themselves.
+Privilege is read from the account row at every request: a demoted
+administrator's open session loses the console at once.
+
+**Capacity** (`/admin/capacity`) is the fair-use quotas as applied: each
+quota's value, mode (enforce, shadow, off) and where it is decided — a quota
+`aveloxis.json` sets is read-only here and changed there. The contact address
+every refusal names; one account looked up by login or id (its repositories
+against its allocation, its requests today, its own values and a note; clear
+them with one button); the accounts with their own values, the busiest today
+and, on request, the largest; sign-ups per day for the last 30 days; and the
+sign-up allowlist of networks (CIDR) that bypass the sign-up quota. The
+rules and the configuration half are in
+[Configuration](../getting-started/configuration.md), "Capacity".
+
+**API tokens** (`/admin/api-tokens`) grants an operator-issued token to an
+account (a label, a lifetime of 1 to 365 days, hourly and daily allowances;
+the defaults the form offers are set on the same page). The token is shown
+once, on the page that answers the grant — reloading that page would grant
+another — and is sent as `Authorization: Bearer`. Revoking a token stops it
+on its next call; the list shows each token's owner, label, dates, allowances
+and last use, never the token.
+
+**Collections** (`/admin/collections`) are the curated sets of
+administrator-owned groups the public catalogue shows, in position order:
+create one (a name of at most 200 characters, a description of at most
+1,000), rename or reorder it, add or remove member groups, delete it (the
+groups stay).
+
+An administrator can open any account's group read-only (`/groups/{id}`):
+the page says so, offers nothing to add or remove, and the read is logged
+with the administrator's account. The decisions behind every form are the
+same service the REST API's administrative routes call, so the two GUIs
+refuse the same inputs by the same rules. A change made here is seen by the
+web GUI on its next request; the REST API applies a role, scope or quota
+change to its signed-in callers within about a minute of its next request
+(its authorization cache), while a revoked token stops on its next call.
+
 ## Security Considerations
 
 - **OAuth tokens**: The access token obtained during login is used only to fetch the user's profile and is dropped once the callback has done so. The session row holds the user id, never the token.
-- **Session cookies**: a random 256-bit token whose hash is a row of `aveloxis_ops.user_session_tokens` (since 0.29.102; unguessable rather than signed, and it survives a restart of `aveloxis web`). All cookies set `HttpOnly`, `SameSite=Lax` and, in production, `Secure`.
+- **Session cookies**: a random 256-bit token whose hash is a row of `aveloxis_ops.user_session_tokens` (since 0.29.102; unguessable rather than signed, and it survives a restart of `aveloxis web`). All cookies set `HttpOnly`, `SameSite=Lax` and, in production, `Secure` and the `__Host-` prefix (0.29.113).
 - **Cross-site request forgery** (since 0.29.102): every state change a page can start is a `POST` (the e-mail confirmation link and the OAuth callbacks are `GET`s each guarded by a one-time secret), and every `POST` is checked before its handler — the request's `Origin` (or `Referer`) must be the web GUI's own host or the origin in `web.spa_url`, a browser's `Sec-Fetch-Site: cross-site` is refused, and a signed-in form must carry the session's form token (the `csrf_token` field every server-rendered form includes, matched against the `aveloxis_csrf` cookie). A refusal is a `403` and a WARN line in the log. If aveloxis-gui runs on another origin, set `web.spa_url` to it, or its sign-in and sign-out calls are refused. A proxy that rewrites the `Host` header has the same effect as another origin: the guard compares the browser's origin (host and port) with `Host`, so a proxy must forward the public host — `proxy_set_header Host $host`, or `$http_host` when the public port is not the default.
-- **Response headers** (since 0.29.102): every answer carries a `Content-Security-Policy` that names the web process as the only script source (the pages carry no inline script and load no CDN; Chart.js is served from `/static/`), forbids framing (`frame-ancestors 'none'`, `X-Frame-Options: DENY`), plugins and a `<base>`, plus `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`. Inline `style` attributes stay allowed (`style-src 'unsafe-inline'`); they are not a script vector.
+- **Response headers** (since 0.29.102): every answer carries a `Content-Security-Policy` that names the web process as the only script source (the pages carry no inline script and load no CDN; Chart.js is served from `/static/`), forbids framing (`frame-ancestors 'none'`, `X-Frame-Options: DENY`), plugins and a `<base>`, plus `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin` (every answer of the handlers: the `http_timeout_seconds` 503 is written outside them and carries none). Inline `style` attributes stay allowed (`style-src 'unsafe-inline'`); they are not a script vector. Outside `dev_mode` every answer also carries `Strict-Transport-Security: max-age=31536000; includeSubDomains` (0.29.113), and the api process sends the same header and `nosniff` on its handlers' answers (the web's `/api/` proxy sends its own copy once, dropping the api's): the proxy in front need not add them (a second `add_header` would duplicate the value), only pass them through.
 - **HTTPS**: In production, run `aveloxis web` behind a reverse proxy (nginx, Caddy, etc.) that terminates TLS. OAuth providers require HTTPS callback URLs for production apps (localhost is exempt during development). Leave `dev_mode` at its default (`false`) in production — this ensures cookies are only sent over HTTPS.
 - **Development mode**: For local development over plain HTTP, set `"dev_mode": true` in the `web` section of `aveloxis.json`. This disables the `Secure` cookie flag so session cookies work without HTTPS, and lets a loopback request build email confirmation links when `mail.site_url` is unset. `HttpOnly` remains enabled even in dev mode. Never deploy with `dev_mode` enabled; production confirmation links need `mail.site_url`.
 - **Client secrets**: The `web.github_client_secret` and `web.gitlab_client_secret` values in `aveloxis.json` are sensitive. Protect the config file with appropriate file permissions (`chmod 600 aveloxis.json`).

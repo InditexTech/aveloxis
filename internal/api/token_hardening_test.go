@@ -360,7 +360,10 @@ func TestGlobalCacheFlushIsAdminOnly(t *testing.T) {
 		for i := strings.Index(src, "invalidateAll()"); i >= 0; {
 			fnStart := strings.LastIndex(src[:i], "\nfunc ")
 			decl := src[fnStart+1 : fnStart+1+strings.Index(src[fnStart+1:], "\n")]
-			if !strings.HasPrefix(decl, "func (s *Server) handleAdmin") && !strings.HasPrefix(decl, "func (a *authenticator) invalidateAll") {
+			// The hook is the service's: since 0.29.109 (stage 3b) a revoke
+			// runs there, admin-gated, and the hook is its only caller (pinned
+			// below), so it flushes under the same rule as a handler.
+			if !strings.HasPrefix(decl, "func (s *Server) handleAdmin") && !strings.HasPrefix(decl, "func (a *authenticator) invalidateAll") && !strings.HasPrefix(decl, "func (h apiHooks) TokensChanged()") {
 				t.Errorf("%s: invalidateAll() in %q — only admin handlers flush every user's cache", f, decl)
 			}
 			next := strings.Index(src[i+1:], "invalidateAll()")
@@ -369,6 +372,20 @@ func TestGlobalCacheFlushIsAdminOnly(t *testing.T) {
 			}
 			i += 1 + next
 		}
+	}
+}
+
+// TestTokensChangedHookRunsOnlyFromTheRevoke: the service calls the
+// TokensChanged hook (the API's invalidateAll) from RevokeAPIToken alone,
+// which requireAdmin gates — the reason the hook may flush every cache.
+func TestTokensChangedHookRunsOnlyFromTheRevoke(t *testing.T) {
+	src := srctest.StripGoComments(srctest.PackageSource(t, "internal/admin", 8))
+	if n := strings.Count(src, ".TokensChanged()"); n != 1 {
+		t.Fatalf("%d TokensChanged() calls in internal/admin, want exactly one (inside RevokeAPIToken)", n)
+	}
+	body := srctest.StripGoComments(srctest.PackageFunc(t, "internal/admin", "func (s *Service) RevokeAPIToken("))
+	if !strings.Contains(body, "s.hooks.TokensChanged()") || !strings.Contains(body, "s.requireAdmin(") {
+		t.Error("RevokeAPIToken must gate on requireAdmin and run the TokensChanged hook after the write")
 	}
 }
 

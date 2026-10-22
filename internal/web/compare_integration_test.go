@@ -204,7 +204,7 @@ func TestFetchURLFromRenderedPageIsServedByProxy(t *testing.T) {
 	//    same-origin fetch).
 	token := plantSession(t, s, "tester", &Session{UserID: 1, LoginName: "tester", ExpiresAt: time.Now().Add(time.Hour)})
 	req := httptest.NewRequest(http.MethodGet, fetchURL, nil)
-	req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+	req.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 	csrf(req) // the session's form token (stage 2f)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, req)

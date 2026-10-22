@@ -70,7 +70,7 @@ func TestDashboardEmailGateThroughTheHandler(t *testing.T) {
 		plantStubSession(t, s, "probe-token", &Session{UserID: uid, LoginName: login, ExpiresAt: time.Now().Add(time.Hour)})
 		r := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 		r.Host = host
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "probe-token"})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
@@ -255,7 +255,7 @@ func TestAccountEmailFlowThroughTheHandler(t *testing.T) {
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		}
 		r.Host = host
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: session})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: session})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)

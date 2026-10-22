@@ -1150,3 +1150,36 @@ func TestPageCacheNeverServesAnInvalidDateFromTheCache(t *testing.T) {
 		t.Errorf("entries = %d; want the one default entry (nothing stored for an invalid date)", len(hn.s.pageCache.m))
 	}
 }
+
+// TestRunOnceRechecksTheCacheBeforeLeading (2026-10-21, the L11 sweep of the
+// 0.29.116 home-cache race): serveCachedPage reads the cache with get() and
+// then claims the flight in runOnce under a second lock acquisition, so a
+// request that missed while a leader ran could find no flight once the
+// leader stored its entry and left — and lead a second run whose put
+// replaced the entry, resetting its measured cost and hits (the effect PR
+// #226 removed for followers). runOnce re-checks the cache under the claim's
+// lock: an entry stored since the caller's miss is answered, the handler
+// is not run.
+func TestRunOnceRechecksTheCacheBeforeLeading(t *testing.T) {
+	s := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil)), pageCache: newRepoPageCache(1<<20, 30*time.Minute)}
+	c := s.pageCache
+	const key = "k-recheck"
+	stored := &pageEntry{key: key, repoID: 1, body: []byte("stored"), contentType: "application/json", computed: c.now(), cost: time.Second, keptWhenOff: true}
+	c.put(stored) // the leader that finished between the caller's miss and its claim
+	runs := 0
+	h := func(w http.ResponseWriter, r *http.Request) { runs++; _, _ = w.Write([]byte("recomputed")) }
+	res, e := s.runOnce(c, key, httptest.NewRequest(http.MethodGet, "/x", nil), h, func(res pageResult, cost time.Duration) *pageEntry {
+		ne := &pageEntry{key: key, repoID: 1, body: res.body, computed: c.now(), cost: cost, keptWhenOff: true}
+		c.put(ne)
+		return ne
+	})
+	if runs != 0 {
+		t.Fatalf("the handler ran %d time(s) for a key already stored; runOnce must answer the stored entry", runs)
+	}
+	if e != stored || !res.cacheable {
+		t.Fatalf("runOnce returned entry %p (cacheable=%v); want the stored %p, cacheable", e, res.cacheable, stored)
+	}
+	if got, ok := c.get(key); !ok || got != stored || got.cost != time.Second {
+		t.Errorf("the stored entry was replaced or reset: %+v", got)
+	}
+}

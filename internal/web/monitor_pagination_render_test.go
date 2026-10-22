@@ -23,10 +23,12 @@ func buildMonitorTmpl(t *testing.T) *template.Template {
 	return parseTemplates()
 }
 
-// sessionStub carries just the fields the monitor template reads.
+// sessionStub carries just the fields the monitor template reads (the
+// shared nav and adminLinks defines read IsAdmin since 0.29.109).
 type sessionStub struct {
 	AvatarURL string
 	LoginName string
+	IsAdmin   bool
 }
 
 func baseMonitorData(page, totalPages, total int, query string) map[string]interface{} {

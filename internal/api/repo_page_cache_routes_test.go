@@ -122,7 +122,7 @@ func TestCachedRepoGETAuthorizesBeforeAnyLookup(t *testing.T) {
 func TestCachedHandlersDegradeOnlyThroughPartialAnswer(t *testing.T) {
 	files := map[string]string{}
 	// Every non-test file of the package, so a handler that moves into a
-	// new file (traffic.go, v0.29.108) is still found.
+	// new file (traffic.go, v0.29.118) is still found.
 	for repoRel, src := range srctest.PackageFiles(t, "internal/api", 20) {
 		files[strings.TrimPrefix(repoRel, "internal/api/")] = srctest.StripGoComments(src)
 	}
@@ -257,7 +257,7 @@ var helperFiles = map[string]string{
 func TestPageParamsMatchTheHandlers(t *testing.T) {
 	files := map[string]string{}
 	// Every non-test file of the package, so a handler that moves into a
-	// new file (traffic.go, v0.29.108) is still found.
+	// new file (traffic.go, v0.29.118) is still found.
 	for repoRel, src := range srctest.PackageFiles(t, "internal/api", 20) {
 		files[strings.TrimPrefix(repoRel, "internal/api/")] = srctest.StripGoComments(src)
 	}

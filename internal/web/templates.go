@@ -26,9 +26,12 @@ var templateFS embed.FS
 // a listed file that is gone fails the build).
 var templateOrder = []string{
 	"head.html",
+	"nav.html",
+	"adminLinks.html",
 	"login.html",
 	"dashboard.html",
 	"account_email.html",
+	"account.html",
 	"group.html",
 	"repo_detail.html",
 	"compare.html",
@@ -36,6 +39,14 @@ var templateOrder = []string{
 	"compareSearchWidget.html",
 	"paginationNav.html",
 	"remove_confirm.html",
+	"admin_approvals.html",
+	"admin_users.html",
+	"admin_confirm.html",
+	"admin_tokens.html",
+	"admin_token_granted.html",
+	"admin_capacity.html",
+	"admin_collections.html",
+	"admin_collection.html",
 }
 
 var allTemplates = func() string {

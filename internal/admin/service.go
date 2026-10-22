@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/aveloxis/aveloxis/internal/capacity"
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/platform"
 )
@@ -111,6 +112,9 @@ type Hooks interface {
 	ScopeChanged(userIDs ...int)
 	// RoleChanged: this user's administrator role changed.
 	RoleChanged(userID int)
+	// TokensChanged: an API token was revoked; every cached validation in
+	// the process is stale (stage 3b).
+	TokensChanged()
 }
 
 // Store is what the Service needs from the database: the narrow surfaces
@@ -123,6 +127,35 @@ type Store interface {
 	userStore
 	accountStore
 	forgeIDStore
+	tokenStore
+	capacityStore
+	collectionStore
+}
+
+// tokenStore, capacityStore and collectionStore are the console's
+// operations (stage 3b, 0.29.109): the writes are the service's alone.
+type tokenStore interface {
+	GetAPITokenSettings(ctx context.Context) (db.APITokenSettings, error)
+	CreateAPIToken(ctx context.Context, g db.APITokenGrant) (string, db.APIToken, error)
+	RevokeAPIToken(ctx context.Context, tokenID int64, revokedBy int) error
+	SetAPITokenSettings(ctx context.Context, st db.APITokenSettings, updatedBy int) error
+}
+
+type capacityStore interface {
+	CapacitySource(name string) capacity.Source
+	SetCapacityQuota(ctx context.Context, name string, allowed int, mode capacity.Mode, by int) error
+	SetCapacityContact(ctx context.Context, email string, by int) error
+	SetCapacityOverride(ctx context.Context, o db.CapacityOverride, by int) error
+	AddSignupAllowlist(ctx context.Context, cidr, note string, by int) (string, error)
+	RemoveSignupAllowlist(ctx context.Context, cidr string) (bool, error)
+}
+
+type collectionStore interface {
+	CreateCollection(ctx context.Context, name, description string, position int, createdBy int) (int64, error)
+	UpdateCollection(ctx context.Context, collectionID int64, name, description string, position int) error
+	DeleteCollection(ctx context.Context, collectionID int64) error
+	AddGroupToCollection(ctx context.Context, collectionID, groupID int64) error
+	RemoveGroupFromCollection(ctx context.Context, collectionID, groupID int64) error
 }
 
 type groupStore interface {
@@ -146,6 +179,9 @@ type addRequestStore interface {
 type userStore interface {
 	IsUserAdmin(ctx context.Context, userID int) (bool, error)
 	SetUserAdmin(ctx context.Context, userID int, isAdmin bool) error
+	// 0.29.113 (ASVS V7.5.2, V7.4.5): an account's sessions, listed and ended.
+	ListUserSessions(ctx context.Context, userID int) ([]db.UserSession, error)
+	DeleteUserSessions(ctx context.Context, userID int) (int64, error)
 	UserLabel(ctx context.Context, userID int) (string, error)
 }
 
@@ -198,6 +234,7 @@ type noHooks struct{}
 
 func (noHooks) ScopeChanged(...int) {}
 func (noHooks) RoleChanged(int)     {}
+func (noHooks) TokensChanged()      {}
 
 // Options returns the effective options (the normalised GitHub base).
 func (s *Service) Options() Options { return s.opts }

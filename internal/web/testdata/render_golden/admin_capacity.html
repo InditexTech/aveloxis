@@ -1,0 +1,189 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aveloxis - Capacity</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/avx.js"></script>
+</head>
+<body>
+<div class="nav">
+<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
+<div class="nav-user">
+<img src="https://avatars.example/7.png" alt="">
+<a href="/account" class="nav-link nav-login" title="Your sessions">golden</a>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="golden-csrf"><button type="submit" class="nav-link">Logout</button></form>
+</div>
+</div>
+<div class="breadcrumb"><a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">|</span><a href="/admin/groups/pending">Approvals</a><span class="sep">|</span><a href="/admin/users">Users</a><span class="sep">|</span><a href="/admin/capacity">Capacity</a><span class="sep">|</span><a href="/admin/api-tokens">API tokens</a><span class="sep">|</span><a href="/admin/collections">Collections</a><span class="sep">/</span><span class="current">Capacity</span></div>
+<div class="container">
+
+
+<div class="card">
+<h2>Quotas</h2>
+<p class="muted">Each quota as applied. A quota whose source is WEB is decided here; the others take aveloxis.json's word and are changed there.</p>
+<table class="tbl-stack">
+<thead><tr><th>Quota</th><th>Value</th><th>Mode</th><th>Source</th><th>Action</th></tr></thead>
+<tbody>
+
+<tr>
+<td data-label="Quota">repos</td>
+<td data-label="Value">500</td>
+<td data-label="Mode">shadow</td>
+<td data-label="Source">WEB</td>
+<td data-label="Action">
+<form method="POST" action="/admin/capacity/quotas/repos" class="form-inline">
+<input type="hidden" name="csrf_token" value="golden-csrf">
+<input type="number" name="allowed" min="1" value="500" class="num-input" aria-label="Value">
+<select name="mode" aria-label="Mode"><option value="enforce">enforce</option><option value="shadow" selected>shadow</option><option value="off">off</option></select>
+<button type="submit" class="btn btn-approve">Save</button>
+</form>
+</td>
+</tr>
+
+<tr>
+<td data-label="Quota">signups_per_day</td>
+<td data-label="Value">20</td>
+<td data-label="Mode">shadow</td>
+<td data-label="Source">SHADOW</td>
+<td data-label="Action"><span class="muted">set in aveloxis.json</span></td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+<div class="card">
+<h2>Contact address</h2>
+<p class="muted">The address a capacity refusal names. An empty value clears it.</p>
+<form method="POST" action="/admin/capacity/contact" class="form-row">
+<input type="hidden" name="csrf_token" value="golden-csrf">
+<input type="email" name="contact_email" value="ops@example.org" placeholder="ops@example.org">
+<button type="submit" class="btn btn-primary">Save address</button>
+</form>
+</div>
+
+<div class="card">
+<h2>One account</h2>
+<form method="GET" action="/admin/capacity" class="form-row">
+<input type="text" name="login" value="golden" placeholder="login, or use user_id=">
+<button type="submit" class="btn">Look up</button>
+</form>
+
+
+
+<h3>golden <span class="muted">id 7 &middot; github &middot; administrator</span></h3>
+<p class="muted">Repositories 3 of 500 (enforce) &middot; requests today 12</p>
+<form method="POST" action="/admin/capacity/accounts/7" class="form-stack">
+<input type="hidden" name="csrf_token" value="golden-csrf">
+<label>Repositories<input type="number" name="repos_allowed" min="1" value="9" placeholder="quota"></label>
+<label>Requests per hour<input type="number" name="requests_per_hour" min="1" value="" placeholder="quota"></label>
+<label>Requests per day<input type="number" name="requests_per_day" min="1" value="" placeholder="quota"></label>
+<label>Links per day<input type="number" name="links_per_day" min="1" value="" placeholder="quota"></label>
+<label>Note<input type="text" name="note" value="pilot" maxlength="500"></label>
+<button type="submit" class="btn btn-primary">Save</button>
+<a href="/admin/capacity/accounts/7/clear" class="btn">Clear</a>
+</form>
+
+</div>
+
+<div class="card">
+<h2>Accounts with their own values</h2>
+
+
+<table class="tbl-stack">
+<thead><tr><th>Account</th><th>Repositories</th><th>Requests today</th><th>Own values</th></tr></thead>
+<tbody>
+
+<tr>
+<td data-label="Account"><a href="/admin/capacity?user_id=7">golden</a> <span class="badge badge-admin">admin</span></td>
+<td data-label="Repositories">3 of 500</td>
+<td data-label="Requests today">12</td>
+<td data-label="Own values">repos 9 &middot; pilot</td>
+</tr>
+
+</tbody>
+</table>
+
+
+</div>
+
+<div class="card">
+<h2>Busiest today</h2>
+
+
+<table class="tbl-stack">
+<thead><tr><th>Account</th><th>Repositories</th><th>Requests today</th><th>Own values</th></tr></thead>
+<tbody>
+
+<tr>
+<td data-label="Account"><a href="/admin/capacity?user_id=7">golden</a> <span class="badge badge-admin">admin</span></td>
+<td data-label="Repositories">3 of 500</td>
+<td data-label="Requests today">12</td>
+<td data-label="Own values">repos 9 &middot; pilot</td>
+</tr>
+
+</tbody>
+</table>
+
+
+</div>
+
+<div class="card">
+<h2>Largest accounts</h2>
+
+
+
+<table class="tbl-stack">
+<thead><tr><th>Account</th><th>Repositories</th><th>Requests today</th><th>Own values</th></tr></thead>
+<tbody>
+
+<tr>
+<td data-label="Account"><a href="/admin/capacity?user_id=7">golden</a> <span class="badge badge-admin">admin</span></td>
+<td data-label="Repositories">3 of 500</td>
+<td data-label="Requests today">12</td>
+<td data-label="Own values">repos 9 &middot; pilot</td>
+</tr>
+
+</tbody>
+</table>
+
+
+
+</div>
+
+<div class="card">
+<h2>Sign-ups per day</h2>
+
+<table class="tbl-stack">
+<thead><tr><th>Day</th><th>New accounts</th></tr></thead>
+<tbody><tr><td data-label="Day">2026-10-17</td><td data-label="New accounts">3</td></tr></tbody>
+</table>
+
+</div>
+
+<div class="card">
+<h2>Sign-up allowlist</h2>
+<p class="muted">Sign-ups from these networks bypass the sign-up quota.</p>
+
+<table class="tbl-stack">
+<thead><tr><th>Network</th><th>Note</th><th>Added</th><th>Action</th></tr></thead>
+<tbody>
+
+<tr><td data-label="Network">192.0.2.0/24</td><td data-label="Note">office</td><td data-label="Added">2026-10-17</td>
+<td data-label="Action"><a href="/admin/capacity/signup-allowlist/remove?cidr=192.0.2.0%2f24" class="btn btn-reject">Remove</a></td></tr>
+
+</tbody>
+</table>
+
+<form method="POST" action="/admin/capacity/signup-allowlist" class="form-stack">
+<input type="hidden" name="csrf_token" value="golden-csrf">
+<label>Network (CIDR)<input type="text" name="cidr" placeholder="192.0.2.0/24" required></label>
+<label>Note<input type="text" name="note" maxlength="500"></label>
+<button type="submit" class="btn btn-primary">Add</button>
+</form>
+</div>
+</div>
+</body></html>

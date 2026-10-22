@@ -70,7 +70,7 @@ func TestAPIProxyUnderTheBound(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "proxy-test"})
+		req.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "proxy-test"})
 		csrf(req) // the session's form token (stage 2f)
 		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 		resp, err := client.Do(req)

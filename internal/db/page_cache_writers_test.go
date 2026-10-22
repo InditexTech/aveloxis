@@ -42,7 +42,7 @@ var pageCacheTables = []string{
 	"repo_lockfiles", "repo_lockfile_packages", "repo_lockfile_edges",
 	// The SBOM's license (GetRepoForSBOM reads the latest repo_info row).
 	"repo_info",
-	// The traffic answer (v0.29.108): the daily clones and the five
+	// The traffic answer (v0.29.118): the daily clones and the five
 	// GitHub traffic tables, all stored history, no time bound.
 	"repo_clones", "repo_views", "repo_traffic_paths",
 	"repo_traffic_referrers", "repo_traffic_windows", "repo_traffic_weeks",

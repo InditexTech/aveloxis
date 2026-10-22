@@ -52,7 +52,7 @@ func TestOAuthUserErrorAnswerIsNotASizeMark(t *testing.T) {
 		var logs bytes.Buffer
 		s := New(nil, config.WebConfig{DevMode: true, GitHubClientID: "id", GitHubClientSecret: "secret"}, "", slog.New(slog.NewTextHandler(&logs, nil)))
 		rec := httptest.NewRecorder()
-		s.handleGitHubCallback(rec, githubCallbackRequest(ctx))
+		s.handleGitHubCallback(rec, githubCallbackRequest(s, ctx))
 		check(t, "github", &logs, rec)
 	})
 	t.Run("gitlab", func(t *testing.T) {

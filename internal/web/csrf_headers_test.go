@@ -20,7 +20,11 @@ import (
 // value in the X-CSRF-Token header (a server-rendered form carries it as
 // the csrf_token field; the header is for fetches and tests).
 func csrf(r *http.Request) *http.Request {
+	// Both spellings of the form-token cookie (0.29.113): the guard reads
+	// the __Host- name on a production server and the bare name under
+	// dev_mode, and this helper serves tests of both kinds.
 	r.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "test-csrf-token"})
+	r.AddCookie(&http.Cookie{Name: "__Host-" + csrfCookieName, Value: "test-csrf-token"})
 	r.Header.Set("X-CSRF-Token", "test-csrf-token")
 	return r
 }
@@ -44,7 +48,7 @@ func TestCSRFGuardOnEveryPostRoute(t *testing.T) {
 		posts++
 		session := func(r *http.Request) *http.Request {
 			token := plantSession(t, s, "csrf-"+rt.pattern, &Session{UserID: 1, LoginName: "c", IsAdmin: true, ExpiresAt: time.Now().Add(time.Hour)})
-			r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+			r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: token})
 			return r
 		}
 		r := session(requestFor(rt.pattern))
@@ -98,7 +102,7 @@ func TestCSRFGuardOnEveryPostRoute(t *testing.T) {
 	for _, path := range []string{"/auth/token", "/logout"} {
 		r := httptest.NewRequest(http.MethodPost, path, nil)
 		r.Header.Set("Origin", "https://gui.example.org")
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: plantSession(t, s, "spa"+path, &Session{UserID: 1, LoginName: "c", ExpiresAt: time.Now().Add(time.Hour)})})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: plantSession(t, s, "spa"+path, &Session{UserID: 1, LoginName: "c", ExpiresAt: time.Now().Add(time.Hour)})})
 		if code, _, _ := serve(h, r); code == http.StatusForbidden {
 			t.Errorf("POST %s from the configured SPA origin was refused", path)
 		}

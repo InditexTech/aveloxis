@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ScanCode Worker (v0.21.0+) &mdash; Aveloxis 0.29.108 documentation</title>
+  <title>ScanCode Worker (v0.21.0+) &mdash; Aveloxis 0.29.118 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,7 +14,7 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=ad0a0f70"></script>
+      <script src="../_static/documentation_options.js?v=c9c5df34"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
@@ -328,10 +328,26 @@
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#how-repos-get-queued-for-collection">How Repos Get Queued for Collection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#session-management">Session Management</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#running-alongside-aveloxis-serve">Running Alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#administration">Administration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/web-gui.html#security-considerations">Security Considerations</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="../guide/security.html">Security</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#credentials-and-their-strength">Credentials and their strength</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#where-sign-in-strength-comes-from">Where sign-in strength comes from</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#sessions">Sessions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#cryptography">Cryptography</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#data">Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#logs">Logs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/security.html#why-the-web-process-has-no-request-limiter-of-its-own">Why the web process has no request limiter of its own</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../guide/api.html">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-114">Changes for API clients in 0.29.114</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-113">Changes for API clients in 0.29.113</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-100">Changes for API clients in 0.29.100</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../guide/api.html#endpoints">Endpoints</a><ul>
@@ -346,7 +362,7 @@
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#dependency-licenses">Dependency Licenses</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#repository-search">Repository Search</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#sbom-download">SBOM Download</a></li>
-<li class="toctree-l3"><a class="reference internal" href="../guide/api.html#traffic-v0-29-108">Traffic (v0.29.108)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../guide/api.html#traffic-v0-29-118">Traffic (v0.29.118)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#contributor-identities-in-a-window">Contributor identities in a window</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#affiliation-breakdown-for-the-same-window">Affiliation breakdown for the same window</a></li>
 <li class="toctree-l3"><a class="reference internal" href="../guide/api.html#tweaks-you-can-make-on-the-client-side">Tweaks you can make on the client side</a></li>
@@ -2223,7 +2239,7 @@ clone traffic, the facade’s clones on top. To start more slowly, raise
 <h3>Per-repo failure capture is bounded (v0.25.28)<a class="headerlink" href="#per-repo-failure-capture-is-bounded-v0-25-28" title="Link to this heading"></a></h3>
 <p>The startup preflight catches a <em>systemic</em> libmagic failure once. But even with a broken host libmagic, individual large repos still get claimed and fail. Pre-v0.25.28, <code class="docutils literal notranslate"><span class="pre">runOne</span></code> captured the full subprocess stderr in an <strong>unbounded <code class="docutils literal notranslate"><span class="pre">bytes.Buffer</span></code></strong> and wrote it to a per-repo <code class="docutils literal notranslate"><span class="pre">repo_&lt;id&gt;_stderr.log</span></code> on failure. On 2026-06-11 a corrupt host <code class="docutils literal notranslate"><span class="pre">magic.mgc</span></code> made large repos (aws/aws-sdk-cpp, Azure/azure-rest-api-specs, aws/lumberyard) emit <strong>15+ GB</strong> of warning spam — buffered entirely in RAM (a multi-GB heap spike per failing repo) before being written as a 15 GB file, filling the scancode clone volume.</p>
 <p>v0.25.28 replaces that buffer with a bounded <code class="docutils literal notranslate"><span class="pre">headTailBuffer</span></code> (<code class="docutils literal notranslate"><span class="pre">internal/collector/tail_buffer.go</span></code>): the first 1 MB (failure onset) plus the last 256 KB (exit context), with an elision marker reporting the true total byte count. RAM and disk are now fixed regardless of how much the subprocess spews. The failure log line also carries a <code class="docutils literal notranslate"><span class="pre">likely_cause</span></code> field when the captured stderr is libmagic-dominated, so a flood of large-repo failures reads as “the host magic DB is corrupt” rather than “these specific repos are broken.”</p>
-<p><strong>Code:</strong> <code class="docutils literal notranslate"><span class="pre">internal/collector/scancode_preflight.go</span></code> (preflight + <code class="docutils literal notranslate"><span class="pre">classifyScancodeHealth</span></code>), <code class="docutils literal notranslate"><span class="pre">internal/collector/scancode_worker.go</span></code> + <code class="docutils literal notranslate"><span class="pre">internal/collector/tail_buffer.go</span></code> (<code class="docutils literal notranslate"><span class="pre">headTailBuffer</span></code>), <code class="docutils literal notranslate"><span class="pre">internal/db/aveloxis_status_store.go</span></code> (<code class="docutils literal notranslate"><span class="pre">SetAveloxisStatus</span></code> / <code class="docutils literal notranslate"><span class="pre">GetAveloxisStatus</span></code>), <code class="docutils literal notranslate"><span class="pre">internal/db/schema.sql</span></code> (table).</p>
+<p><strong>Code:</strong> <code class="docutils literal notranslate"><span class="pre">internal/collector/scancode_preflight.go</span></code> (preflight + <code class="docutils literal notranslate"><span class="pre">classifyScancodeHealth</span></code>), <code class="docutils literal notranslate"><span class="pre">internal/collector/scancode_worker.go</span></code> + <code class="docutils literal notranslate"><span class="pre">internal/collector/tail_buffer.go</span></code> (<code class="docutils literal notranslate"><span class="pre">headTailBuffer</span></code>), <code class="docutils literal notranslate"><span class="pre">internal/db/aveloxis_status_store.go</span></code> (<code class="docutils literal notranslate"><span class="pre">SetAveloxisStatus</span></code>; the row is read by operator SQL), <code class="docutils literal notranslate"><span class="pre">internal/db/schema.sql</span></code> (table).</p>
 </section>
 </section>
 </section>

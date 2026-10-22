@@ -31,7 +31,7 @@ func trafficDate(t time.Time) string {
 
 // UpsertRepoTraffic writes one traffic read (the daily clones go through
 // UpsertRepoClone) in one transaction, so the window rows that mark a
-// successful read never exist without the rest of it (v0.29.108,
+// successful read never exist without the rest of it (v0.29.118,
 // aveloxis/aveloxis#234). The latest read wins: days, windows and weeks
 // upsert on their UNIQUE key, and the snapshot of tr.SnapshotDate is
 // replaced as a whole, so an entry that left the top 10 is not kept.

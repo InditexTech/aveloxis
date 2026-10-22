@@ -250,3 +250,9 @@ func (d *MissingTrustedProxyDetector) Observe(logger *slog.Logger, r *http.Reque
 			"peer", host, "effect", effect)
 	})
 }
+
+// HSTSValue is the one Strict-Transport-Security value the web and api
+// processes send (OWASP ASVS 5.0 V3.4.1; 0.29.113): a year, subdomains
+// included. One constant so the two processes cannot drift (review round 1
+// of 0.29.113 found the string spelled in each).
+const HSTSValue = "max-age=31536000; includeSubDomains"

@@ -82,6 +82,61 @@ func TestLogoutIsNeverRefusedBySpentQuota(t *testing.T) {
 	}
 }
 
+// 0.29.114 (Copilot on PR #241, Medium): "sign out everywhere" went through
+// the rate quotas like any request, so a session whose enforced
+// requests_per_hour was spent got a 429 and every session of the account
+// stayed valid. It is never refused, and not counted, end to end through
+// the middleware; a second session of the account dies with it.
+func TestSignOutEverywhereIsNeverRefusedBySpentQuota(t *testing.T) {
+	s, store, _, owner := apiTokenAdminServer(t)
+	ctx := context.Background()
+	setQuotaForTest(t, store, capacity.QuotaRequestsPerHour, 1, capacity.Enforce)
+	fresh, err := NewWithOptions(store, s.logger, Options{RateLimitRPS: 1000, RateLimitBurst: 1000, RateLimitDaily: 100000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); fresh.limiter.policy.sessionQuotas(owner, false)[0].Mode != capacity.Enforce; {
+		if time.Now().After(deadline) {
+			t.Fatal("the process never read the policy")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	tok, err := store.CreateSessionToken(ctx, owner, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := store.CreateSessionToken(ctx, owner, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.DeleteSessionToken(context.Background(), tok)
+		_ = store.DeleteSessionToken(context.Background(), other)
+	})
+	call := func(method, path string) int {
+		r := httptest.NewRequest(method, path, nil)
+		r.RemoteAddr = "203.0.113.92:1"
+		r.Header.Set("Authorization", "Bearer "+tok)
+		w := httptest.NewRecorder()
+		fresh.Handler().ServeHTTP(w, r)
+		return w.Code
+	}
+	if code := call(http.MethodGet, "/api/v1/me"); code != http.StatusOK {
+		t.Fatalf("request 1 of 1 = %d", code)
+	}
+	if code := call(http.MethodGet, "/api/v1/me"); code != http.StatusTooManyRequests {
+		t.Fatalf("request 2 of 1 = %d; want 429 (the quota is spent)", code)
+	}
+	if code := call(http.MethodPost, "/api/v1/me/sessions/revoke"); code != http.StatusOK {
+		t.Fatalf("sign out everywhere with a spent quota = %d; want 200", code)
+	}
+	for name, tk := range map[string]string{"this": tok, "other": other} {
+		if _, err := store.ValidateSessionToken(ctx, tk); !errors.Is(err, db.ErrInvalidSessionToken) {
+			t.Errorf("after sign out everywhere the %s session resolves: %v; want ErrInvalidSessionToken", name, err)
+		}
+	}
+}
+
 // v0.29.91 (whole-PR review, Med): the Comparisons auto-add linked an
 // organization's repositories one at a time, so a refusal left the ones
 // before it linked. One decision now: an organization with more new

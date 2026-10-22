@@ -1792,7 +1792,7 @@ func (p *Processor) processStagedCloneStats(ctx context.Context, repoID int64, p
 // processStagedTraffic handles one staged EntityTraffic row: one
 // traffic read (daily views, the path and referrer snapshot, the
 // window and complete-week rows), written in one transaction so the
-// window rows never exist without the rest of their read (v0.29.108).
+// window rows never exist without the rest of their read (v0.29.118).
 // The read's daily clones are separate EntityCloneStats rows.
 func (p *Processor) processStagedTraffic(ctx context.Context, repoID int64, platID int16, payload json.RawMessage) error {
 	var tr model.RepoTraffic

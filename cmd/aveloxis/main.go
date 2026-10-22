@@ -436,6 +436,7 @@ func runAPI(cfgPath, addr string) error {
 	}
 
 	store.LogCapacityInForce(ctx, "api")
+	store.SetSessionIdle(cfg.Web.SessionIdle()) // the inactivity bound (0.29.113), the one accessor
 	apiServer, err := api.NewWithOptions(store, logger, apiOptions(cfg, logger))
 	if err != nil {
 		return fmt.Errorf("api middleware config: %w", err)
@@ -1398,6 +1399,7 @@ Create a GitLab OAuth app at: https://gitlab.com/-/profile/applications`,
 			// C2): an org added or approved in the GUI is listed by serve.
 			warnAPIPortMismatch(cfg, logger)
 
+			store.SetSessionIdle(cfg.Web.SessionIdle()) // the inactivity bound (0.29.113), the one accessor
 			webServer := newWebServer(store, cfg, logger)
 			// GitLab accounts from before 0.29.69 carry no instance and
 			// match none at sign-in until this stamps them with the
@@ -2277,6 +2279,7 @@ func apiOptions(cfg *config.Config, logger *slog.Logger) api.Options {
 		CORSOrigins:    cfg.API.CORSOrigins,
 		TrustedProxy:   cfg.API.TrustedProxy,
 		RequireAuth:    cfg.API.RequireAuth,
+		SessionIdle:    cfg.Web.SessionIdle(), // the recent-sign-in bound (0.29.113)
 		// v0.27.20 per-add approval: add-request notifications +
 		// the auto-approve limit for the portal repo-add endpoint.
 		Mailer:              mailer.New(mailerConfigFrom(cfg), logger),

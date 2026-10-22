@@ -354,7 +354,7 @@ func TestAdoptForgeID(t *testing.T) {
 		// leading zero, a sign, spaces, a 6,000-byte string — is refused
 		// before the store or the log sees it (round-2 review).
 		for _, tc := range []struct{ old, new, note string }{
-			{"", "2", ""}, {"1", "", ""}, {"1", "2", strings.Repeat("n", AdoptNoteMaxBytes+1)},
+			{"", "2", ""}, {"1", "", ""}, {"1", "2", strings.Repeat("n", AdoptNoteMaxLength+1)},
 			{"x", "2", ""}, {"1", "02", ""}, {"-1", "2", ""}, {"1", "+2", ""}, {" 1", "2", ""}, {"1", "0", ""},
 			{strings.Repeat("9", 6000), "2", ""}, {"1", "2\n", ""},
 		} {

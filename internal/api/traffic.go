@@ -8,7 +8,7 @@ import (
 )
 
 // handleRepoTraffic serves the repository's stored traffic in one
-// answer, without paging (v0.29.108, aveloxis/aveloxis#234). A repository
+// answer, without paging (v0.29.118, aveloxis/aveloxis#234). A repository
 // without traffic answers empty arrays. The route is cachedRepoGET, and
 // every traffic writer stamps data_changed_at, so a write moves the answer.
 func (s *Server) handleRepoTraffic(w http.ResponseWriter, r *http.Request) {

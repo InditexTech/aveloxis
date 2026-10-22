@@ -1,0 +1,60 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aveloxis - Science</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/avx.js"></script>
+</head>
+<body>
+<div class="nav">
+<a href="/dashboard" style="display:flex;align-items:center;gap:8px"><img src="/icon.png" alt="" style="height:28px;border-radius:4px"><strong>Aveloxis</strong></a>
+<div class="nav-user">
+<img src="https://avatars.example/7.png" alt="">
+<a href="/account" class="nav-link nav-login" title="Your sessions">golden</a>
+<form method="post" action="/logout" class="nav-form"><input type="hidden" name="csrf_token" value="golden-csrf"><button type="submit" class="nav-link">Logout</button></form>
+</div>
+</div>
+<div class="breadcrumb"><a href="/dashboard">Home</a><span class="sep">|</span><a href="/monitor">Monitor</a><span class="sep">|</span><a href="/admin/groups/pending">Approvals</a><span class="sep">|</span><a href="/admin/users">Users</a><span class="sep">|</span><a href="/admin/capacity">Capacity</a><span class="sep">|</span><a href="/admin/api-tokens">API tokens</a><span class="sep">|</span><a href="/admin/collections">Collections</a><span class="sep">/</span><a href="/admin/collections">Collections</a><span class="sep">/</span><span class="current">Science</span></div>
+<div class="container">
+
+<div class="card">
+<h2>Science</h2>
+<p class="muted">1 groups, 30 repositories &middot; created 2026-10-17</p>
+<form method="POST" action="/admin/collections/42" class="form-stack">
+<input type="hidden" name="csrf_token" value="golden-csrf">
+<label>Name<input type="text" name="name" value="Science" maxlength="200" required></label>
+<label>Description<input type="text" name="description" value="labs" maxlength="1000"></label>
+<label>Position<input type="number" name="position" value="1"></label>
+<button type="submit" class="btn btn-primary">Save</button>
+<a href="/admin/collections/42/delete" class="btn btn-reject">Delete collection</a>
+</form>
+</div>
+<div class="card">
+<h2>Member groups</h2>
+
+<table class="tbl-stack">
+<thead><tr><th>Group</th><th>Repositories</th><th>Action</th></tr></thead>
+<tbody>
+
+<tr>
+<td data-label="Group"><a href="/groups/7">Golden group</a></td>
+<td data-label="Repositories">30</td>
+<td data-label="Action"><a href="/admin/collections/42/groups/7/remove" class="btn btn-reject">Remove</a></td>
+</tr>
+
+</tbody>
+</table>
+
+
+<form method="POST" action="/admin/collections/42/groups" class="form-row">
+<input type="hidden" name="csrf_token" value="golden-csrf">
+<select name="group_id" aria-label="Group"><option value="8">Silver group (2 repos)</option></select>
+<button type="submit" class="btn btn-primary">Add group</button>
+</form>
+
+</div>
+</div>
+</body></html>

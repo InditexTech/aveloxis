@@ -16,7 +16,7 @@ aveloxis serve [flags]
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--monitor` | string | `"127.0.0.1:5555"` | Address for the monitoring dashboard (the REST API is a separate process — see `aveloxis api`). Always started with serve. |
+| `--monitor` | string | `"127.0.0.1:5555"` | Address for the monitoring dashboard (the REST API is a separate process — see `aveloxis api`). Always started with serve. No sign-in: keep it on the loopback address; it is diagnostics for the host, never a public page (the web GUI's `/monitor` is the signed-in one). |
 | `--workers` | integer | config `collection.workers` (default `12`); flag overrides | Number of concurrent collection workers. Each worker claims one repo at a time from the queue. The cobra flag default is 1, but when the flag is not explicitly set, serve uses `collection.workers` from `aveloxis.json`. |
 | `--augur-keys` | boolean | `false` | Also load API keys from Augur's `augur_operations.worker_oauth` table. |
 

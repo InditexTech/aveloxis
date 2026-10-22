@@ -246,17 +246,29 @@ func (s *PostgresStore) ListSignupAllowlist(ctx context.Context) ([]SignupAllowl
 // ErrInvalidCIDR is an allowlist entry that is not a network in CIDR form.
 var ErrInvalidCIDR = errors.New("not a network in CIDR form (such as 192.0.2.0/24 or 2001:db8::/48)")
 
-// AddSignupAllowlist adds (or re-notes) a network. The prefix is
-// normalised (192.0.2.7/24 → 192.0.2.0/24), so one network is one row.
-func (s *PostgresStore) AddSignupAllowlist(ctx context.Context, cidr, note string, by int) (string, error) {
+// NormalizeCIDR is the one rule for an allowlist network: the value
+// trimmed, parsed as a prefix and masked (192.0.2.7/24 → 192.0.2.0/24), so
+// one network is one row; ErrInvalidCIDR otherwise. The store's two
+// writers and the console's confirm page read it (round-2 review of
+// 0.29.109).
+func NormalizeCIDR(cidr string) (string, error) {
 	p, err := netip.ParsePrefix(strings.TrimSpace(cidr))
 	if err != nil {
 		return "", ErrInvalidCIDR
 	}
+	return p.Masked().String(), nil
+}
+
+// AddSignupAllowlist adds (or re-notes) a network, normalised by
+// NormalizeCIDR.
+func (s *PostgresStore) AddSignupAllowlist(ctx context.Context, cidr, note string, by int) (string, error) {
+	norm, err := NormalizeCIDR(cidr)
+	if err != nil {
+		return "", err
+	}
 	if len([]rune(note)) > MaxCapacityNoteLength {
 		return "", ErrInvalidCapacitySettings
 	}
-	norm := p.Masked().String()
 	if _, err := s.pool.Exec(ctx, `
 		INSERT INTO aveloxis_ops.signup_allowlist (cidr, note, added_by) VALUES ($1::cidr, $2, $3)
 		ON CONFLICT (cidr) DO UPDATE SET note = EXCLUDED.note`, norm, strings.TrimSpace(note), nullIfZero(by)); err != nil {
@@ -267,11 +279,11 @@ func (s *PostgresStore) AddSignupAllowlist(ctx context.Context, cidr, note strin
 
 // RemoveSignupAllowlist removes a network (exactly as listed).
 func (s *PostgresStore) RemoveSignupAllowlist(ctx context.Context, cidr string) (bool, error) {
-	p, err := netip.ParsePrefix(strings.TrimSpace(cidr))
+	norm, err := NormalizeCIDR(cidr)
 	if err != nil {
-		return false, ErrInvalidCIDR
+		return false, err
 	}
-	tag, err := s.pool.Exec(ctx, `DELETE FROM aveloxis_ops.signup_allowlist WHERE cidr = $1::cidr`, p.Masked().String())
+	tag, err := s.pool.Exec(ctx, `DELETE FROM aveloxis_ops.signup_allowlist WHERE cidr = $1::cidr`, norm)
 	if err != nil {
 		return false, fmt.Errorf("remove from the sign-up allowlist: %w", err)
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/aveloxis/aveloxis/internal/db"
 	"github.com/aveloxis/aveloxis/internal/platform"
 	"github.com/aveloxis/aveloxis/internal/srctest"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // TestClassifyNamesEveryRefusalTheServiceReturns is the classifier's table
@@ -50,6 +51,14 @@ func TestClassifyNamesEveryRefusalTheServiceReturns(t *testing.T) {
 		{db.ErrUserNotFound, UserNotFound, db.ErrUserNotFound.Error()},
 		{db.ErrNoPendingForgeIDChange, NotFound, "no pending forge-ID change"},
 		{db.ErrForgeIDNotAsExpected, Superseded, "superseded"},
+		{refuseNotFound(`no quota named "x"`), NotFound, `no quota named "x"`},
+		{refuseConflict("x is set in aveloxis.json"), Conflict, "x is set in aveloxis.json"},
+		{db.ErrAPITokenNotFound, NotFound, "no API token with that id"},
+		{db.ErrInvalidCIDR, InvalidInput, db.ErrInvalidCIDR.Error()},
+		{db.ErrInvalidCapacitySettings, InvalidInput, db.ErrInvalidCapacitySettings.Error()},
+		{db.ErrCollectionNotFound, NotFound, "no collection with that id"},
+		{db.ErrCollectionNameTaken, Conflict, db.ErrCollectionNameTaken.Error()},
+		{db.ErrGroupNotAdminOwned, InvalidInput, db.ErrGroupNotAdminOwned.Error()},
 		{ex, Capacity, ""},
 	}
 	for _, c := range cases {
@@ -97,6 +106,9 @@ func TestClassifyNamesEveryRefusalTheServiceReturns(t *testing.T) {
 		{"db.ErrURLTooLong", db.ErrURLTooLong}, {"db.ErrInvalidOrgURL", db.ErrInvalidOrgURL}, {"db.ErrAddItemsFailed", db.ErrAddItemsFailed},
 		{"db.ErrLastAdmin", db.ErrLastAdmin}, {"db.ErrUserNotFound", db.ErrUserNotFound},
 		{"db.ErrNoPendingForgeIDChange", db.ErrNoPendingForgeIDChange}, {"db.ErrForgeIDNotAsExpected", db.ErrForgeIDNotAsExpected},
+		{"db.ErrAPITokenNotFound", db.ErrAPITokenNotFound}, {"db.ErrInvalidCIDR", db.ErrInvalidCIDR},
+		{"db.ErrInvalidCapacitySettings", db.ErrInvalidCapacitySettings}, {"db.ErrCollectionNotFound", db.ErrCollectionNotFound},
+		{"db.ErrCollectionNameTaken", db.ErrCollectionNameTaken}, {"db.ErrGroupNotAdminOwned", db.ErrGroupNotAdminOwned},
 		// Named in the package but never returned to an adapter: the
 		// background pass logs the first; ConfirmAccountEmail turns the
 		// second into a ConfirmOutcome.
@@ -113,12 +125,27 @@ func TestClassifyNamesEveryRefusalTheServiceReturns(t *testing.T) {
 }
 
 func TestKindString(t *testing.T) {
-	for k := Forbidden; k <= Superseded; k++ {
+	for k := Forbidden; k <= Conflict; k++ {
 		if s := k.String(); s == "" || strings.HasPrefix(s, "kind ") {
 			t.Errorf("Kind(%d).String() = %q", int(k), s)
 		}
 	}
 	if s := Kind(99).String(); s != "kind 99" {
 		t.Errorf("Kind(99).String() = %q", s)
+	}
+}
+
+// A value the database refused on a non-URL operation (a NUL byte in a
+// collection name is 22021) is InvalidInput in the class's own words, not
+// the URL sentence the group operations use (whole-branch review of
+// 0.29.109); the URL sentinels keep theirs.
+func TestClassifyRejectedValueIsNotTheURLSentence(t *testing.T) {
+	err := fmt.Errorf("CreateCollection: %w", &pgconn.PgError{Code: "22021", Message: "invalid byte sequence for encoding \"UTF8\": 0x00"})
+	ref, ok := Classify(err)
+	if !ok || ref.Kind != InvalidInput || ref.Detail != rejectedValueDetail {
+		t.Errorf("Classify(22021) = %+v, %v; want InvalidInput %q", ref, ok, rejectedValueDetail)
+	}
+	if ref, ok := Classify(db.ErrURLTooLong); !ok || ref.Detail != urlInputDetail {
+		t.Errorf("the URL sentinel must keep the URL sentence: %+v", ref)
 	}
 }

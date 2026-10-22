@@ -137,23 +137,28 @@ func TestListQueuePageSortEndToEnd(t *testing.T) {
 	want("priority asc", get("priority", "asc"), charlie, bravo, alpha, delta)
 }
 
-// TestAdminMonitorQueueHandlerPassesSort pins the API wiring: the
-// handler forwards sort/dir and echoes the EFFECTIVE values in the
-// envelope (the v0.27.75 group-page contract).
+// TestAdminMonitorQueueHandlerPassesSort pins the API wiring: the handler
+// carries sort/dir to the store and echoes the EFFECTIVE values in the
+// envelope (the v0.27.75 group-page contract). Since 0.29.109 (stage 3d of
+// summary/59) both halves live in internal/queueview — ParseParams reads
+// sort/dir and validates the key through QueueSortValid, Load passes the
+// effective values to ListQueuePage — and the handler echoes what it
+// parsed; the handler is pinned to that path, the package to its halves.
 func TestAdminMonitorQueueHandlerPassesSort(t *testing.T) {
-	src := srctest.StripGoComments(srctest.FuncBody(t,
-		srctest.Read(t, "internal/api/portal.go"),
-		"func (s *Server) handleAdminMonitorQueue("))
-	for _, needle := range []string{
-		`Get("sort")`, `Get("dir")`, `"sort":`, `"dir":`,
-		// EFFECTIVE echo (review 2026-08-31 #2): an unknown key means
-		// the store used the default composite; the envelope must say
-		// so, never parrot the caller's input (the handleGroupRepos /
-		// v0.27.65 log-the-effective-value contract).
-		"db.QueueSortValid(sortKey)",
-	} {
-		if !strings.Contains(src, needle) {
-			t.Errorf("handleAdminMonitorQueue must carry %s (accept + echo the EFFECTIVE sort contract)", needle)
+	handler := srctest.StripGoComments(srctest.PackageFunc(t, "internal/api", "func (s *Server) handleAdminMonitorQueue("))
+	for _, needle := range []string{"queueview.ParseParams(r.URL.Query()", "queueview.Load(", `"sort": p.Sort`, `"dir": p.Dir`} {
+		if !strings.Contains(handler, needle) {
+			t.Errorf("handleAdminMonitorQueue must carry %s (parse, load and echo the EFFECTIVE sort through queueview)", needle)
 		}
+	}
+	parse := srctest.StripGoComments(srctest.PackageFunc(t, "internal/queueview", "func ParseParams("))
+	for _, needle := range []string{`q.Get("sort")`, `q.Get("dir")`, "db.QueueSortValid("} {
+		if !strings.Contains(parse, needle) {
+			t.Errorf("queueview.ParseParams must read %s and validate the key through the store's allowlist", needle)
+		}
+	}
+	load := srctest.StripGoComments(srctest.PackageFunc(t, "internal/queueview", "func Load("))
+	if !strings.Contains(load, "ListQueuePage(ctx, p.PageSize, p.Offset, p.Search, p.Sort, p.Dir)") {
+		t.Error("queueview.Load must pass the effective sort and direction to ListQueuePage")
 	}
 }

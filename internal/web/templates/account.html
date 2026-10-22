@@ -1,0 +1,41 @@
+{{/*
+  account — the account page (0.29.113, ASVS V7.5.2): the live sessions
+  and tokens of the signed-in account, this browser's marked, and one
+  form that ends them all. Needs .Session, .Sessions ([]sessionView),
+  .IdleMinutes and .Notice.
+*/}}
+{{define "account"}}
+{{template "head" (dict "Title" "Account")}}
+{{template "nav" .}}
+<div class="breadcrumb"><a href="/dashboard">Home</a>{{template "adminLinks" .}}<span class="sep">/</span><span class="current">Account</span></div>
+<div class="container">
+{{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+<div class="card">
+<h2>{{.Session.LoginName}} <span class="muted">via {{.Session.Provider}}</span></h2>
+<p class="muted">A browser session ends 24 hours after sign-in, or after {{.IdleMinutes}} minutes without a request. Signing out ends this browser's session and the tokens minted for it; the form below ends every session of the account at once.</p>
+</div>
+<div class="card">
+<h2>Sessions</h2>
+{{if .Sessions}}
+<table class="tbl-stack">
+<thead><tr><th>What</th><th>Signed in</th><th>Last used</th><th>Expires</th></tr></thead>
+<tbody>
+{{range .Sessions}}
+<tr>
+<td data-label="What">{{.What}}{{if .Current}} <span class="badge badge-admin">now</span>{{end}}</td>
+<td data-label="Signed in">{{.CreatedAt.UTC.Format "2006-01-02 15:04"}} UTC</td>
+<td data-label="Last used">{{.LastUsed.UTC.Format "2006-01-02 15:04"}} UTC</td>
+<td data-label="Expires">{{.ExpiresAt.UTC.Format "2006-01-02 15:04"}} UTC</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+{{else}}<p class="empty">No live session.</p>{{end}}
+<form method="POST" action="/account/sessions/revoke" class="form-row">
+<input type="hidden" name="csrf_token" value="{{.CSRF}}">
+<button type="submit" class="btn btn-reject">Sign out everywhere</button>
+</form>
+</div>
+</div>
+</body></html>
+{{end}}

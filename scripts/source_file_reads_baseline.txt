@@ -141,7 +141,6 @@ internal/api/contributor_elsewhere_api_test.go internal/api/contributor_elsewher
 internal/api/cors_test.go internal/api/contributions.go
 internal/api/cors_test.go internal/api/metrics.go
 internal/api/cors_test.go internal/api/server.go
-internal/api/docs_coverage_test.go internal/api/server.go
 internal/api/endpoint_smoke_test.go internal/api/metrics.go
 internal/api/endpoint_smoke_test.go internal/api/server.go
 internal/api/first_activity_test.go internal/api/analytics.go
@@ -718,7 +717,6 @@ internal/db/queue_realign_test.go internal/db/queue.go
 internal/db/queue_realign_test.go internal/scheduler/scheduler.go
 internal/db/queue_search_index_test.go internal/db/migrate.go
 internal/db/queue_search_index_test.go internal/db/queue.go
-internal/db/queue_sort_test.go internal/api/portal.go
 internal/db/queue_sort_test.go internal/db/queue.go
 internal/db/queue_test.go internal/db/queue.go
 internal/db/rename_contributor_gh_login_test.go internal/db/contributor_search_resolve.go
@@ -876,7 +874,6 @@ internal/monitor/draining_stat_test.go internal/monitor/monitor.go
 internal/monitor/due_at_format_test.go internal/monitor/monitor.go
 internal/monitor/matview_banner_test.go internal/monitor/monitor.go
 internal/monitor/monitor_test.go internal/monitor/monitor.go
-internal/monitor/queue_stats_cache_test.go internal/monitor/queue_stats_cache.go
 internal/monitor/refresh_and_mobile_test.go cmd/aveloxis/main.go
 internal/monitor/refresh_and_mobile_test.go internal/config/config.go
 internal/monitor/refresh_and_mobile_test.go internal/monitor/monitor.go

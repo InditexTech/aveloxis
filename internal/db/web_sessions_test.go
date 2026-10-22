@@ -118,11 +118,11 @@ func TestLogoutRevokesTheTokensMintedFromTheSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	minted1, err := store.MintTokenForWebSession(ctx, web)
+	minted1, err := store.MintTokenForWebSession(ctx, web, time.Now().Add(DefaultSessionTokenLifetime))
 	if err != nil {
 		t.Fatal(err)
 	}
-	minted2, err := store.MintTokenForWebSession(ctx, web)
+	minted2, err := store.MintTokenForWebSession(ctx, web, time.Now().Add(DefaultSessionTokenLifetime))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,10 +130,10 @@ func TestLogoutRevokesTheTokensMintedFromTheSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.MintTokenForWebSession(ctx, "not-a-session"); !errors.Is(err, ErrNoWebSession) {
+	if _, err := store.MintTokenForWebSession(ctx, "not-a-session", time.Now().Add(DefaultSessionTokenLifetime)); !errors.Is(err, ErrNoWebSession) {
 		t.Errorf("minting from an unknown session: %v; want ErrNoWebSession", err)
 	}
-	if _, err := store.MintTokenForWebSession(ctx, loose); !errors.Is(err, ErrNoWebSession) {
+	if _, err := store.MintTokenForWebSession(ctx, loose, time.Now().Add(DefaultSessionTokenLifetime)); !errors.Is(err, ErrNoWebSession) {
 		t.Errorf("minting from a Bearer token: %v; want ErrNoWebSession", err)
 	}
 	for _, tok := range []string{minted1, minted2, loose} {
@@ -158,7 +158,7 @@ func TestLogoutRevokesTheTokensMintedFromTheSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	minted3, err := store.MintTokenForWebSession(ctx, web2)
+	minted3, err := store.MintTokenForWebSession(ctx, web2, time.Now().Add(DefaultSessionTokenLifetime))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestOneSecretTokenMinting(t *testing.T) {
 	if !strings.Contains(srctest.PackageFunc(t, "internal/db", "func newSecretBytes("), "rand.Read(") {
 		t.Error("newSecretBytes does not read crypto/rand")
 	}
-	for _, fn := range []string{"func (s *PostgresStore) CreateEmailConfirmation(", "func (s *PostgresStore) CreateAPIToken(", "func (s *PostgresStore) createSessionToken("} {
+	for _, fn := range []string{"func (s *PostgresStore) CreateEmailConfirmation(", "func (s *PostgresStore) CreateAPIToken(", "func (s *PostgresStore) createSessionTokenUntil("} {
 		if !strings.Contains(srctest.PackageFunc(t, "internal/db", fn), "newSecretToken()") {
 			t.Errorf("%s does not mint through newSecretToken", fn)
 		}
@@ -311,7 +311,7 @@ func TestSignOutAndTheMintSerialiseOnTheSessionRow(t *testing.T) {
 	}
 	mint := make(chan minted, 1)
 	go func() {
-		tok, err := store.MintTokenForWebSession(ctx, web2)
+		tok, err := store.MintTokenForWebSession(ctx, web2, time.Now().Add(DefaultSessionTokenLifetime))
 		mint <- minted{tok, err}
 	}()
 	select {

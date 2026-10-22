@@ -68,16 +68,21 @@ func (f faultStore) PrioritizeRepo(context.Context, int64) error { return f.err(
 // logged ERROR naming the handler and a generic 500 body; with no fault
 // each surface answers 200.
 func TestMonitorStoreFailuresAreLoggedGeneric500s(t *testing.T) {
+	// An enrichment read (names, counts) that fails is not an outage of the
+	// page since 0.29.109: the one loader (queueview.Load) answers the rows
+	// bare, ids shown, and logs the failure as a WARN — the convention the
+	// web GUI and the API already had (58 §7 item 10). bare marks those.
 	for _, tc := range []struct {
 		method, path, fail, handler string
+		bare                        bool
 	}{
-		{http.MethodGet, "/api/stats", "QueueStats", "handleStats"},
-		{http.MethodGet, "/api/queue", "ListQueuePage", "handleQueue"},
-		{http.MethodGet, "/", "QueueStats", "handleDashboard"},
-		{http.MethodGet, "/", "ListQueuePage", "handleDashboard"},
-		{http.MethodGet, "/", "GetReposBatch", "handleDashboard"},
-		{http.MethodGet, "/", "GetRepoStatsBatch", "handleDashboard"},
-		{http.MethodPost, "/api/prioritize/7", "PrioritizeRepo", "handlePrioritize"},
+		{http.MethodGet, "/api/stats", "QueueStats", "handleStats", false},
+		{http.MethodGet, "/api/queue", "ListQueuePage", "handleQueue", false},
+		{http.MethodGet, "/", "QueueStats", "handleDashboard", false},
+		{http.MethodGet, "/", "ListQueuePage", "handleDashboard", false},
+		{http.MethodGet, "/", "GetReposBatch", "handleDashboard", true},
+		{http.MethodGet, "/", "GetRepoStatsBatch", "handleDashboard", true},
+		{http.MethodPost, "/api/prioritize/7", "PrioritizeRepo", "handlePrioritize", false},
 	} {
 		t.Run(tc.path+" "+tc.fail, func(t *testing.T) {
 			serve := func(fail string) (*httptest.ResponseRecorder, string) {
@@ -91,6 +96,20 @@ func TestMonitorStoreFailuresAreLoggedGeneric500s(t *testing.T) {
 				t.Fatalf("with no fault = %d %q; want 200 (the fake must reach the faulted call)", w.Code, w.Body.String())
 			}
 			w, logs := serve(tc.fail)
+			if tc.bare {
+				body := w.Body.String()
+				label := `<td data-label="Repo">o/r</td>` // the names read; the counts did not
+				if tc.fail == "GetReposBatch" {
+					label = `<td data-label="Repo">7</td>` // the names did not: the id, never a bare slash
+				}
+				if w.Code != http.StatusOK || !strings.Contains(body, label) || !strings.Contains(body, "could not be read") {
+					t.Errorf("a failed %s = %d; want 200 with the row %s and the banner saying what could not be read\n%s", tc.fail, w.Code, label, body)
+				}
+				if !strings.Contains(logs, "level=WARN") || !strings.Contains(logs, "unreadable") || !strings.Contains(logs, "closed pool") {
+					t.Errorf("the enrichment failure is not logged at WARN with its cause:\n%s", logs)
+				}
+				return
+			}
 			if w.Code != http.StatusInternalServerError {
 				t.Errorf("a failed %s = %d; want 500", tc.fail, w.Code)
 			}

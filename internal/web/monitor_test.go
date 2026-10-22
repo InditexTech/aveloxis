@@ -48,8 +48,8 @@ func TestMonitorHandlerExists(t *testing.T) {
 func TestMonitorPagination(t *testing.T) {
 	fnBody := srctest.PackageFunc(t, "internal/web", "func (s *Server) handleMonitor(")
 
-	if !strings.Contains(fnBody, "page") {
-		t.Error("handleMonitor must support pagination (read 'page' query parameter)")
+	if !strings.Contains(fnBody, "queueview.ParseParams(") || !strings.Contains(fnBody, "queueview.Window(") {
+		t.Error("handleMonitor must support pagination through queueview (ParseParams reads page; Window is the pager)")
 	}
 }
 

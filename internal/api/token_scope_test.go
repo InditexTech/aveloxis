@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -424,11 +425,32 @@ func TestBranchRefusalsAreLogged(t *testing.T) {
 	for i := 0; i <= sharedWithMeAddsPerHour+2; i++ {
 		s.authorizeRepo(httptest.NewRecorder(), req("/api/v1/repos/"+strconv.Itoa(1000+i)+"/stats", session), int64(1000+i))
 	}
+	// A signed-in non-administrator on an admin route (ASVS V16.3.2, the
+	// 0.29.112 review): logged like the web's refusal, once a minute.
+	for i := 0; i < 3; i++ {
+		s.requireAdmin(httptest.NewRecorder(), req("/api/v1/admin/users", session))
+	}
 	out := logs.String()
-	for kind, want := range map[string]int{"token_cannot_administer": 1, "token_cannot_change_account": 1, "token_out_of_scope": 1, "auto_add_cap": 1} {
-		if n := strings.Count(out, "kind="+kind); n != want {
-			t.Errorf("kind=%s logged %d time(s), want %d (once per user and kind per minute):\n%s", kind, n, want, out)
+	want := map[string]int{"token_cannot_administer": 1, "token_cannot_change_account": 1, "token_out_of_scope": 1, "auto_add_cap": 1, "not_admin": 1}
+	for kind, n := range want {
+		if got := strings.Count(out, "kind="+kind); got != n {
+			t.Errorf("kind=%s logged %d time(s), want %d (once per user and kind per minute):\n%s", kind, got, n, out)
 		}
+	}
+	// Every kind the package logs is driven here: the set derives from the
+	// logRefusal call sites, so a new kind cannot land unlisted (L17).
+	src := srctest.StripGoComments(srctest.PackageSource(t, "internal/api", 10))
+	literal := regexp.MustCompile(`logRefusal\("([a-z_]+)"`).FindAllStringSubmatch(src, -1)
+	for _, m := range literal {
+		if _, listed := want[m[1]]; !listed {
+			t.Errorf("logRefusal kind %q has no probe in this test", m[1])
+		}
+	}
+	// One site passes its kind as a value (the capacity refusal's quota
+	// name, driven in session_quota_test.go); any other non-literal site
+	// would hide from the regex above, so the call count is pinned too.
+	if calls := strings.Count(src, "s.logRefusal("); calls != len(literal)+1 {
+		t.Errorf("%d logRefusal call sites, %d with a literal kind: every site but the capacity quota's must name its kind as a literal so this test sees it", calls, len(literal))
 	}
 	if !strings.Contains(out, "user_id=42") || !strings.Contains(out, "token_id=5") || !strings.Contains(out, "user_id=43") {
 		t.Fatalf("the lines name the user and the token:\n%s", out)

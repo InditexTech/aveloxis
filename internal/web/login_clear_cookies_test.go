@@ -60,7 +60,7 @@ func TestLoginTemplateRendersSignOutWhenSessionPresent(t *testing.T) {
 	token := plantSession(t, srv, "alice", &Session{UserID: 1, LoginName: "alice", ExpiresAt: time.Now().Add(time.Hour)})
 
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
-	req.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: token})
+	req.AddCookie(&http.Cookie{Name: srv.cookieName("aveloxis_session"), Value: token})
 	csrf(req) // the session's form token (stage 2f)
 	rr := httptest.NewRecorder()
 
@@ -108,10 +108,10 @@ func TestLogoutHandlerExpiresOAuthStateCookie(t *testing.T) {
 		// Expired cookies are emitted with MaxAge<0 (or Max-Age=0).
 		// Either way the browser drops them. We accept both shapes.
 		expired := c.MaxAge < 0 || c.MaxAge == 0
-		if c.Name == "aveloxis_session" && expired {
+		if c.Name == srv.cookieName("aveloxis_session") && expired {
 			sawSessionExpire = true
 		}
-		if c.Name == "oauth_state" && expired {
+		if c.Name == srv.cookieName("oauth_state") && expired {
 			sawOAuthStateExpire = true
 		}
 	}

@@ -3161,6 +3161,87 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/me/sessions:
+    get:
+      operationId: mySessions
+      summary: Returns the caller's live sessions.
+      description: |
+        Every live session of the account (0.29.113, OWASP ASVS V7.5.2): the
+        browser sessions of the web GUI (`kind` `web`), the tokens
+        `POST /api/v1/auth/token` minted and the tokens the web process's
+        `/api/` proxy holds (`kind` `api`; both are minted from a browser
+        session: `from_web_session` is `true` while that session lives and
+        `false` once it has expired, which the SPA's 30-day token outlives).
+        The session presenting
+        this request is `current`. Operator-issued API tokens are not
+        sessions and are not listed. A browser session idle past
+        `web.session_idle_minutes` is not live and not listed.
+        `last_used_at` moves, at most once a minute (every half bound when the bound is under two minutes), for `kind` `web` only;
+        a token's is its mint time.
+
+        Handler: `handleMeSessions`.
+      tags: [Account]
+      security: [{sessionToken: []}]
+      responses:
+        "200":
+          description: The sessions, newest first.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions]
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSession'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/ServerError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/me/sessions/revoke:
+    post:
+      operationId: revokeMySessions
+      summary: Ends every session of the caller's account, this one included.
+      description: |
+        Deletes the account's web sessions, `/auth/token` tokens and proxy
+        tokens (0.29.113, OWASP ASVS V7.5.2): every other browser and client
+        of the account is signed out at its next request, and this token's
+        next request is `401` too — the answer is the last one it gets. No
+        body. Never refused by a spent request quota, and not counted
+        (0.29.114), like sign-out.
+
+        Handler: `handleMeSessionsRevoke`.
+      tags: [Account]
+      security: [{sessionToken: []}]
+      responses:
+        "200":
+          description: Done; `ended` counts the sessions and tokens deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsEnded'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/ServerError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/me/email:
     post:
       operationId: submitAccountEmail
@@ -3206,7 +3287,19 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          description: |
+            An operator-issued API token (`error` is a sentence saying an
+            API token cannot change account settings), or a sign-in older
+            than `web.session_idle_minutes` (since 0.29.113, OWASP ASVS
+            V7.5.1: `error` is `reauthentication_required` and `message`
+            says what to do — the recovery address changes only after a
+            recent sign-in; every session token is judged by the sign-in of
+            the browser session it was minted from, and a token whose
+            browser session expired has none that counts).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "422":
           description: Nothing was mailed; `message` says why, in the words the web form uses.
           content:
@@ -3873,6 +3966,46 @@ paths:
           $ref: '#/components/responses/ServerError'
         "503":
           $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/admin/users/{userID}/sessions/revoke:
+    post:
+      operationId: revokeUserSessions
+      summary: Ends every session of an account.
+      description: |
+        An administrator's answer to a lost device or a suspected account
+        takeover (0.29.113, OWASP ASVS V7.4.5): the account's web sessions,
+        `/auth/token` tokens and proxy tokens are deleted, and each is `401`
+        at its next request. Operator-issued API tokens are not touched
+        (revoke those on the API-tokens page). An administrator may end its
+        own account's sessions this way. The action is logged. No body.
+
+        Handler: `handleAdminUserSessionsRevoke`.
+      tags: [Admin users and groups]
+      security: [{sessionToken: [admin]}]
+      parameters:
+        - $ref: '#/components/parameters/UserID'
+      responses:
+        "200":
+          description: Done; `ended` counts the sessions and tokens deleted (`0` for an account with none, and for an id no account has).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsEnded'
+        "400":
+          description: The user id is not an integer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/ServerError'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
   /api/v1/admin/users/{userID}/admin:
     post:
       operationId: setAdministrator
@@ -4197,6 +4330,14 @@ paths:
           schema:
             type: integer
             default: 1
+        - name: page_size
+          in: query
+          description: Rows per page, at most 100 (since 0.29.109; earlier releases always answered 100).
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 100
         - name: q
           in: query
           description: Filter on the repository.
@@ -4263,13 +4404,24 @@ paths:
                     type: integer
                   page_size:
                     type: integer
-                    const: 100
+                    description: The page size applied (the request's, at most 100; 100 when none was given).
+                    minimum: 1
+                    maximum: 100
                   sort:
                     type: string
                     description: The sort key applied; empty for the default order.
                   dir:
                     type: string
                     enum: ["", asc, desc]
+                  warnings:
+                    type: array
+                    description: |
+                      Present only when a batched read behind the page failed (since 0.29.109):
+                      "Repository names could not be read; the rows show repository ids." (every
+                      `repo` is then the id) and/or "Repository counts could not be read; the counts
+                      show 0." The failure is logged on the server.
+                    items:
+                      type: string
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -6876,6 +7028,11 @@ components:
           description: Present (true) when a metadata snapshot exists, even one without a date.
     WeeklyDataPoint:
       type: object
+      description: |
+        One week of the repository time series. Its number is `count`, the
+        one native series that predates the `value` convention (see the
+        conventions page, "One field name for a metric's number"); `/compare`
+        and the Augur-compatible metrics carry `value`.
       required: [week_start, count]
       properties:
         week_start:
@@ -8368,6 +8525,46 @@ components:
         error:
           type: string
           description: A machine-readable code or a sentence; see each operation.
+        message:
+          type: string
+          description: A sentence for a person, present when `error` is a code (`reauthentication_required`).
+    UserSession:
+      type: object
+      description: One live session of an account (0.29.113).
+      required: [kind, from_web_session, current, created_at, last_used_at, expires_at]
+      properties:
+        kind:
+          type: string
+          enum: [web, api]
+          description: '`web` is a browser session of the web GUI; `api` is a Bearer token.'
+        from_web_session:
+          type: boolean
+          description: The token's browser session is still live (every `kind` `api` session is minted from one; `false` once it has expired, and for `kind` `web`).
+        current:
+          type: boolean
+          description: This session presented the request.
+        created_at:
+          type: string
+          format: date-time
+          description: When the session was signed in or the token minted.
+        last_used_at:
+          type: string
+          format: date-time
+          description: A browser session's last request, to the minute (`created_at` until its first); for `kind` `api`, the mint time.
+        expires_at:
+          type: string
+          format: date-time
+    SessionsEnded:
+      type: object
+      required: [ok, ended]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        ended:
+          type: integer
+          minimum: 0
+          description: Sessions and tokens deleted.
     CapacityRefusal:
       type: object
       description: |

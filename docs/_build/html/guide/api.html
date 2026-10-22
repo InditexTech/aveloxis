@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>REST API &mdash; Aveloxis 0.29.108 documentation</title>
+  <title>REST API &mdash; Aveloxis 0.29.118 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d480f3dd" />
@@ -14,14 +14,14 @@
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../_static/documentation_options.js?v=ad0a0f70"></script>
+      <script src="../_static/documentation_options.js?v=c9c5df34"></script>
       <script src="../_static/doctools.js?v=fd6eb6e6"></script>
       <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Visualizations" href="visualizations.html" />
-    <link rel="prev" title="Web GUI" href="web-gui.html" /> 
+    <link rel="prev" title="Security" href="security.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -328,10 +328,26 @@
 <li class="toctree-l2"><a class="reference internal" href="web-gui.html#how-repos-get-queued-for-collection">How Repos Get Queued for Collection</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web-gui.html#session-management">Session Management</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web-gui.html#running-alongside-aveloxis-serve">Running Alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="web-gui.html#administration">Administration</a></li>
 <li class="toctree-l2"><a class="reference internal" href="web-gui.html#security-considerations">Security Considerations</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="security.html">Security</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="security.html#credentials-and-their-strength">Credentials and their strength</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#where-sign-in-strength-comes-from">Where sign-in strength comes from</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#sessions">Sessions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#cryptography">Cryptography</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#data">Data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#logs">Logs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.html#why-the-web-process-has-no-request-limiter-of-its-own">Why the web process has no request limiter of its own</a></li>
+</ul>
+</li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-114">Changes for API clients in 0.29.114</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-113">Changes for API clients in 0.29.113</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-110">Changes for API clients in 0.29.110</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-109">Changes for API clients in 0.29.109</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-100">Changes for API clients in 0.29.100</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-102">Changes for API clients in 0.29.102</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#changes-for-api-clients-in-0-29-99">Changes for API clients in 0.29.99</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#endpoints">Endpoints</a><ul>
@@ -346,7 +362,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#dependency-licenses">Dependency Licenses</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#repository-search">Repository Search</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#sbom-download">SBOM Download</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#traffic-v0-29-108">Traffic (v0.29.108)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#traffic-v0-29-118">Traffic (v0.29.118)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#contributor-identities-in-a-window">Contributor identities in a window</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#affiliation-breakdown-for-the-same-window">Affiliation breakdown for the same window</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#tweaks-you-can-make-on-the-client-side">Tweaks you can make on the client side</a></li>
@@ -1781,6 +1797,139 @@
 </pre></div>
 </div>
 <p>The API runs as a separate process alongside <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">serve</span></code> (collection) and <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">web</span></code> (GUI). All three share the same PostgreSQL database. It refuses to start until <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">migrate</span></code> has brought the schema to its own version.</p>
+<section id="changes-for-api-clients-in-0-29-114">
+<h2>Changes for API clients in 0.29.114<a class="headerlink" href="#changes-for-api-clients-in-0-29-114" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/sessions/revoke</span></code> is never refused by a spent request quota
+and is not counted, like <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/auth/logout</span></code>: an account at its hourly
+or daily limit could not sign out everywhere (it got <code class="docutils literal notranslate"><span class="pre">429</span></code>).</p>
+</section>
+<section id="changes-for-api-clients-in-0-29-113">
+<h2>Changes for API clients in 0.29.113<a class="headerlink" href="#changes-for-api-clients-in-0-29-113" title="Link to this heading"></a></h2>
+<p>Sessions (OWASP ASVS 5.0 review, release notes 0.29.113). Three routes:
+<code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/me/sessions</span></code> lists the account’s live sessions (browser
+sessions, <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> tokens, the web proxy’s tokens; the one presenting
+the request is <code class="docutils literal notranslate"><span class="pre">current</span></code>), <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/sessions/revoke</span></code> ends them
+all (the caller’s own included — its next request is <code class="docutils literal notranslate"><span class="pre">401</span></code>), and
+<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/users/{userID}/sessions/revoke</span></code> lets an administrator
+end an account’s. <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/email</span></code> now answers <code class="docutils literal notranslate"><span class="pre">403</span> <span class="pre">{&quot;error&quot;:</span> <span class="pre">&quot;reauthentication_required&quot;}</span></code> when the token’s sign-in is older
+than <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code> (30 by default; every session token — the
+SPA’s from <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code>, the web proxy’s — is judged by the sign-in of the
+browser session it was minted from, and one whose browser session has
+expired is refused): sign in again and retry. A
+browser session of the web GUI idle past that bound is signed out; a
+<code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> token is not (it lives its 30 days, and the SPA can keep its
+own idle rule). Every answer of the api process’s handlers carries
+<code class="docutils literal notranslate"><span class="pre">X-Content-Type-Options:</span> <span class="pre">nosniff</span></code> and <code class="docutils literal notranslate"><span class="pre">Strict-Transport-Security</span></code> (the
+<code class="docutils literal notranslate"><span class="pre">http_timeout_seconds</span></code> 503 is written outside them and carries neither). The
+per-IP <code class="docutils literal notranslate"><span class="pre">429</span></code> is logged once a minute per address.</p>
+</section>
+<section id="changes-for-api-clients-in-0-29-110">
+<h2>Changes for API clients in 0.29.110<a class="headerlink" href="#changes-for-api-clients-in-0-29-110" title="Link to this heading"></a></h2>
+<p>Stage 4 of the admin-console program (release notes 0.29.110) changes how the
+<strong>built-in web GUI</strong> reaches this API, not the API itself: the web process
+attaches a Bearer token of the signed-in session to every <code class="docutils literal notranslate"><span class="pre">/api/</span></code> request it
+forwards (minted on the session’s first such request, held in the web
+process, revoked by sign-out, replaced when the API refuses it) and forwards
+no cookie. For a client of the web process: <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/auth/logout</span></code>
+through the web’s <code class="docutils literal notranslate"><span class="pre">/api/</span></code> proxy is refused (<code class="docutils literal notranslate"><span class="pre">403</span></code>) — the built-in GUI signs
+out through <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/logout</span></code>, which revokes the proxy’s token with the session
+— and the pages’ requests now count against the account’s session quotas
+(shadow by default). Nothing changes for a client that calls the API with its
+own token.</p>
+</section>
+<section id="changes-for-api-clients-in-0-29-109">
+<h2>Changes for API clients in 0.29.109<a class="headerlink" href="#changes-for-api-clients-in-0-29-109" title="Link to this heading"></a></h2>
+<p>Stage 3 of the admin-console program (release notes 0.29.109). Each line
+gives the new answer and the reason.</p>
+<ul class="simple">
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/monitor/queue</span></code> accepts <code class="docutils literal notranslate"><span class="pre">page_size</span></code></strong> (at most 100;
+earlier releases always answered 100), carries <code class="docutils literal notranslate"><span class="pre">warnings</span></code> only when a
+batched read behind the page failed (the rows then show the repository id,
+never a bare slash, and the counts 0 — said, not shown as the truth), and
+answers an absurd <code class="docutils literal notranslate"><span class="pre">page</span></code> with the last addressable (empty) page and a <code class="docutils literal notranslate"><span class="pre">q</span></code>
+longer than any repository name with an empty page and a warning, where
+both were a <code class="docutils literal notranslate"><span class="pre">500</span></code> (an overflowed offset; a trigram scan nothing could
+match).</p></li>
+<li><p><strong>A collection’s name is at most 200 characters and a whitespace-only name
+is refused</strong> (<code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">required</span></code>; it was stored as given); <strong>its description
+at most 1,000</strong>; <strong>a <code class="docutils literal notranslate"><span class="pre">position</span></code> outside int4 is a <code class="docutils literal notranslate"><span class="pre">400</span></code></strong> (<code class="docutils literal notranslate"><span class="pre">position</span> <span class="pre">must</span> <span class="pre">be</span> <span class="pre">between</span> <span class="pre">-2147483648</span> <span class="pre">and</span> <span class="pre">2147483647</span></code>) where the encoder’s refusal was a
+<code class="docutils literal notranslate"><span class="pre">500</span></code>. One rule per text, in the service, so the API and the web console
+refuse alike.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/capacity/accounts?login=</span></code> answers <code class="docutils literal notranslate"><span class="pre">404</span></code></strong> for an empty
+login or one longer than 255 characters (no forge issues one) without a
+query; the value is trimmed first in both GUIs.</p></li>
+<li><p><strong>A forge-ID adoption <code class="docutils literal notranslate"><span class="pre">note</span></code> is bounded at 1,000 characters</strong> (it was 1,000
+bytes), the unit a form counts.</p></li>
+<li><p><strong>A value the database refuses on an operation that takes no URL</strong> (SQLSTATE
+class 22, such as a NUL byte in a name) answers <code class="docutils literal notranslate"><span class="pre">400</span></code> <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">value</span> <span class="pre">in</span> <span class="pre">the</span> <span class="pre">request</span> <span class="pre">was</span> <span class="pre">refused</span> <span class="pre">by</span> <span class="pre">the</span> <span class="pre">database</span> <span class="pre">(invalid</span> <span class="pre">text,</span> <span class="pre">or</span> <span class="pre">out</span> <span class="pre">of</span> <span class="pre">range)</span></code> where
+it answered <code class="docutils literal notranslate"><span class="pre">500</span></code>; the URL-taking operations keep their URL sentence.</p></li>
+<li><p><strong>A collection id of 0 or less is a <code class="docutils literal notranslate"><span class="pre">404</span></code></strong> (<code class="docutils literal notranslate"><span class="pre">no</span> <span class="pre">collection</span> <span class="pre">with</span> <span class="pre">that</span> <span class="pre">id</span></code>),
+as it was before the rules moved into the service.</p></li>
+<li><p><strong>The comparison page’s “100%” mode is gone</strong> (the built-in GUI draws
+<code class="docutils literal notranslate"><span class="pre">/api/v1/compare</span></code>, raw counts or z-scores); the API’s comparison is
+unchanged.</p></li>
+</ul>
+</section>
+<section id="changes-for-api-clients-in-0-29-100">
+<h2>Changes for API clients in 0.29.100<a class="headerlink" href="#changes-for-api-clients-in-0-29-100" title="Link to this heading"></a></h2>
+<p>Stage 1 of the admin-console program (release notes 0.29.100; the 58 §7
+handler fixes): the administrative rules moved into one service, and
+several answers changed with them. Each line gives the new answer and the
+reason; the per-route notes below carry the detail.</p>
+<ul class="simple">
+<li><p><strong>A group that is not the caller’s is a <code class="docutils literal notranslate"><span class="pre">404</span></code> on every group route</strong>
+(<code class="docutils literal notranslate"><span class="pre">/groups/{id}/repos</span></code>, <code class="docutils literal notranslate"><span class="pre">/orgs</span></code>, <code class="docutils literal notranslate"><span class="pre">/pending-adds</span></code>, the add, the removal),
+the same answer as for a group that does not exist: a group’s existence
+is not disclosed. An administrator’s session reads any group; an API
+token only its owner’s.</p></li>
+<li><p><strong>A rejected group refuses an add with <code class="docutils literal notranslate"><span class="pre">409</span></code></strong>; before, the add went
+through and the scan skipped it.</p></li>
+<li><p><strong>Every refusal body on the group, decision, role, removal and forge-ID
+adopt routes is JSON <code class="docutils literal notranslate"><span class="pre">{&quot;error&quot;:</span> <span class="pre">&quot;…&quot;}</span></code></strong>; some were plain text. (The
+supply-chain routes’ <code class="docutils literal notranslate"><span class="pre">?group=</span></code> refusals — <code class="docutils literal notranslate"><span class="pre">400</span></code> for a group id that is not
+one, <code class="docutils literal notranslate"><span class="pre">404</span></code> for a group that is not the caller’s — stay plain text, as the
+reference says.)</p></li>
+<li><p><strong>A paste’s lines are each parsed as a repository URL first</strong>: a missing
+scheme is supplied, GitHub, GitLab and any git host are accepted, a line
+that is not a repository URL comes back in <code class="docutils literal notranslate"><span class="pre">invalid</span></code> (<code class="docutils literal notranslate"><span class="pre">url:</span> <span class="pre">why</span></code>,
+credentials redacted) and is skipped while the rest go through; a paste
+with no usable line is a <code class="docutils literal notranslate"><span class="pre">400</span></code>. A GitHub deep link into a repository
+(<code class="docutils literal notranslate"><span class="pre">github.com/o/r/tree/main</span></code>, <code class="docutils literal notranslate"><span class="pre">/issues/…</span></code>) is not a repository URL; a GitLab
+path is taken as given, since a GitLab repository may sit at any depth.</p></li>
+<li><p><strong>Collections answer what they hold</strong>: an id that does not exist is a <code class="docutils literal notranslate"><span class="pre">404</span></code>
+on the detail, the copy (which answered <code class="docutils literal notranslate"><span class="pre">200</span></code> and linked nothing), the
+update, the delete and the member-group routes (which answered <code class="docutils literal notranslate"><span class="pre">200</span></code> or
+<code class="docutils literal notranslate"><span class="pre">500</span></code>); a duplicate name is a <code class="docutils literal notranslate"><span class="pre">409</span></code> (it was a <code class="docutils literal notranslate"><span class="pre">500</span></code>).</p></li>
+<li><p><strong>The legacy pending-group approval is gone</strong>: <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/groups/pending</span></code>
+and the group decision route <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/groups/{id}/{decision}</span></code>
+with its <code class="docutils literal notranslate"><span class="pre">approve</span></code> arm are removed — groups have been born approved
+since v0.27.20 and the migrate converted every pending one; the
+add-requests queue is the approval unit, and its own <code class="docutils literal notranslate"><span class="pre">approve</span></code>/<code class="docutils literal notranslate"><span class="pre">reject</span></code>
+decisions (<code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/add-requests/{id}/{decision}</span></code>) are
+unchanged. <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/groups/{id}/reject</span></code> remains.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/users/{id}/admin</span></code> requires the <code class="docutils literal notranslate"><span class="pre">admin</span></code> field</strong> (<code class="docutils literal notranslate"><span class="pre">{}</span></code>
+used to demote the account); self-demotion is a <code class="docutils literal notranslate"><span class="pre">400</span></code>, no such user a <code class="docutils literal notranslate"><span class="pre">404</span></code>.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/capacity/contact</span></code> requires <code class="docutils literal notranslate"><span class="pre">contact_email</span></code></strong> (<code class="docutils literal notranslate"><span class="pre">{}</span></code>
+used to clear the address; send <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> to clear).</p></li>
+<li><p><strong>An API token never administers</strong>, whoever owns it (<code class="docutils literal notranslate"><span class="pre">403</span></code> on every
+<code class="docutils literal notranslate"><span class="pre">/admin/*</span></code> route), and never reads as an administrator. A demoted
+administrator’s open session is refused by every operation of the service
+at once (privilege is read per operation); the administrative listing
+routes follow within a minute (the API’s authorization cache).</p></li>
+<li><p><strong>GitLab groups are enumerated</strong>, by <code class="docutils literal notranslate"><span class="pre">serve</span></code>, by full group path on the
+configured <code class="docutils literal notranslate"><span class="pre">gitlab.base_url</span></code> instance when GitLab API keys exist; an
+organization URL on that instance is registered as a GitLab group and a
+repository URL on it is collected as a GitLab repository, whatever its
+host name says. A GitLab group on another instance (or on any instance
+while <code class="docutils literal notranslate"><span class="pre">gitlab.base_url</span></code> is empty) is refused at the add (<code class="docutils literal notranslate"><span class="pre">400</span></code>) and at the
+decision (<code class="docutils literal notranslate"><span class="pre">409</span></code>), as a GitHub organization off <code class="docutils literal notranslate"><span class="pre">github.base_url</span></code> is.</p></li>
+<li><p><strong>A forge ID is a positive decimal integer</strong>: <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/forge-id-changes/{repoID}/adopt</span></code>
+refuses anything else with <code class="docutils literal notranslate"><span class="pre">400</span></code> instead of recording it.</p></li>
+<li><p><strong>A collection copy’s <code class="docutils literal notranslate"><span class="pre">group_name</span></code> is bounded</strong> like any group name (at
+most 200 characters, <code class="docutils literal notranslate"><span class="pre">400</span></code> JSON past it; the copy created the group
+unbounded before).</p></li>
+</ul>
+</section>
 <section id="changes-for-api-clients-in-0-29-102">
 <h2>Changes for API clients in 0.29.102<a class="headerlink" href="#changes-for-api-clients-in-0-29-102" title="Link to this heading"></a></h2>
 <p>Stage 2 of the admin-console program (release notes 0.29.102) makes the web
@@ -1802,7 +1951,7 @@ request’s <code class="docutils literal notranslate"><span class="pre">Origin<
 origin; a browser’s <code class="docutils literal notranslate"><span class="pre">Sec-Fetch-Site:</span> <span class="pre">cross-site</span></code> is refused. aveloxis-gui
 on its own origin therefore needs <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code> set to that origin. A
 signed-in HTML form also carries a form token; the two GUI calls do not.</p></li>
-<li><p><strong>Every answer of the web process carries security headers</strong>: a
+<li><p><strong>Every answer of the web process’s handlers carries security headers</strong> (the <code class="docutils literal notranslate"><span class="pre">http_timeout_seconds</span></code> 503 is written outside them): a
 Content-Security-Policy with one script source (<code class="docutils literal notranslate"><span class="pre">/static/</span></code>, which now
 serves the page scripts and Chart.js — no CDN), <code class="docutils literal notranslate"><span class="pre">frame-ancestors</span> <span class="pre">'none'</span></code>,
 <code class="docutils literal notranslate"><span class="pre">X-Frame-Options:</span> <span class="pre">DENY</span></code>, <code class="docutils literal notranslate"><span class="pre">X-Content-Type-Options:</span> <span class="pre">nosniff</span></code> and a
@@ -1884,31 +2033,14 @@ monitor’s queue view). v0.27.77 adds <code class="docutils literal notranslate
 totals — never a live scan of the data tables) and <code class="docutils literal notranslate"><span class="pre">contributors</span></code>
 (the contributor catalog count). Served from a 60-second cache that
 keeps the last good values if the database hiccups. Still subject to
-the per-IP rate limiter.</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="nt">&quot;repos&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">94104</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;commits&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512345678</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;issues&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">9123456</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;prs&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">8123456</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;contributors&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1712345</span><span class="p">}</span>
-</pre></div>
-</div>
+the per-IP rate limiter. The fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">publicFleetStats</span></code>).</p>
 </section>
 <section id="repository-statistics">
 <h3>Repository Statistics<a class="headerlink" href="#repository-statistics" title="Link to this heading"></a></h3>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">GET</span> <span class="o">/</span><span class="n">api</span><span class="o">/</span><span class="n">v1</span><span class="o">/</span><span class="n">repos</span><span class="o">/</span><span class="p">{</span><span class="n">repoID</span><span class="p">}</span><span class="o">/</span><span class="n">stats</span>
 </pre></div>
 </div>
-<p>Returns gathered (collected totals) vs metadata (API-reported totals) for a single repo. An id no repository has is a <code class="docutils literal notranslate"><span class="pre">404</span></code> (since 0.29.99; see “Changes for API clients”).</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;repo_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;gathered_prs&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1500</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;gathered_issues&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">800</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;gathered_commits&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5000</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;metadata_prs&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1520</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;metadata_issues&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">810</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;metadata_commits&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5100</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;vulnerabilities&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;critical_vulns&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;forked_from&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;NixOS/nixpkgs&quot;</span>
-<span class="p">}</span>
-</pre></div>
-</div>
+<p>Returns gathered (collected totals) vs metadata (API-reported totals) for a single repo. An id no repository has is a <code class="docutils literal notranslate"><span class="pre">404</span></code> (since 0.29.99; see “Changes for API clients”). The fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">repositoryStats</span></code>). What the counts mean:</p>
 <ul class="simple">
 <li><p><strong>Gathered</strong> counts are the collection queue’s cached cumulative
 totals, as of the repo’s last completed collection cycle (v0.27.85 —
@@ -1976,12 +2108,11 @@ session.</p>
 authenticates as that account, with its repository scope; it is counted
 against its own hourly and daily allowances instead of the per-IP limit.</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/api-tokens</span></code> lists every granted token, newest first:
-<code class="docutils literal notranslate"><span class="pre">token_id</span></code>, <code class="docutils literal notranslate"><span class="pre">user_id</span></code>, <code class="docutils literal notranslate"><span class="pre">owner_login</span></code>, <code class="docutils literal notranslate"><span class="pre">label</span></code>, <code class="docutils literal notranslate"><span class="pre">created_by</span></code>,
-<code class="docutils literal notranslate"><span class="pre">created_by_login</span></code>, <code class="docutils literal notranslate"><span class="pre">created_at</span></code>, <code class="docutils literal notranslate"><span class="pre">expires_at</span></code>, <code class="docutils literal notranslate"><span class="pre">rate_limit_per_hour</span></code>,
-<code class="docutils literal notranslate"><span class="pre">rate_limit_per_day</span></code>, <code class="docutils literal notranslate"><span class="pre">last_used_at</span></code> and <code class="docutils literal notranslate"><span class="pre">revoked_at</span></code>, plus the current
-<code class="docutils literal notranslate"><span class="pre">settings</span></code>. It never
-carries a token or its hash: only the hash is stored.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/api-tokens</span></code> lists every granted token, newest first
+(its owner, label, who granted it and when, expiry, allowances, last use
+and revocation; the fields are in the reference, <code class="docutils literal notranslate"><span class="pre">apiTokens</span></code>), plus the
+current <code class="docutils literal notranslate"><span class="pre">settings</span></code>. It never carries a token or its hash: only the hash
+is stored.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/api-tokens</span></code> grants one. Body:
 <code class="docutils literal notranslate"><span class="pre">{&quot;user_id&quot;:</span> <span class="pre">12,</span> <span class="pre">&quot;label&quot;:</span> <span class="pre">&quot;who</span> <span class="pre">or</span> <span class="pre">what</span> <span class="pre">it</span> <span class="pre">is</span> <span class="pre">for&quot;,</span> <span class="pre">&quot;lifetime_days&quot;:</span> <span class="pre">30,</span> <span class="pre">&quot;rate_limit_per_hour&quot;:</span> <span class="pre">1000,</span> <span class="pre">&quot;rate_limit_per_day&quot;:</span> <span class="pre">10000}</span></code>; the last
 three are optional and default to the current settings. Answers <code class="docutils literal notranslate"><span class="pre">201</span></code> with the token (<code class="docutils literal notranslate"><span class="pre">&quot;token&quot;:</span> <span class="pre">&quot;avx_…&quot;</span></code>), shown this once and sent <code class="docutils literal notranslate"><span class="pre">no-store</span></code>. <code class="docutils literal notranslate"><span class="pre">400</span></code> for a missing or
@@ -2026,12 +2157,13 @@ POST /api/v1/admin/capacity/signup-allowlist/remove
 of the configuration guide), for aveloxis-gui’s Capacity page.
 Administrator sessions only, like the token routes.</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/capacity</span></code> answers every quota as applied
-(<code class="docutils literal notranslate"><span class="pre">name</span></code>, <code class="docutils literal notranslate"><span class="pre">allowed</span></code>, <code class="docutils literal notranslate"><span class="pre">mode</span></code> — <code class="docutils literal notranslate"><span class="pre">enforce</span></code>, <code class="docutils literal notranslate"><span class="pre">shadow</span></code> or <code class="docutils literal notranslate"><span class="pre">off</span></code> — <code class="docutils literal notranslate"><span class="pre">source</span></code>,
-the <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code> word, and <code class="docutils literal notranslate"><span class="pre">editable</span></code>), the <code class="docutils literal notranslate"><span class="pre">contact_email</span></code> refusals
-name, <code class="docutils literal notranslate"><span class="pre">signups_per_day</span></code> (new accounts per UTC day over the last 30
-days), the <code class="docutils literal notranslate"><span class="pre">signup_allowlist</span></code>, the accounts with <code class="docutils literal notranslate"><span class="pre">overrides</span></code>, and the
-<code class="docutils literal notranslate"><span class="pre">busiest_today</span></code> accounts by saved session requests (at most 25).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/capacity</span></code> answers every quota as applied (its value,
+mode — <code class="docutils literal notranslate"><span class="pre">enforce</span></code>, <code class="docutils literal notranslate"><span class="pre">shadow</span></code> or <code class="docutils literal notranslate"><span class="pre">off</span></code> — and <code class="docutils literal notranslate"><span class="pre">source</span></code>, the <code class="docutils literal notranslate"><span class="pre">aveloxis.json</span></code>
+word, with <code class="docutils literal notranslate"><span class="pre">editable</span></code> for the ones this route may change), the contact
+address refusals name, sign-ups per UTC day over the last 30 days, the
+sign-up allowlist, the accounts with their own values, and the busiest
+accounts today by saved session requests (at most 25). The fields are in
+the reference (<code class="docutils literal notranslate"><span class="pre">capacityOverview</span></code>).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">…/capacity/largest</span></code> lists the accounts with the most repositories
 in their groups (at most 25). It reads every group link, so the page
 loads it only when asked.</p></li>
@@ -2086,42 +2218,9 @@ GET /api/v1/repos/{repoID}/timeseries?since=2024-01-01
 </div>
 <p>Returns weekly aggregated counts for commits, PRs opened, PRs merged, and issues.</p>
 <p>Every commit window on this API — this series, <code class="docutils literal notranslate"><span class="pre">/contributors/top</span></code>, <code class="docutils literal notranslate"><span class="pre">/contributions/*</span></code>, <code class="docutils literal notranslate"><span class="pre">/compare</span></code> — ends no later than the latest plausible commit time, two UTC days after now, and starts no earlier than the earliest, 1970-01-02, whatever <code class="docutils literal notranslate"><span class="pre">since</span></code> and <code class="docutils literal notranslate"><span class="pre">until</span></code> say. An author timestamp is an absolute instant, so only a wrong committer clock can place one in the future (the margin is a day of skew rounded to a day-aligned edge), and a Unix clock cannot place one before the epoch, which is what an unset clock stamps. Repositories carry the occasional author date in 2080 or 1970, and such a date must not stretch a window. The rows stay stored; only the windows are bounded.</p>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p>Parameter</p></th>
-<th class="head"><p>Type</p></th>
-<th class="head"><p>Default</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">since</span></code></p></td>
-<td><p>date (YYYY-MM-DD)</p></td>
-<td><p>2 years ago</p></td>
-<td><p>Start date for time series</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">until</span></code></p></td>
-<td><p>date (YYYY-MM-DD)</p></td>
-<td><p>the latest plausible commit time</p></td>
-<td><p>Last day of the window, inclusive</p></td>
-</tr>
-</tbody>
-</table>
-<p>A value that does not parse as <code class="docutils literal notranslate"><span class="pre">YYYY-MM-DD</span></code> is a <code class="docutils literal notranslate"><span class="pre">400</span></code> (since 0.29.99).</p>
-<div class="highlight-jsonc notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;repo_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;repo_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;augur&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;repo_owner&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;aveloxis&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;commits&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span><span class="nt">&quot;week_start&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2024-01-01T00:00:00Z&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span><span class="p">},</span>
-<span class="w">    </span><span class="p">{</span><span class="nt">&quot;week_start&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2024-01-08T00:00:00Z&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">22</span><span class="p">}</span>
-<span class="w">  </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">&quot;prs_opened&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">&quot;prs_merged&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">&quot;issues&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="cm">/* ... */</span><span class="w"> </span><span class="p">]</span>
-<span class="p">}</span>
-</pre></div>
-</div>
+<p><code class="docutils literal notranslate"><span class="pre">since</span></code> (default: two years ago) and <code class="docutils literal notranslate"><span class="pre">until</span></code> (default: the latest plausible
+commit time; the last day of the window, inclusive) are <code class="docutils literal notranslate"><span class="pre">YYYY-MM-DD</span></code>; a value
+that does not parse is a <code class="docutils literal notranslate"><span class="pre">400</span></code> (since 0.29.99). The fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">repositoryTimeSeries</span></code>).</p>
 <p>Weeks are Monday-aligned via PostgreSQL <code class="docutils literal notranslate"><span class="pre">date_trunc('week',</span> <span class="pre">timestamp)</span></code>. Queries use indexed timestamp columns for fast responses even on large databases.</p>
 </section>
 <section id="dependency-licenses">
@@ -2129,14 +2228,7 @@ GET /api/v1/repos/{repoID}/timeseries?since=2024-01-01
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">GET</span> <span class="o">/</span><span class="n">api</span><span class="o">/</span><span class="n">v1</span><span class="o">/</span><span class="n">repos</span><span class="o">/</span><span class="p">{</span><span class="n">repoID</span><span class="p">}</span><span class="o">/</span><span class="n">licenses</span>
 </pre></div>
 </div>
-<p>Returns a summary of dependency licenses with counts and OSI compliance status.</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">[</span>
-<span class="w">  </span><span class="p">{</span><span class="nt">&quot;license&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;MIT&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">45</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;is_osi&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">},</span>
-<span class="w">  </span><span class="p">{</span><span class="nt">&quot;license&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Apache-2.0&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;is_osi&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">},</span>
-<span class="w">  </span><span class="p">{</span><span class="nt">&quot;license&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Unknown&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;is_osi&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">}</span>
-<span class="p">]</span>
-</pre></div>
-</div>
+<p>Returns a summary of dependency licenses with counts and OSI compliance status, in an envelope that says whether the repository has been scanned at all (see “Vulnerabilities and home tab” below). The fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">repositoryLicenses</span></code>).</p>
 <p><code class="docutils literal notranslate"><span class="pre">license</span></code> is the table’s row key: the license normalized to canonical SPDX, with the operands of <code class="docutils literal notranslate"><span class="pre">OR</span></code> and <code class="docutils literal notranslate"><span class="pre">AND</span></code> in a fixed order, so <code class="docutils literal notranslate"><span class="pre">MIT</span> <span class="pre">OR</span> <span class="pre">Apache-2.0</span></code>, <code class="docutils literal notranslate"><span class="pre">Apache-2.0</span> <span class="pre">OR</span> <span class="pre">MIT</span></code> and <code class="docutils literal notranslate"><span class="pre">MIT/Apache-2.0</span></code> are one row (since v0.29.67). <code class="docutils literal notranslate"><span class="pre">is_osi</span></code> follows the SPDX license list’s <code class="docutils literal notranslate"><span class="pre">isOsiApproved</span></code> (the list is embedded; no network): an <code class="docutils literal notranslate"><span class="pre">OR</span></code> is approved when any option is, an <code class="docutils literal notranslate"><span class="pre">AND</span></code> when every term is, and <code class="docutils literal notranslate"><span class="pre">X</span> <span class="pre">WITH</span> <span class="pre">exception</span></code> follows <code class="docutils literal notranslate"><span class="pre">X</span></code>. <code class="docutils literal notranslate"><span class="pre">Unknown</span></code> and free text are never approved, including an <code class="docutils literal notranslate"><span class="pre">OR</span></code> with free text in one option (<code class="docutils literal notranslate"><span class="pre">MIT</span> <span class="pre">OR</span> <span class="pre">proprietary</span></code> is not an expression); a <code class="docutils literal notranslate"><span class="pre">LicenseRef-</span></code> option counts as recognized.</p>
 <table class="docutils align-default">
 <thead>
@@ -2160,13 +2252,7 @@ GET /api/v1/repos/{repoID}/timeseries?since=2024-01-01
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>GET /api/v1/repos/search?q=augur
 </pre></div>
 </div>
-<p>Case-insensitive search across repo name, owner, and URL. Returns up to 20 matches; <code class="docutils literal notranslate"><span class="pre">[]</span></code> when nothing matches. <code class="docutils literal notranslate"><span class="pre">%</span></code> and <code class="docutils literal notranslate"><span class="pre">_</span></code> in the query match themselves (since 0.29.99). Used by the comparison page’s autocomplete search.</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">[</span>
-<span class="w">  </span><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;owner&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;aveloxis&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;augur&quot;</span><span class="p">},</span>
-<span class="w">  </span><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">31</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;owner&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;chaoss&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;augur-license&quot;</span><span class="p">}</span>
-<span class="p">]</span>
-</pre></div>
-</div>
+<p>Case-insensitive search across repo name, owner, and URL. Returns up to 20 matches (id, owner, name); <code class="docutils literal notranslate"><span class="pre">[]</span></code> when nothing matches. <code class="docutils literal notranslate"><span class="pre">%</span></code> and <code class="docutils literal notranslate"><span class="pre">_</span></code> in the query match themselves (since 0.29.99). Used by the comparison page’s autocomplete search. The fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">repositorySearch</span></code>).</p>
 </section>
 <section id="sbom-download">
 <h3>SBOM Download<a class="headerlink" href="#sbom-download" title="Link to this heading"></a></h3>
@@ -2204,8 +2290,8 @@ GET /api/v1/repos/{repoID}/sbom?format=spdx
 </table>
 <p>Returns JSON with <code class="docutils literal notranslate"><span class="pre">Content-Disposition:</span> <span class="pre">attachment</span></code> header for download.</p>
 </section>
-<section id="traffic-v0-29-108">
-<h3>Traffic (v0.29.108)<a class="headerlink" href="#traffic-v0-29-108" title="Link to this heading"></a></h3>
+<section id="traffic-v0-29-118">
+<h3>Traffic (v0.29.118)<a class="headerlink" href="#traffic-v0-29-118" title="Link to this heading"></a></h3>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">GET</span> <span class="o">/</span><span class="n">api</span><span class="o">/</span><span class="n">v1</span><span class="o">/</span><span class="n">repos</span><span class="o">/</span><span class="p">{</span><span class="n">repoID</span><span class="p">}</span><span class="o">/</span><span class="n">traffic</span>
 </pre></div>
 </div>
@@ -2315,24 +2401,7 @@ GET /api/v1/repos/{repoID}/contributions/identities?since=2024-01-01&amp;until=2
 </table>
 <p>The <code class="docutils literal notranslate"><span class="pre">until</span></code> date is treated as <strong>inclusive</strong> of the entire calendar day — the server shifts it by +1 day before comparing against the half-open <code class="docutils literal notranslate"><span class="pre">&lt;</span> <span class="pre">upper</span></code> SQL filter, so passing <code class="docutils literal notranslate"><span class="pre">until=2024-12-31</span></code> captures everything through <code class="docutils literal notranslate"><span class="pre">2024-12-31T23:59:59.999Z</span></code>.</p>
 <p>A date that does not parse as <code class="docutils literal notranslate"><span class="pre">YYYY-MM-DD</span></code> is a <code class="docutils literal notranslate"><span class="pre">400</span></code> naming the parameter (since 0.29.99; it fell back to the default before, which hid a client’s typo as a default window), and so is <code class="docutils literal notranslate"><span class="pre">since</span> <span class="pre">&gt;=</span> <span class="pre">until</span></code>.</p>
-<p>Response shape:</p>
-<div class="highlight-jsonc notranslate"><div class="highlight"><pre><span></span><span class="p">[</span>
-<span class="w">  </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;cntrb_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;01000001-0000-4000-8000-000000000000&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;login&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alice&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;full_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Alice Anderson&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;email&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alice@example.com&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;profile_company&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Acme Corp&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;location&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Berlin&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;activity_class&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;private-active&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;public_contribs_year&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;restricted_contribs_year&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">812</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;last_contribution_year&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2026</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="w">  </span><span class="c1">// ...more rows</span>
-<span class="p">]</span>
-</pre></div>
-</div>
+<p>One row per person: the identity (<code class="docutils literal notranslate"><span class="pre">cntrb_id</span></code>, <code class="docutils literal notranslate"><span class="pre">login</span></code>, <code class="docutils literal notranslate"><span class="pre">full_name</span></code>, <code class="docutils literal notranslate"><span class="pre">email</span></code>, <code class="docutils literal notranslate"><span class="pre">profile_company</span></code>, <code class="docutils literal notranslate"><span class="pre">location</span></code>) and the activity classification below. The fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">repositoryContributorIdentities</span></code>).</p>
 <p>All string fields are normalized server-side: <code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> represents “no value recorded” (no per-field null handling needed on the client). Ordering is by <code class="docutils literal notranslate"><span class="pre">login</span> <span class="pre">NULLS</span> <span class="pre">LAST,</span> <span class="pre">full_name</span> <span class="pre">NULLS</span> <span class="pre">LAST</span></code> so unidentifiable contributors sort to the bottom of the roster.</p>
 <p><strong>Activity classification fields</strong> (v0.27.57, GitHub only — GitLab has no
 equivalent of <code class="docutils literal notranslate"><span class="pre">restrictedContributionsCount</span></code>, so gl-side contributors keep
@@ -2425,14 +2494,7 @@ GET /api/v1/repos/{repoID}/contributions/affiliations?since=2024-01-01&amp;until
 </div>
 <p>Returns the count of <strong>distinct contributors</strong> per affiliation, using the same window and the same contribution-kind definition as <code class="docutils literal notranslate"><span class="pre">/contributions/identities</span></code>. The two endpoints share a single SQL CTE on the server so the two responses can never disagree on which people are in scope — a sum across this endpoint’s <code class="docutils literal notranslate"><span class="pre">contributor_count</span></code> values equals the row count of <code class="docutils literal notranslate"><span class="pre">/contributions/identities</span></code>.</p>
 <p>Same <code class="docutils literal notranslate"><span class="pre">since</span></code> / <code class="docutils literal notranslate"><span class="pre">until</span></code> parameters as the identities endpoint; same behavior on malformed input and <code class="docutils literal notranslate"><span class="pre">since</span> <span class="pre">&gt;=</span> <span class="pre">until</span></code>.</p>
-<p>Response shape:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">[</span>
-<span class="w">  </span><span class="p">{</span><span class="nt">&quot;affiliation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Acme Corp&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;contributor_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">47</span><span class="p">},</span>
-<span class="w">  </span><span class="p">{</span><span class="nt">&quot;affiliation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;RedHat&quot;</span><span class="p">,</span><span class="w">    </span><span class="nt">&quot;contributor_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">},</span>
-<span class="w">  </span><span class="p">{</span><span class="nt">&quot;affiliation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;(unknown)&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;contributor_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">31</span><span class="p">}</span>
-<span class="p">]</span>
-</pre></div>
-</div>
+<p>One row per affiliation with its distinct-contributor count. The fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">repositoryContributorAffiliations</span></code>).</p>
 <p>Ordered by <code class="docutils literal notranslate"><span class="pre">contributor_count</span> <span class="pre">DESC</span></code> then <code class="docutils literal notranslate"><span class="pre">affiliation</span> <span class="pre">ASC</span></code>. The <code class="docutils literal notranslate"><span class="pre">(unknown)</span></code> bucket is included rather than hidden so callers can decide whether to surface unaffiliated contributors (often the right call on community projects) or omit them.</p>
 <p><strong>Affiliation derivation priority</strong> (applied per-contributor):</p>
 <ol class="arabic simple">
@@ -2503,24 +2565,7 @@ on <code class="docutils literal notranslate"><span class="pre">/contributors/el
 same repo scope as every other per-repo endpoint. This endpoint’s answers
 are cached as the caching paragraph above describes; <code class="docutils literal notranslate"><span class="pre">/contributors/elsewhere</span></code>
 reads other repositories’ activity and keeps a 60-second cache.</p>
-<p>Response:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;since&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2024-07-31T00:00:00Z&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;until&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0001-01-01T00:00:00Z&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;contributors&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;cntrb_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;01001234-...&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;login&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;octocat&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;full_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Octo Cat&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;activity_class&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;active&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;commits&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">412</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;issues&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">38</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;prs&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">91</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;reviews&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">130</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;comments&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">505</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1176</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="w">  </span><span class="p">]</span>
-<span class="p">}</span>
-</pre></div>
-</div>
+<p>The answer echoes the window and the limit and ranks the contributors with their per-kind counts and a total. The fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">repositoryTopContributors</span></code>).</p>
 <p>What counts, per column: <code class="docutils literal notranslate"><span class="pre">commits</span></code> = DISTINCT commit hashes authored
 (windowed on the commit’s author timestamp); <code class="docutils literal notranslate"><span class="pre">issues</span></code> = issues opened;
 <code class="docutils literal notranslate"><span class="pre">prs</span></code> = pull requests opened; <code class="docutils literal notranslate"><span class="pre">reviews</span></code> = PR reviews submitted;
@@ -2548,24 +2593,7 @@ GET /api/v1/repos/{repoID}/contributors/elsewhere?since=2026-02-01&amp;limit=10
 v0.27.58 contributor daily-history tables (GitHub
 contributionsCollection data), aggregated over the window (<code class="docutils literal notranslate"><span class="pre">since</span></code>
 defaults to the trailing 180 days — the standard history window).
-Response rows per contributor:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;since&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-02-01&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;contributors&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;cntrb_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;0100...&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;login&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;octocat&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;backfilled_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-07-30T02:11:00Z&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;elsewhere&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">        </span><span class="p">{</span><span class="nt">&quot;repo_full_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;kubernetes/kubernetes&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;repo_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4021</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;active_days&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;commits&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">33</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;issues&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;prs&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;reviews&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">},</span>
-<span class="w">        </span><span class="p">{</span><span class="nt">&quot;repo_full_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;torvalds/linux&quot;</span><span class="p">,</span>
-<span class="w">         </span><span class="nt">&quot;active_days&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;commits&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;issues&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;prs&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;reviews&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">}</span>
-<span class="w">      </span><span class="p">]</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="w">  </span><span class="p">]</span>
-<span class="p">}</span>
-</pre></div>
-</div>
+Each contributor carries <code class="docutils literal notranslate"><span class="pre">backfilled_at</span></code> and an <code class="docutils literal notranslate"><span class="pre">elsewhere</span></code> list of other repositories with active days and per-kind counts. The fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">repositoryContributorsElsewhere</span></code>).</p>
 <p><strong>Reading <code class="docutils literal notranslate"><span class="pre">backfilled_at</span></code></strong> (the honesty rule): a <code class="docutils literal notranslate"><span class="pre">null</span></code> stamp means
 the v0.27.58 history backfill has not reached this contributor yet —
 their empty <code class="docutils literal notranslate"><span class="pre">elsewhere</span></code> array is “history pending”, NOT “active
@@ -2612,23 +2640,7 @@ GET /api/v1/repos/{repoID}/contributions/coverage?since=2024-01-01&amp;until=202
 </div>
 <p>Returns the enrichment-state snapshot for the same cohort as <code class="docutils literal notranslate"><span class="pre">/contributions/identities</span></code> and <code class="docutils literal notranslate"><span class="pre">/contributions/affiliations</span></code>. Operators call this <strong>before drawing conclusions</strong> from the affiliation breakdown to tell whether an <code class="docutils literal notranslate"><span class="pre">(unknown)</span></code> bucket represents truly unaffiliated contributors or just people the v0.18.29 enrichment ticker hasn’t reached yet.</p>
 <p>Same <code class="docutils literal notranslate"><span class="pre">since</span></code> / <code class="docutils literal notranslate"><span class="pre">until</span></code> parameters as the other two endpoints; same behavior on malformed input and <code class="docutils literal notranslate"><span class="pre">since</span> <span class="pre">&gt;=</span> <span class="pre">until</span></code>.</p>
-<p>Response shape:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;window_since&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2024-05-21T00:00:00Z&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;window_until&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-05-21T00:00:00Z&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;total_contributors&quot;</span><span class="p">:</span><span class="w">       </span><span class="mi">412</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;enriched&quot;</span><span class="p">:</span><span class="w">                  </span><span class="mi">389</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;canonical_email&quot;</span><span class="p">:</span><span class="w">           </span><span class="mi">356</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;gh_user_id_resolved&quot;</span><span class="p">:</span><span class="w">       </span><span class="mi">401</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;search_resolve_attempted&quot;</span><span class="p">:</span><span class="w">   </span><span class="mi">47</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;breadth_attempted&quot;</span><span class="p">:</span><span class="w">         </span><span class="mi">378</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;affiliation_resolved&quot;</span><span class="p">:</span><span class="w">      </span><span class="mi">318</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;affiliation_unknown&quot;</span><span class="p">:</span><span class="w">        </span><span class="mi">94</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;enrichment_oldest_pending&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-05-12T18:31:04Z&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;enrichment_stalest&quot;</span><span class="p">:</span><span class="w">        </span><span class="s2">&quot;2024-08-15T03:22:11Z&quot;</span>
-<span class="p">}</span>
-</pre></div>
-</div>
+<p>The answer carries the window and the counts the field-by-field table below explains. The fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">repositoryContributionsCoverage</span></code>).</p>
 <p>The two timestamp fields are omitted entirely when the cohort has no rows in the relevant state (no pointer → field absent in JSON rather than emitting zero-time, which is operator-confusing).</p>
 <p><strong>Reading the response.</strong> A response with <code class="docutils literal notranslate"><span class="pre">total=412,</span> <span class="pre">enriched=389,</span> <span class="pre">affiliation_resolved=318,</span> <span class="pre">affiliation_unknown=94</span></code> reads as:</p>
 <blockquote>
@@ -2742,26 +2754,7 @@ grep<span class="w"> </span>-E<span class="w"> </span><span class="s2">&quot;all
 </pre></div>
 </div>
 <p>Fleet-wide rollup of the mailing-list ingestion subsystem (<a class="reference internal" href="../architecture/mailing-list.html"><span class="std std-doc">architecture</span></a>) — the same data as <code class="docutils literal notranslate"><span class="pre">aveloxis</span> <span class="pre">mailing-list-stats</span></code>. No parameters. Returns 500 if the query fails.</p>
-<p>Response (note: keys are PascalCase — the rollup struct carries no JSON tags):</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;Lists&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">16</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;ScanComplete&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">14</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;EmailMessages&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">68514</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;Mirrors&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">41841</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;SignaledCaptured&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">40044</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;SignaledResolved&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">25591</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;SenderTotal&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">26673</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;SenderResolved&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">17012</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;ByClass&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;github_mirror&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">40044</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;issue_event&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5251</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;patch_submission&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4568</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;discuss&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1161</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;review&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">953</span>
-<span class="w">  </span><span class="p">}</span>
-<span class="p">}</span>
-</pre></div>
-</div>
+<p>The keys are PascalCase (the rollup struct carries no JSON tags); the fields are in the <a class="reference internal" href="../api/reference.html"><span class="std std-doc">reference</span></a> (<code class="docutils literal notranslate"><span class="pre">mailingListStats</span></code>). What they mean:</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Field</p></th>
@@ -2904,8 +2897,13 @@ and hold their own answers, and the per-IP limits and hour windows are per
 instance; run one per host unless that is what you want.</p>
 <p>The web GUI’s charts fetch the API through the web process, which proxies
 <code class="docutils literal notranslate"><span class="pre">/api/*</span></code> to <code class="docutils literal notranslate"><span class="pre">web.api_internal_url</span></code> (<code class="docutils literal notranslate"><span class="pre">http://127.0.0.1:8383</span></code> by default);
-when the API moves, that URL must follow. Behind a reverse proxy, send
-<code class="docutils literal notranslate"><span class="pre">/api/</span></code> to the API directly so its per-visitor limits see the visitor.</p>
+when the API moves, that URL must follow. Behind a reverse proxy, keep the
+GUI host’s <code class="docutils literal notranslate"><span class="pre">/api/</span></code> on the web process — it attaches the signed-in session’s
+Bearer, so a direct route answers <code class="docutils literal notranslate"><span class="pre">401</span></code> under <code class="docutils literal notranslate"><span class="pre">api.require_auth</span></code> — and set
+<code class="docutils literal notranslate"><span class="pre">web.trusted_proxy</span></code> and <code class="docutils literal notranslate"><span class="pre">api.trusted_proxy</span></code> so the per-visitor limits see
+each visitor (since 0.29.91). A script with its own token reaches the API on
+a host of its own (aveloxis-gui’s host forwards <code class="docutils literal notranslate"><span class="pre">/api/</span></code> to the API itself);
+see “Reverse proxy” in Production Deployment.</p>
 </section>
 <section id="comparison-analytics-v0-27-2">
 <h2>Comparison analytics (v0.27.2)<a class="headerlink" href="#comparison-analytics-v0-27-2" title="Link to this heading"></a></h2>
@@ -3069,8 +3067,12 @@ except <code class="docutils literal notranslate"><span class="pre">GET</span> <
 <code class="docutils literal notranslate"><span class="pre">Authorization:</span> <span class="pre">Bearer</span> <span class="pre">&lt;token&gt;</span></code>. Exempt-CIDR clients (same box / LAN
 by default) bypass this for the read endpoints; the portal endpoints
 above always require a token regardless.</p>
-<p><strong>Using the web GUI</strong>: nothing to do — the login page exchanges your
-OAuth session for a token automatically and stores it in the browser.</p>
+<p><strong>Using the web GUI</strong>: nothing to do. The built-in GUI’s web process mints a
+token for your session and attaches it to every <code class="docutils literal notranslate"><span class="pre">/api/</span></code> request it forwards
+(0.29.110; the browser never holds it, and signing out revokes it), so the
+pages count against your session’s request quotas like the SPA’s. The SPA
+exchanges your session for a token through <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/auth/token</span></code> and stores it
+in the browser.</p>
 <p><strong>For scripts, curl, or notebooks</strong>, mint a token through the same
 exchange:</p>
 <ol class="arabic">
@@ -3313,16 +3315,9 @@ or whose legacy targets were all dropped as malformed. Those stay
 date + zero findings genuinely means “checked and clean”. Frontends
 must render <code class="docutils literal notranslate"><span class="pre">null</span></code> distinctly (e.g. “not yet scanned”), never as a
 clean result.</p>
-<p>The envelope also gains <code class="docutils literal notranslate"><span class="pre">lockfile_certainty</span></code>, derived at read time:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;lockfile_certainty&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;overall&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;partial&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;ecosystems&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span><span class="nt">&quot;ecosystem&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;npm&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;lockfile_kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;package-lock.json&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;locked_packages&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">14</span><span class="p">},</span>
-<span class="w">    </span><span class="p">{</span><span class="nt">&quot;ecosystem&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;go&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;lockfile_kind&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;go.mod&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;locked_packages&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">9</span><span class="p">}</span>
-<span class="w">  </span><span class="p">]</span>
-<span class="p">}</span>
-</pre></div>
-</div>
+<p>The envelope also gains <code class="docutils literal notranslate"><span class="pre">lockfile_certainty</span></code>, derived at read time: an
+<code class="docutils literal notranslate"><span class="pre">overall</span></code> verdict and, per ecosystem, the lockfile kind and how many
+packages it locks (the reference, <code class="docutils literal notranslate"><span class="pre">repositoryVulnerabilities</span></code>).</p>
 <p><code class="docutils literal notranslate"><span class="pre">overall</span></code> is <code class="docutils literal notranslate"><span class="pre">full</span></code> when every ecosystem that has dependencies also
 has a committed lockfile (Go counts as covered by construction),
 <code class="docutils literal notranslate"><span class="pre">partial</span></code> when some do, <code class="docutils literal notranslate"><span class="pre">none</span></code> otherwise (including repos with no
@@ -3541,7 +3536,9 @@ empty). <code class="docutils literal notranslate"><span class="pre">scope_repo_
 the owner’s groups’ (v0.29.86). The GUI uses
 <code class="docutils literal notranslate"><span class="pre">is_admin</span></code> to decide whether to render the admin navigation.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/email</span></code> (a signed-in session only: an API token is
-refused <code class="docutils literal notranslate"><span class="pre">403</span></code>, v0.29.88) — body <code class="docutils literal notranslate"><span class="pre">{&quot;email&quot;:</span> <span class="pre">&quot;…&quot;}</span></code>: stores the address as
+refused <code class="docutils literal notranslate"><span class="pre">403</span></code>, v0.29.88; a sign-in older than <code class="docutils literal notranslate"><span class="pre">web.session_idle_minutes</span></code>
+is <code class="docutils literal notranslate"><span class="pre">403</span> <span class="pre">{&quot;error&quot;:</span> <span class="pre">&quot;reauthentication_required&quot;}</span></code>, 0.29.113) — body
+<code class="docutils literal notranslate"><span class="pre">{&quot;email&quot;:</span> <span class="pre">&quot;…&quot;}</span></code>: stores the address as
 pending and mails the confirmation link, for an account whose forge gave
 no email (a private GitHub address). <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;sent&quot;:</span> <span class="pre">true}</span></code>, or <code class="docutils literal notranslate"><span class="pre">422</span> <span class="pre">{&quot;sent&quot;:</span> <span class="pre">false,</span> <span class="pre">&quot;message&quot;:</span> <span class="pre">&quot;…&quot;}</span></code> with the reason (not a deliverable
 address; mail not configured — <code class="docutils literal notranslate"><span class="pre">mail.site_url</span></code> and the Gmail settings
@@ -3549,6 +3546,19 @@ are required; a failed save or send). The link lands on the front end’s
 profile page when <code class="docutils literal notranslate"><span class="pre">web.spa_url</span></code> is set, on the web process’s
 <code class="docutils literal notranslate"><span class="pre">/account/email/confirm</span></code> otherwise. The same submission the web
 process’s <code class="docutils literal notranslate"><span class="pre">/account/email</span></code> form runs.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/me/sessions</span></code> (0.29.113) — the account’s live sessions:
+<code class="docutils literal notranslate"><span class="pre">{sessions:</span> <span class="pre">[{kind,</span> <span class="pre">from_web_session,</span> <span class="pre">current,</span> <span class="pre">created_at,</span> <span class="pre">last_used_at,</span> <span class="pre">expires_at}]}</span></code>; <code class="docutils literal notranslate"><span class="pre">kind</span></code> is <code class="docutils literal notranslate"><span class="pre">web</span></code> (a browser session of the
+web GUI) or <code class="docutils literal notranslate"><span class="pre">api</span></code> (a Bearer token: <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code>’s or the web proxy’s,
+both minted from a browser session: <code class="docutils literal notranslate"><span class="pre">from_web_session</span></code> is <code class="docutils literal notranslate"><span class="pre">true</span></code> while
+that session lives, <code class="docutils literal notranslate"><span class="pre">false</span></code> once it has expired — the SPA’s token
+outlives it by up to 29 days);
+<code class="docutils literal notranslate"><span class="pre">current</span></code> marks the one presenting the request; <code class="docutils literal notranslate"><span class="pre">last_used_at</span></code> moves
+(at most once a minute (every half bound when the bound is under two minutes)) for browser sessions only, and is a token’s
+mint time. Operator-issued API tokens are not sessions.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/sessions/revoke</span></code> (0.29.113) — ends every session of the
+account, this one included: <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;ok&quot;:</span> <span class="pre">true,</span> <span class="pre">&quot;ended&quot;:</span> <span class="pre">N}</span></code>, then <code class="docutils literal notranslate"><span class="pre">401</span></code>
+for each of them. Like sign-out, it is never refused by a spent request
+quota and is not counted (0.29.114).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/me/email/confirm</span></code> — body <code class="docutils literal notranslate"><span class="pre">{&quot;token&quot;:</span> <span class="pre">&quot;…&quot;}</span></code> from that link,
 for the signed-in account: <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;status&quot;:</span> <span class="pre">&quot;confirmed&quot;}</span></code>; <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;status&quot;:</span> <span class="pre">&quot;invalid&quot;}</span></code> for a token that is not live for this account (unknown,
 expired, already used, another account’s — nothing changes); <code class="docutils literal notranslate"><span class="pre">500</span> <span class="pre">{&quot;status&quot;:</span> <span class="pre">&quot;error&quot;}</span></code> when the database failed (the link still works).</p></li>
@@ -3655,6 +3665,12 @@ and diverge from the next login onward.</p></li>
 <code class="docutils literal notranslate"><span class="pre">409</span></code> with <code class="docutils literal notranslate"><span class="pre">refusing</span> <span class="pre">to</span> <span class="pre">demote</span> <span class="pre">the</span> <span class="pre">last</span> <span class="pre">admin</span> <span class="pre">—</span> <span class="pre">promote</span> <span class="pre">another</span> <span class="pre">user</span> <span class="pre">first</span></code> (it was a <code class="docutils literal notranslate"><span class="pre">500</span></code> before PR #218 review); the count and the write
 are one locked transaction, so two demotions deciding at once cannot
 both pass. No such user is a <code class="docutils literal notranslate"><span class="pre">404</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/users/{userID}/sessions/revoke</span></code> (0.29.113) — end
+every session of an account (a lost device, a suspected takeover): its
+web sessions, <code class="docutils literal notranslate"><span class="pre">/auth/token</span></code> tokens and the web proxy’s tokens are
+deleted, each <code class="docutils literal notranslate"><span class="pre">401</span></code> at its next request; operator-issued API tokens are
+not touched. <code class="docutils literal notranslate"><span class="pre">200</span> <span class="pre">{&quot;ok&quot;:</span> <span class="pre">true,</span> <span class="pre">&quot;ended&quot;:</span> <span class="pre">N}</span></code> (<code class="docutils literal notranslate"><span class="pre">0</span></code> for an account with
+none); a non-integer id is <code class="docutils literal notranslate"><span class="pre">400</span></code>. Logged.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/groups/{groupID}/reject</span></code> — reject a group: the
 group-level abuse lever (v0.27.20); it takes no further additions and
 its organizations stop being listed; its repositories stay. <code class="docutils literal notranslate"><span class="pre">404</span></code> for a
@@ -3697,7 +3713,8 @@ index holds (2,684 bytes).</p></li>
 <code class="docutils literal notranslate"><span class="pre">queued</span></code>, <code class="docutils literal notranslate"><span class="pre">collecting</span></code> (real jobs), <code class="docutils literal notranslate"><span class="pre">draining</span></code> (repos parked by the
 startup staging drain or by heal-collection-gaps, v0.29.64) and <code class="docutils literal notranslate"><span class="pre">total</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/admin/monitor/queue?page=1&amp;q=augur</span></code> — the collection
-queue, 100 rows per page, optional search. Each job carries the
+queue, up to 100 rows per page (<code class="docutils literal notranslate"><span class="pre">page_size</span></code>, default 100; since
+0.29.109 — earlier releases always answered 100), optional search. Each job carries the
 repo label (<code class="docutils literal notranslate"><span class="pre">owner/name</span></code>), status, priority, due_at,
 last_collected, last_error, gathered issue/PR/commit counts, AND
 the forge-reported meta counts (<code class="docutils literal notranslate"><span class="pre">meta_issues</span></code>, <code class="docutils literal notranslate"><span class="pre">meta_prs</span></code>,
@@ -3712,7 +3729,11 @@ EFFECTIVE <code class="docutils literal notranslate"><span class="pre">sort</spa
 composite ordering has no single direction, so a caller’s <code class="docutils literal notranslate"><span class="pre">dir</span></code> is
 never parroted when it was not applied). The <code class="docutils literal notranslate"><span class="pre">meta_*</span></code> keys order by the latest repo_info snapshot
 and are API-only — the SPA’s paired “(ours / meta)” headers sort the
-gathered half.</p></li>
+gathered half. When a batched read behind the page fails (since
+0.29.109) the envelope carries <code class="docutils literal notranslate"><span class="pre">warnings</span></code> (an array of sentences:
+names unreadable — every <code class="docutils literal notranslate"><span class="pre">repo</span></code> is then the id; counts unreadable —
+the counts show 0) and the failure is logged; the key is absent
+otherwise.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/admin/monitor/queue/{repoID}/prioritize</span></code> — the SPA
 monitor’s “Boost” button (v0.27.14). Pushes the repo to priority 0,
 makes it immediately due, and resets its status to <code class="docutils literal notranslate"><span class="pre">queued</span></code> — the
@@ -3760,7 +3781,7 @@ repo_id is always the stable tiebreaker. The envelope echoes the
 EFFECTIVE sort/dir.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/api/v1/collections/{collectionID}/copy</span></code> with <code class="docutils literal notranslate"><span class="pre">{group_id}</span></code>
 (must be the caller’s) or <code class="docutils literal notranslate"><span class="pre">{group_name}</span></code> (find-or-create for the
-caller) — links every repo of the collection into that group and
+caller; at most 200 characters, a <code class="docutils literal notranslate"><span class="pre">400</span></code> past it since 0.29.100) — links every repo of the collection into that group and
 returns <code class="docutils literal notranslate"><span class="pre">{added,</span> <span class="pre">group_id}</span></code> (repos already in the group no-op); a
 collection that does not exist is a <code class="docutils literal notranslate"><span class="pre">404</span></code> (0.29.100; it answered 200
 and linked nothing).
@@ -3821,7 +3842,7 @@ timestamp and is counted by no family.</p></li>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="web-gui.html" class="btn btn-neutral float-left" title="Web GUI" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="security.html" class="btn btn-neutral float-left" title="Security" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="visualizations.html" class="btn btn-neutral float-right" title="Visualizations" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

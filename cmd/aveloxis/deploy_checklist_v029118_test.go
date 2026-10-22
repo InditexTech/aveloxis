@@ -39,8 +39,8 @@ func gitlabConstBody(t *testing.T, name string) string {
 	return body
 }
 
-// TestV029108ChecklistNamesItsOperatorVisibleChanges pins what an operator
-// must learn from `aveloxis deploy-checklist` for 0.29.108, which keeps
+// TestV029118ChecklistNamesItsOperatorVisibleChanges pins what an operator
+// must learn from `aveloxis deploy-checklist` for 0.29.118, which keeps
 // GitHub repository traffic (aveloxis/aveloxis#234): the five tables the
 // migrate adds, the new route, the access a key needs, the Info line a
 // key without it logs, that any other traffic error now fails the job as
@@ -51,10 +51,10 @@ func gitlabConstBody(t *testing.T, name string) string {
 // failure on a 5xx and no backfill. Each table, the route, the log line,
 // the GitLab period and its data source must be the ones the code
 // declares, so a rename cannot orphan the note.
-func TestV029108ChecklistNamesItsOperatorVisibleChanges(t *testing.T) {
-	steps, ok := deployChecklistFor("0.29.108")
+func TestV029118ChecklistNamesItsOperatorVisibleChanges(t *testing.T) {
+	steps, ok := deployChecklistFor("0.29.118")
 	if !ok || len(steps) == 0 {
-		t.Fatal("0.29.108 has no deploy checklist")
+		t.Fatal("0.29.118 has no deploy checklist")
 	}
 	if steps[0].cmd != "aveloxis stop all" {
 		t.Errorf("the ladder must start with stop all: %v", steps[0])
@@ -73,14 +73,14 @@ func TestV029108ChecklistNamesItsOperatorVisibleChanges(t *testing.T) {
 	if migrate != "aveloxis migrate --skip-views" {
 		t.Errorf("the migrate step must be `aveloxis migrate --skip-views`, got %q", migrate)
 	}
-	if !strings.HasPrefix(start, "0.29.108: ") {
+	if !strings.HasPrefix(start, "0.29.118: ") {
 		t.Fatalf("the start step must open with this release's note, got %.80q", start)
 	}
-	// A fleet that skipped 0.29.102 still reads its note; the pins below
+	// A fleet that skipped 0.29.117 still reads its note; the pins below
 	// read this release's own text only.
-	own, _, carried := strings.Cut(start, "0.29.102 (")
+	own, _, carried := strings.Cut(start, "0.29.117: ")
 	if !carried {
-		t.Fatal("the start note must carry 0.29.102's note for a fleet that skipped it")
+		t.Fatal("the start note must carry 0.29.117's note for a fleet that skipped it")
 	}
 
 	schema := srctest.Read(t, "internal/db/schema.sql")
@@ -138,7 +138,7 @@ func TestV029108ChecklistNamesItsOperatorVisibleChanges(t *testing.T) {
 	// name and stays allowed.)
 	for _, bad := range []string{"admin-only", "non-admin", "administrators only", "no traffic rows"} {
 		if strings.Contains(strings.ToLower(own), bad) {
-			t.Errorf("the 0.29.108 note must not say %q: GitLab's daily clone counts need only the Reporter role", bad)
+			t.Errorf("the 0.29.118 note must not say %q: GitLab's daily clone counts need only the Reporter role", bad)
 		}
 	}
 

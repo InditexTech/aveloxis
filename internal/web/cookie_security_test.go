@@ -21,8 +21,8 @@ func TestSessionCookie_SecureByDefault(t *testing.T) {
 	if !cookie.HttpOnly {
 		t.Error("cookies should always be HttpOnly")
 	}
-	if cookie.Name != "aveloxis_session" {
-		t.Errorf("cookie name = %q, want aveloxis_session", cookie.Name)
+	if cookie.Name != "__Host-aveloxis_session" { // Secure, so prefixed (0.29.113, ASVS V3.3.3)
+		t.Errorf("cookie name = %q, want __Host-aveloxis_session", cookie.Name)
 	}
 	if cookie.Value != "token123" {
 		t.Errorf("cookie value = %q, want token123", cookie.Value)

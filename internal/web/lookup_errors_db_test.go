@@ -99,7 +99,7 @@ func TestPageLookupErrorsAreNotNotFound(t *testing.T) {
 	get := func(path string) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodGet, path, nil)
-		r.AddCookie(&http.Cookie{Name: "aveloxis_session", Value: "probe-token"})
+		r.AddCookie(&http.Cookie{Name: s.cookieName("aveloxis_session"), Value: "probe-token"})
 		csrf(r) // the session's form token (stage 2f)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)

@@ -37,6 +37,13 @@ var ErrInvalidSessionToken = errors.New("invalid or expired session token")
 // DefaultSessionTokenLifetime is how long an SPA session token lives.
 const DefaultSessionTokenLifetime = 30 * 24 * time.Hour
 
+// SessionTouchInterval is how often a web session's last_used_at is
+// re-stamped by a request: once a minute at most, the same horizon as the
+// api's authorization cache (authCacheTTL), so a busy session costs one
+// write a minute rather than one per page (0.29.113) — shortened to half
+// the inactivity bound when that is less (touchInterval).
+const SessionTouchInterval = time.Minute
+
 // CreateSessionToken mints a Bearer token for the user with the given
 // lifetime, bound to no web session. No production path mints one this
 // way since 0.29.102 (the web process mints through MintTokenForWebSession
@@ -75,11 +82,25 @@ func newSecretBytes() ([]byte, error) {
 // /auth/token minted it from a web session ("" otherwise, NULL). The
 // expired rows are swept after every mint.
 func (s *PostgresStore) createSessionToken(ctx context.Context, userID int, lifetime time.Duration, kind, parentHash string) (string, error) {
+	return s.createSessionTokenUntil(ctx, userID, time.Now().Add(lifetime), kind, parentHash)
+}
+
+// createSessionTokenUntil is createSessionToken with the expiry absolute:
+// the row expires at expiresAt as given, never re-anchored at this clock
+// (round-1 review of 0.29.112, F1: a lifetime re-anchored at the store's
+// clock could land a second past the parent). The web proxy passes its
+// session's own expiry — the value of that row's column — so its child
+// expires at the parent's instant by construction; /auth/token passes
+// now + the default lifetime, and that token keeps its own life past the
+// session on purpose (the documented SPA behaviour), so no cap at the
+// parent is applied here.
+func (s *PostgresStore) createSessionTokenUntil(ctx context.Context, userID int, expiresAt time.Time, kind, parentHash string) (string, error) {
 	token, err := newSecretToken()
 	if err != nil {
 		return "", err
 	}
 	now := time.Now().Unix()
+	expiration := expiresAt.Unix()
 	if parentHash != "" {
 		// Minted FROM a web session: the user is the session's, and the
 		// row is written only while that session is live, under KEY SHARE
@@ -89,7 +110,7 @@ func (s *PostgresStore) createSessionToken(ctx context.Context, userID int, life
 			SELECT $1, p.user_id, $2, $3, TRUE, $4, p.token
 			FROM aveloxis_ops.user_session_tokens p
 			WHERE p.token = $5 AND p.kind = $6 AND p.expiration > $2
-			FOR KEY SHARE`, hashToken(token), now, now+int64(lifetime.Seconds()), kind, parentHash, sessionKindWeb)
+			FOR KEY SHARE`, hashToken(token), now, expiration, kind, parentHash, sessionKindWeb)
 		if err != nil {
 			return "", fmt.Errorf("create %s session token: %w", kind, err)
 		}
@@ -99,7 +120,7 @@ func (s *PostgresStore) createSessionToken(ctx context.Context, userID int, life
 	} else {
 		_, err = s.pool.Exec(ctx, `
 		INSERT INTO aveloxis_ops.user_session_tokens (token, user_id, created_at, expiration, token_hashed, kind, parent_token)
-		VALUES ($1, $2, $3, $4, TRUE, $5, NULL)`, hashToken(token), userID, now, now+int64(lifetime.Seconds()), kind)
+		VALUES ($1, $2, $3, $4, TRUE, $5, NULL)`, hashToken(token), userID, now, expiration, kind)
 		if err != nil {
 			return "", fmt.Errorf("create %s session token: %w", kind, err)
 		}
@@ -130,6 +151,32 @@ func (s *PostgresStore) ValidateSessionToken(ctx context.Context, token string) 
 		return 0, fmt.Errorf("validate session token: %w", err)
 	}
 	return userID, nil
+}
+
+// SessionTokenCreatedAt is the sign-in a live Bearer session token stands
+// for: the web session it was minted from (every production mint has
+// one). A sensitive change asks for a recent one (ASVS V7.5.1, 0.29.113).
+// A token whose parent is gone (the expiry sweep set parent_token NULL)
+// or never had one answers the zero time — never its own mint, which
+// would read a token minted hours after the sign-in as fresh (review
+// round 1 of 0.29.113). ErrInvalidSessionToken for no live token.
+func (s *PostgresStore) SessionTokenCreatedAt(ctx context.Context, token string) (time.Time, error) {
+	var created int64
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE(p.created_at, 0)
+		FROM aveloxis_ops.user_session_tokens t
+		LEFT JOIN aveloxis_ops.user_session_tokens p ON p.token = t.parent_token
+		WHERE t.token = $1 AND t.kind = $3 AND t.expiration > $2`, hashToken(token), time.Now().Unix(), sessionKindAPI).Scan(&created)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, ErrInvalidSessionToken
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("session token created at: %w", err)
+	}
+	if created == 0 {
+		return time.Time{}, nil
+	}
+	return time.Unix(created, 0), nil
 }
 
 // DeleteSessionToken revokes one token (logout).
@@ -182,4 +229,25 @@ func (s *PostgresStore) GetUserRepoScope(ctx context.Context, userID int) ([]int
 		out = append(out, id)
 	}
 	return out, rows.Err()
+}
+
+// touchInterval is how stale last_used_at may grow before a lookup
+// re-stamps it: SessionTouchInterval, or half the inactivity bound when
+// that is shorter (review round 1 of 0.29.113: at a one-minute bound a
+// one-minute touch could never land before the refusal, so a busy
+// session died 60 s after its first use). No bound: the plain interval.
+func touchInterval(idle time.Duration) time.Duration {
+	if idle > 0 && idle/2 < SessionTouchInterval {
+		return idle / 2
+	}
+	return SessionTouchInterval
+}
+
+// SignInIsRecent is the one re-authentication rule for a sensitive change
+// (ASVS V7.5.1, 0.29.113), read by the web process (a session's
+// CreatedAt) and the api process (SessionTokenCreatedAt): a recorded
+// sign-in no older than the inactivity bound. The zero time — no sign-in
+// the store can vouch for — is never recent.
+func SignInIsRecent(signedIn time.Time, idle time.Duration) bool {
+	return !signedIn.IsZero() && time.Since(signedIn) <= idle
 }
