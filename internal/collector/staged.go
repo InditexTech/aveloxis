@@ -1333,6 +1333,31 @@ func (p *Processor) processBatch(ctx context.Context, repoID int64, platID int16
 		return nil
 	}
 
+	// A read's daily clones are written in one transaction with one
+	// stamp of the repos row, not one UPDATE per day. A row that cannot
+	// be read is counted and skipped, as one-at-a-time processing does.
+	if entityType == EntityCloneStats {
+		var clones []model.RepoClone
+		for _, row := range rows {
+			var c model.RepoClone
+			if err := json.Unmarshal(row.Payload, &c); err != nil {
+				p.logger.Warn("failed to unmarshal clone stats", "staging_id", row.ID, "error", err)
+				p.errors++
+				continue
+			}
+			clones = append(clones, c)
+		}
+		if err := p.store.UpsertRepoClones(ctx, repoID, clones); err != nil {
+			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+				return err
+			}
+			// Returned, not swallowed: the staged rows stay unprocessed
+			// and the next drain writes the whole batch again.
+			return fmt.Errorf("upserting %d clone days: %w", len(clones), err)
+		}
+		return nil
+	}
+
 	// All other entity types: process one at a time.
 	var errCount int
 	for _, row := range rows {

@@ -24,6 +24,11 @@ const (
 // returns is kept, zeros included: a stored zero is a day without
 // traffic, a missing row a day that was not read.
 type RepoTraffic struct {
+	// Origin says where the read came from; its DataSource is stored on
+	// the windows, weeks, paths and referrers rows (the daily views
+	// carry their own).
+	Origin DataOrigin
+
 	// SnapshotDate is the UTC collection date (midnight UTC) that keys
 	// the path and referrer snapshot. Set by the collector.
 	SnapshotDate time.Time

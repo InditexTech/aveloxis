@@ -455,3 +455,41 @@ func TestFetchCloneStatsReturnsTheWindowUniquesOfTheSameRead(t *testing.T) {
 		t.Errorf("window uniques = %d, want the per=day top-level uniques %d (the same read as the buckets)", uniques, want.Uniques)
 	}
 }
+
+// TestGitHubTrafficRowsCarryTheGitHubAPIDataSource: the other GitHub
+// readers stamp their rows "GitHub API"; the traffic rows were written
+// with an empty data_source.
+func TestGitHubTrafficRowsCarryTheGitHubAPIDataSource(t *testing.T) {
+	srv := &trafficServer{t: t, bodies: map[trafficRead][]byte{
+		{"/repos/o/r/traffic/views", "day"}:          readTrafficBody(t, "traffic_openapi_views.json"),
+		{"/repos/o/r/traffic/views", "week"}:         []byte(trafficTestViewsWeek),
+		{"/repos/o/r/traffic/clones", "week"}:        []byte(trafficTestClonesWeek),
+		{"/repos/o/r/traffic/clones", ""}:            readTrafficBody(t, "traffic_openapi_clones.json"),
+		{"/repos/o/r/traffic/popular/paths", ""}:     readTrafficBody(t, "traffic_openapi_popular_paths.json"),
+		{"/repos/o/r/traffic/popular/referrers", ""}: readTrafficBody(t, "traffic_openapi_popular_referrers.json"),
+	}}
+	client := testGHClient(t, srv)
+
+	traffic, err := client.FetchTraffic(context.Background(), "o", "r")
+	if err != nil {
+		t.Fatalf("FetchTraffic: %v", err)
+	}
+	if traffic.Origin.DataSource != "GitHub API" {
+		t.Errorf("RepoTraffic.Origin.DataSource = %q, want \"GitHub API\"", traffic.Origin.DataSource)
+	}
+	for i, v := range traffic.Views {
+		if v.Origin.DataSource != "GitHub API" {
+			t.Errorf("Views[%d].Origin.DataSource = %q, want \"GitHub API\"", i, v.Origin.DataSource)
+		}
+	}
+
+	clones, _, err := client.FetchCloneStats(context.Background(), "o", "r")
+	if err != nil {
+		t.Fatalf("FetchCloneStats: %v", err)
+	}
+	for i, c := range clones {
+		if c.Origin.DataSource != "GitHub API" {
+			t.Errorf("clones[%d].Origin.DataSource = %q, want \"GitHub API\"", i, c.Origin.DataSource)
+		}
+	}
+}

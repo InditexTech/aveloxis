@@ -489,3 +489,172 @@ func TestTrafficReadIsWrittenInOneTransaction(t *testing.T) {
 		t.Error("a failed traffic read moved repos.data_changed_at: the stamp must commit with the data, not without it")
 	}
 }
+
+// TestTrafficRowsKeepTheirDataSource: every table of a traffic read
+// records where its rows came from, as the other readers' tables do.
+// The windows, weeks, paths and referrers inserts did not set it.
+func TestTrafficRowsKeepTheirDataSource(t *testing.T) {
+	ctx, store := caseConnect(t)
+	repoID := trafficTestRepo(ctx, t, store, "_avtraffic_source")
+
+	origin := model.DataOrigin{DataSource: "GitHub API"}
+	if err := store.UpsertRepoTraffic(ctx, repoID, &model.RepoTraffic{
+		SnapshotDate: octDay(19),
+		Origin:       origin,
+		Views:        []model.RepoView{{Timestamp: octDay(18), TotalViews: 1, UniqueViews: 1, Origin: origin}},
+		Windows:      []model.RepoTrafficWindow{{Kind: model.TrafficKindViews, Start: octDay(5), End: octDay(18), Uniques: 2}},
+		Weeks:        []model.RepoTrafficWeek{{Kind: model.TrafficKindViews, WeekStart: octDay(12), Uniques: 2}},
+		Paths:        []model.RepoTrafficPath{{Path: "/o/r", Title: "o/r", TotalViews: 5, UniqueViews: 2}},
+		Referrers:    []model.RepoTrafficReferrer{{Referrer: "github.com", TotalViews: 3, UniqueViews: 1}},
+	}); err != nil {
+		t.Fatalf("UpsertRepoTraffic: %v", err)
+	}
+	for _, table := range []string{"repo_views", "repo_traffic_windows", "repo_traffic_weeks", "repo_traffic_paths", "repo_traffic_referrers"} {
+		got := trafficRows(ctx, t, store,
+			`SELECT COALESCE(data_source, 'NULL') FROM aveloxis_data.`+table+` WHERE repo_id = $1`, repoID)
+		assertTrafficStored(t, table+".data_source", got, []string{"GitHub API"})
+	}
+}
+
+// countRepoUpdates counts the UPDATEs of the repository's repos row
+// from here on, with a trigger that lives for the test.
+func countRepoUpdates(ctx context.Context, t *testing.T, store *PostgresStore, repoID int64) func() int {
+	t.Helper()
+	mustExecRetry(ctx, t, store, `CREATE TABLE IF NOT EXISTS public.avtest_repo_updates (repo_id BIGINT)`)
+	mustExecRetry(ctx, t, store, `DELETE FROM public.avtest_repo_updates WHERE repo_id = $1`, repoID)
+	mustExecRetry(ctx, t, store, `
+		CREATE OR REPLACE FUNCTION public.avtest_count_repo_update() RETURNS trigger AS $$
+		BEGIN INSERT INTO public.avtest_repo_updates VALUES (NEW.repo_id); RETURN NEW; END $$ LANGUAGE plpgsql`)
+	mustExecRetry(ctx, t, store, `DROP TRIGGER IF EXISTS avtest_repo_update ON aveloxis_data.repos`)
+	mustExecRetry(ctx, t, store, `
+		CREATE TRIGGER avtest_repo_update AFTER UPDATE ON aveloxis_data.repos
+		FOR EACH ROW EXECUTE FUNCTION public.avtest_count_repo_update()`)
+	t.Cleanup(func() {
+		bg := context.Background()
+		cleanupExecRetry(bg, store, `DROP TRIGGER IF EXISTS avtest_repo_update ON aveloxis_data.repos`)
+		cleanupExecRetry(bg, store, `DELETE FROM public.avtest_repo_updates WHERE repo_id = $1`, repoID)
+	})
+	return func() int {
+		var n int
+		if err := store.pool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM public.avtest_repo_updates WHERE repo_id = $1`, repoID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+}
+
+// TestTrafficCloneDaysAreStampedOnce: a collection stores up to 30
+// days of clones; each used to end in its own UPDATE of the repos row.
+// The days of one batch are written in one transaction and stamp once,
+// and the same days again overwrite their rows.
+func TestTrafficCloneDaysAreStampedOnce(t *testing.T) {
+	ctx, store := caseConnect(t)
+	repoID := trafficTestRepo(ctx, t, store, "_avtraffic_clonebatch")
+	updates := countRepoUpdates(ctx, t, store, repoID)
+
+	var days []model.RepoClone
+	for d := 5; d <= 18; d++ {
+		days = append(days, model.RepoClone{Timestamp: octDay(d), TotalClones: d, UniqueClones: intPtr(1),
+			Origin: model.DataOrigin{DataSource: "GitHub API"}})
+	}
+	mustExecRetry(ctx, t, store,
+		`UPDATE aveloxis_data.repos SET data_changed_at = '2000-01-01T00:00:00Z' WHERE repo_id = $1`, repoID)
+	before := updates()
+	if err := store.UpsertRepoClones(ctx, repoID, days); err != nil {
+		t.Fatalf("UpsertRepoClones: %v", err)
+	}
+	if n := updates() - before; n != 1 {
+		t.Errorf("%d days of clones updated the repos row %d times, want 1", len(days), n)
+	}
+	var moved bool
+	if err := store.pool.QueryRow(ctx, `
+		SELECT COALESCE(data_changed_at > '2000-01-02T00:00:00Z', FALSE)
+		FROM aveloxis_data.repos WHERE repo_id = $1`, repoID).Scan(&moved); err != nil {
+		t.Fatal(err)
+	}
+	if !moved {
+		t.Error("the clone batch left repos.data_changed_at at its old value")
+	}
+
+	days[13].TotalClones = 99
+	days[13].UniqueClones = nil
+	if err := store.UpsertRepoClones(ctx, repoID, days); err != nil {
+		t.Fatalf("UpsertRepoClones, second read: %v", err)
+	}
+	got := trafficRows(ctx, t, store, `
+		SELECT ((clone_timestamp AT TIME ZONE 'UTC')::date::text || ' ' || total_clones || ' ' || COALESCE(unique_clones::text, 'NULL') || ' ' || data_source)
+		FROM aveloxis_data.repo_clones WHERE repo_id = $1 AND clone_timestamp >= '2026-10-17T00:00:00Z' ORDER BY clone_timestamp`, repoID)
+	assertTrafficStored(t, "last days after a second read", got,
+		[]string{"2026-10-17 17 1 GitHub API", "2026-10-18 99 NULL GitHub API"})
+}
+
+// TestTrafficSnapshotIsLockedBehindTheStamp: two collectors writing the
+// same repository's snapshot of the same date must not interleave. The
+// write takes the repos row first, so a second writer waits there
+// before it touches any snapshot row; stamping last let both delete
+// first and both insert, and the stored top 10 became the union of two
+// reads. While another transaction holds the repos row, a writer in
+// flight must hold no lock on the snapshot rows.
+func TestTrafficSnapshotIsLockedBehindTheStamp(t *testing.T) {
+	ctx, store := caseConnect(t)
+	repoID := trafficTestRepo(ctx, t, store, "_avtraffic_order")
+
+	paths := func(names ...string) []model.RepoTrafficPath {
+		var out []model.RepoTrafficPath
+		for _, n := range names {
+			out = append(out, model.RepoTrafficPath{Path: n, Title: n, TotalViews: 1, UniqueViews: 1})
+		}
+		return out
+	}
+	if err := store.UpsertRepoTraffic(ctx, repoID, &model.RepoTraffic{SnapshotDate: octDay(19), Paths: paths("/a", "/b")}); err != nil {
+		t.Fatalf("seed snapshot: %v", err)
+	}
+
+	holder, err := store.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Rollback(context.Background()) }()
+	if _, err := holder.Exec(ctx, `SELECT 1 FROM aveloxis_data.repos WHERE repo_id = $1 FOR UPDATE`, repoID); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- store.UpsertRepoTraffic(ctx, repoID, &model.RepoTraffic{SnapshotDate: octDay(19), Paths: paths("/c")})
+	}()
+
+	// The writer is in flight once a backend waits for a lock.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		var waiting bool
+		if err := store.pool.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock')`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the writer never waited for the repos row")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if _, err := holder.Exec(ctx, `
+		SELECT 1 FROM aveloxis_data.repo_traffic_paths WHERE repo_id = $1 FOR UPDATE NOWAIT`, repoID); err != nil {
+		t.Errorf("the writer already holds the snapshot rows while it waits for the repos row (%v): a second writer could delete before the first commits", err)
+	}
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("UpsertRepoTraffic: %v", err)
+	}
+	assertTrafficStored(t, "snapshot after the second read",
+		trafficRows(ctx, t, store, `
+			SELECT path COLLATE "C" FROM aveloxis_data.repo_traffic_paths WHERE repo_id = $1 ORDER BY 1`, repoID),
+		[]string{"/c"})
+}

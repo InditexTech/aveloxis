@@ -44,6 +44,13 @@ func (s *PostgresStore) UpsertRepoTraffic(ctx context.Context, repoID int64, tr 
 	snapshot := trafficDate(tr.SnapshotDate)
 	return s.withRetry(ctx, func(ctx context.Context) error {
 		batch := &pgx.Batch{}
+		// The repository page's cached traffic answer moves with the
+		// rows. The stamp goes first on purpose: it takes the repos row
+		// lock before any snapshot row is touched, so a second writer of
+		// the same repository waits here until the first commits. Last,
+		// both could delete first and both insert, and the stored top 10
+		// would be the union of two reads.
+		batch.Queue(stampRepoCacheStateSQL+` WHERE repo_id = $1`, repoID)
 		for _, v := range tr.Views {
 			batch.Queue(`
 				INSERT INTO aveloxis_data.repo_views
@@ -59,24 +66,24 @@ func (s *PostgresStore) UpsertRepoTraffic(ctx context.Context, repoID int64, tr 
 		for _, w := range tr.Windows {
 			batch.Queue(`
 				INSERT INTO aveloxis_data.repo_traffic_windows
-					(repo_id, traffic_kind, window_start, window_end, uniques)
-				VALUES ($1, $2, $3::date, $4::date, $5)
+					(repo_id, traffic_kind, window_start, window_end, uniques, data_source)
+				VALUES ($1, $2, $3::date, $4::date, $5, $6)
 				ON CONFLICT (repo_id, traffic_kind, window_start, window_end) DO UPDATE SET
 					uniques = EXCLUDED.uniques,
 					tool_version = EXCLUDED.tool_version,
 					data_collection_date = NOW()`,
-				repoID, string(w.Kind), trafficDate(w.Start), trafficDate(w.End), w.Uniques)
+				repoID, string(w.Kind), trafficDate(w.Start), trafficDate(w.End), w.Uniques, tr.Origin.DataSource)
 		}
 		for _, w := range tr.Weeks {
 			batch.Queue(`
 				INSERT INTO aveloxis_data.repo_traffic_weeks
-					(repo_id, traffic_kind, week_start, uniques)
-				VALUES ($1, $2, $3::date, $4)
+					(repo_id, traffic_kind, week_start, uniques, data_source)
+				VALUES ($1, $2, $3::date, $4, $5)
 				ON CONFLICT (repo_id, traffic_kind, week_start) DO UPDATE SET
 					uniques = EXCLUDED.uniques,
 					tool_version = EXCLUDED.tool_version,
 					data_collection_date = NOW()`,
-				repoID, string(w.Kind), trafficDate(w.WeekStart), w.Uniques)
+				repoID, string(w.Kind), trafficDate(w.WeekStart), w.Uniques, tr.Origin.DataSource)
 		}
 
 		// The snapshot: the date's earlier rows go first, in the same
@@ -91,22 +98,20 @@ func (s *PostgresStore) UpsertRepoTraffic(ctx context.Context, repoID int64, tr 
 		for _, p := range tr.Paths {
 			batch.Queue(`
 				INSERT INTO aveloxis_data.repo_traffic_paths
-					(repo_id, snapshot_date, path, title, total_views, unique_views)
-				VALUES ($1, $2::date, $3, $4, $5, $6)
+					(repo_id, snapshot_date, path, title, total_views, unique_views, data_source)
+				VALUES ($1, $2::date, $3, $4, $5, $6, $7)
 				ON CONFLICT (repo_id, snapshot_date, path) DO NOTHING`,
-				repoID, snapshot, p.Path, p.Title, p.TotalViews, p.UniqueViews)
+				repoID, snapshot, p.Path, p.Title, p.TotalViews, p.UniqueViews, tr.Origin.DataSource)
 		}
 		for _, r := range tr.Referrers {
 			batch.Queue(`
 				INSERT INTO aveloxis_data.repo_traffic_referrers
-					(repo_id, snapshot_date, referrer, total_views, unique_views)
-				VALUES ($1, $2::date, $3, $4, $5)
+					(repo_id, snapshot_date, referrer, total_views, unique_views, data_source)
+				VALUES ($1, $2::date, $3, $4, $5, $6)
 				ON CONFLICT (repo_id, snapshot_date, referrer) DO NOTHING`,
-				repoID, snapshot, r.Referrer, r.TotalViews, r.UniqueViews)
+				repoID, snapshot, r.Referrer, r.TotalViews, r.UniqueViews, tr.Origin.DataSource)
 		}
 
-		// The repository page's cached traffic answer moves with the rows.
-		batch.Queue(stampRepoCacheStateSQL+` WHERE repo_id = $1`, repoID)
 		tx, err := s.pool.Begin(ctx)
 		if err != nil {
 			return err

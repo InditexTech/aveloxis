@@ -72,6 +72,7 @@ var pageCacheWriters = map[string]pageWriterCoverage{
 	"RotateRepoInfoToHistory":   {"stamps", "staged repo_info processing, in or out of a job"},
 	"InsertRepoInfo":            {"stamps", "staged repo_info processing, in or out of a job"},
 	"UpsertRepoClone":           {"stamps", "staged clone stats processing, in or out of a job"},
+	"UpsertRepoClones":          {"stamps", "staged clone stats processing, in or out of a job"},
 	"UpsertRepoTraffic":         {"stamps", "staged traffic processing, in or out of a job"},
 	"BackfillGitLabCommitCount": {"job", "the scheduler's facade phase (commit_count, which no cached answer reads)"},
 }

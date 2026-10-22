@@ -2572,6 +2572,44 @@ func (s *PostgresStore) UpsertRepoClone(ctx context.Context, clone *model.RepoCl
 	})
 }
 
+// UpsertRepoClones writes the daily clones buckets of one repository in
+// one transaction and stamps repos.data_changed_at once, however many
+// days there are: a collection stores 14 (GitHub) or 30 (GitLab) days,
+// and a stamp per day was that many UPDATEs of the repos row. The rules
+// of UpsertRepoClone apply to every day: the latest read of a day wins
+// and a nil UniqueClones is written as NULL.
+func (s *PostgresStore) UpsertRepoClones(ctx context.Context, repoID int64, clones []model.RepoClone) error {
+	if len(clones) == 0 {
+		return nil
+	}
+	return s.withRetry(ctx, func(ctx context.Context) error {
+		batch := &pgx.Batch{}
+		batch.Queue(stampRepoCacheStateSQL+` WHERE repo_id = $1`, repoID)
+		for i := range clones {
+			c := &clones[i]
+			batch.Queue(`
+				INSERT INTO aveloxis_data.repo_clones
+					(repo_id, clone_timestamp, total_clones, unique_clones, data_source)
+				VALUES ($1,$2,$3,$4,$5)
+				ON CONFLICT (repo_id, clone_timestamp) DO UPDATE SET
+					total_clones = EXCLUDED.total_clones,
+					unique_clones = EXCLUDED.unique_clones,
+					tool_version = EXCLUDED.tool_version,
+					data_collection_date = NOW()`,
+				repoID, c.Timestamp, c.TotalClones, c.UniqueClones, c.Origin.DataSource)
+		}
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if err := tx.SendBatch(ctx, batch).Close(); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	})
+}
+
 // ============================================================
 // Collection status
 // ============================================================

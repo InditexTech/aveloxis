@@ -1335,6 +1335,10 @@ func statusStr(archived, disabled bool) string {
 	return "Active"
 }
 
+// githubTrafficSource is the data_source of the traffic rows, as the
+// other GitHub readers write it.
+const githubTrafficSource = "GitHub API"
+
 func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, int, error) {
 	path := fmt.Sprintf("/repos/%s/%s/traffic/clones", owner, repo)
 	var raw ghCloneTraffic
@@ -1348,6 +1352,7 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 			Timestamp:    c.Timestamp,
 			TotalClones:  c.Count,
 			UniqueClones: &c.Uniques,
+			Origin:       model.DataOrigin{DataSource: githubTrafficSource},
 		}
 	}
 	// The top-level uniques of this same read: the clones window's
@@ -1391,6 +1396,7 @@ func (c *Client) FetchTraffic(ctx context.Context, owner, repo string) (*model.R
 	t := &model.RepoTraffic{
 		Views:        make([]model.RepoView, len(viewsDay.Views)),
 		ViewUniques:  viewsDay.Uniques,
+		Origin:       model.DataOrigin{DataSource: githubTrafficSource},
 		WeeklyViews:  trafficWeeks(model.TrafficKindViews, viewsWeek.Views),
 		WeeklyClones: trafficWeeks(model.TrafficKindClones, clonesWeek.Clones),
 		Paths:        make([]model.RepoTrafficPath, len(paths)),
@@ -1401,6 +1407,7 @@ func (c *Client) FetchTraffic(ctx context.Context, owner, repo string) (*model.R
 			Timestamp:   b.Timestamp,
 			TotalViews:  b.Count,
 			UniqueViews: b.Uniques,
+			Origin:      model.DataOrigin{DataSource: githubTrafficSource},
 		}
 	}
 	for i, p := range paths {
