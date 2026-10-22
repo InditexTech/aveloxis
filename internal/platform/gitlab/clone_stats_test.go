@@ -125,7 +125,7 @@ func TestFetchCloneStatsFillsAbsentDaysWithZero(t *testing.T) {
 	body := statsBody(t, statsDay{"2026-11-30", 7}, statsDay{"2026-11-02", 3})
 	client, srv := statsClient(t, time.Date(2026, 11, 30, 8, 0, 0, 0, time.UTC), http.StatusOK, body)
 
-	got, err := client.FetchCloneStats(context.Background(), "group", "project")
+	got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
 	if err != nil {
 		t.Fatalf("FetchCloneStats: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestFetchCloneStatsFillsAbsentDaysWithZero(t *testing.T) {
 func TestFetchCloneStatsEmptyDaysIsThirtyZeros(t *testing.T) {
 	client, _ := statsClient(t, time.Date(2026, 11, 30, 8, 0, 0, 0, time.UTC), http.StatusOK, statsBody(t))
 
-	got, err := client.FetchCloneStats(context.Background(), "group", "project")
+	got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
 	if err != nil {
 		t.Fatalf("FetchCloneStats: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestFetchCloneStatsIncludesTheCurrentDay(t *testing.T) {
 	body := statsBody(t, statsDay{"2027-01-05", 5}, statsDay{"2026-12-07", 2}, statsDay{"2026-12-06", 9})
 	client, _ := statsClient(t, time.Date(2027, 1, 5, 0, 0, 1, 0, time.UTC), http.StatusOK, body)
 
-	got, err := client.FetchCloneStats(context.Background(), "group", "project")
+	got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
 	if err != nil {
 		t.Fatalf("FetchCloneStats: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestFetchCloneStatsCollectionDayIsTheUTCDay(t *testing.T) {
 	local := time.Date(2026, 11, 30, 22, 30, 0, 0, time.FixedZone("UTC-5", -5*60*60))
 	client, _ := statsClient(t, local, http.StatusOK, body)
 
-	got, err := client.FetchCloneStats(context.Background(), "group", "project")
+	got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
 	if err != nil {
 		t.Fatalf("FetchCloneStats: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestFetchCloneStatsDropsListedDaysOutsideThePeriod(t *testing.T) {
 	)
 	client, _ := statsClient(t, time.Date(2026, 11, 30, 15, 45, 0, 0, time.UTC), http.StatusOK, body)
 
-	got, err := client.FetchCloneStats(context.Background(), "group", "project")
+	got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
 	if err != nil {
 		t.Fatalf("FetchCloneStats: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestFetchCloneStatsRefusalIsASkip(t *testing.T) {
 			client, srv := statsClient(t, time.Date(2026, 11, 30, 8, 0, 0, 0, time.UTC),
 				tc.status, `{"message":"refused"}`)
 
-			got, err := client.FetchCloneStats(context.Background(), "group", "project")
+			got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
 			if err == nil {
 				t.Fatalf("FetchCloneStats on %d returned no error", tc.status)
 			}
@@ -248,7 +248,7 @@ func TestFetchCloneStats500NamesTheEndpoint(t *testing.T) {
 	client, _ := statsClient(t, time.Date(2026, 11, 30, 8, 0, 0, 0, time.UTC),
 		http.StatusInternalServerError, `{"message":"500 Internal Server Error"}`)
 
-	got, err := client.FetchCloneStats(context.Background(), "group", "project")
+	got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
 	if err == nil {
 		t.Fatal("FetchCloneStats on a 500 returned no error")
 	}
@@ -278,7 +278,7 @@ func TestFetchCloneStatsUnreadableAnswerIsAnError(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			client, _ := statsClient(t, time.Date(2026, 11, 30, 8, 0, 0, 0, time.UTC), http.StatusOK, body)
 
-			got, err := client.FetchCloneStats(context.Background(), "group", "project")
+			got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
 			if err == nil {
 				t.Fatalf("FetchCloneStats returned %d rows and no error for %s", len(got), name)
 			}
@@ -302,7 +302,7 @@ func TestFetchCloneStatsDefaultClockIsTheUTCDay(t *testing.T) {
 	client.now = nil
 
 	before := time.Now().UTC().Truncate(24 * time.Hour)
-	got, err := client.FetchCloneStats(context.Background(), "group", "project")
+	got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
 	if err != nil {
 		t.Fatalf("FetchCloneStats: %v", err)
 	}

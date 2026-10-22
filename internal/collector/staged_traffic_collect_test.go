@@ -53,13 +53,14 @@ type trafficFakeClient struct {
 
 	cloneCalls   int
 	trafficCalls int
+	cloneUniques int
 }
 
 func (f *trafficFakeClient) Platform() model.Platform { return f.plat }
 
-func (f *trafficFakeClient) FetchCloneStats(context.Context, string, string) ([]model.RepoClone, error) {
+func (f *trafficFakeClient) FetchCloneStats(context.Context, string, string) ([]model.RepoClone, int, error) {
 	f.cloneCalls++
-	return f.clones, f.cloneErr
+	return f.clones, f.cloneUniques, f.cloneErr
 }
 
 func (f *trafficFakeClient) FetchTraffic(context.Context, string, string) (*model.RepoTraffic, error) {
@@ -585,4 +586,37 @@ func containsMethodCall(n ast.Node, method string) bool {
 		return !found
 	})
 	return found
+}
+
+// The clones window's uniques come from the same read as its dates. The
+// window's dates are the daily clones buckets; before this, its uniques
+// came from the later clones?per=week read, so a UTC midnight between
+// the two requests stored a window dated D-14..D-1 carrying D-13..D's
+// distinct cloners. The step must use the uniques FetchCloneStats
+// returned with those buckets, never the per=week read's.
+func TestCollectTrafficClonesWindowUsesTheCloneStatsUniques(t *testing.T) {
+	clones := trafficCloneDays(trafficDay(5), 14)
+	// The per=week read's uniques differ from the per=day read's, so a
+	// window built from the wrong one fails.
+	read := trafficRead(trafficDay(5), []time.Time{trafficDay(5), trafficDay(12)})
+	read.CloneUniques = 999
+	client := &trafficFakeClient{plat: model.PlatformGitHub, clones: clones, cloneUniques: 6, traffic: read}
+	now := time.Date(2026, time.October, 19, 22, 30, 0, 0, time.UTC)
+
+	_, sw, _ := runCollectTraffic(context.Background(), t, client, now)
+
+	got := sw.trafficPayload(t)
+	var clonesWindow *model.RepoTrafficWindow
+	for i := range got.Windows {
+		if got.Windows[i].Kind == model.TrafficKindClones {
+			clonesWindow = &got.Windows[i]
+		}
+	}
+	if clonesWindow == nil {
+		t.Fatal("no clones window staged")
+	}
+	if clonesWindow.Uniques != 6 {
+		t.Errorf("clones window uniques = %d, want 6 (the FetchCloneStats read), not the per=week read's 999",
+			clonesWindow.Uniques)
+	}
 }

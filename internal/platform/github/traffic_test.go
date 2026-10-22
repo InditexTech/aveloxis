@@ -183,15 +183,14 @@ func TestFetchTrafficReadsTheFiveEndpointsIntoOneBundle(t *testing.T) {
 		}
 	}
 
-	// 14-day uniques: views from the per=day top level, clones from the
-	// per=week top level: FetchTraffic reads clones only with per=week,
-	// and GitHub reports the same top-level uniques for per=day and
-	// per=week. Neither is a sum of buckets.
+	// 14-day uniques: views from the per=day top level. Clone uniques come from
+	// FetchCloneStats, whose per=day read dates the window. Neither is a
+	// sum of buckets.
 	if got.ViewUniques != viewsDay.Uniques {
 		t.Errorf("ViewUniques = %d, want the per=day top-level uniques %d", got.ViewUniques, viewsDay.Uniques)
 	}
-	if got.CloneUniques != 128 {
-		t.Errorf("CloneUniques = %d, want the clones?per=week top-level uniques 128", got.CloneUniques)
+	if got.CloneUniques != 0 {
+		t.Errorf("CloneUniques = %d, want 0: the collector takes it from FetchCloneStats", got.CloneUniques)
 	}
 
 	// Weekly buckets: all of them, partial weeks included, with the kind.
@@ -259,7 +258,7 @@ func TestFetchTrafficKeepsTheZeroBucketsOfARepositoryWithoutTraffic(t *testing.T
 	client := testGHClient(t, srv)
 	ctx := context.Background()
 
-	clones, err := client.FetchCloneStats(ctx, "o", "r")
+	clones, _, err := client.FetchCloneStats(ctx, "o", "r")
 	if err != nil {
 		t.Fatalf("FetchCloneStats: %v", err)
 	}
@@ -393,7 +392,7 @@ func TestFetchCloneStatsMapsEveryDailyBucket(t *testing.T) {
 	}}
 	client := testGHClient(t, srv)
 
-	got, err := client.FetchCloneStats(context.Background(), "o", "r")
+	got, _, err := client.FetchCloneStats(context.Background(), "o", "r")
 	if err != nil {
 		t.Fatalf("FetchCloneStats: %v", err)
 	}
@@ -431,4 +430,28 @@ func uniquesText(p *int) string {
 		return "absent"
 	}
 	return strconv.Itoa(*p)
+}
+
+// FetchCloneStats returns the top-level uniques of the same read as its
+// daily buckets. That figure is the clones window's distinct cloners,
+// and the window's dates are those buckets, so both must come from one
+// request: taking the uniques from the later clones?per=week read (as
+// FetchTraffic did) let a UTC midnight between the two store a window
+// dated D-14..D-1 whose uniques described D-13..D, and the (start, end)
+// key meant no later read ever corrected it.
+func TestFetchCloneStatsReturnsTheWindowUniquesOfTheSameRead(t *testing.T) {
+	srv := &trafficServer{t: t, bodies: map[trafficRead][]byte{
+		{"/repos/o/r/traffic/clones", ""}: readTrafficBody(t, "traffic_openapi_clones.json"),
+	}}
+	client := testGHClient(t, srv)
+
+	_, uniques, err := client.FetchCloneStats(context.Background(), "o", "r")
+	if err != nil {
+		t.Fatalf("FetchCloneStats: %v", err)
+	}
+	var want trafficFixtureSeries
+	readTrafficFixture(t, "traffic_openapi_clones.json", &want)
+	if uniques != want.Uniques {
+		t.Errorf("window uniques = %d, want the per=day top-level uniques %d (the same read as the buckets)", uniques, want.Uniques)
+	}
 }

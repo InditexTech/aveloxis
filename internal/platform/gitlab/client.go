@@ -1564,20 +1564,20 @@ const cloneStatsSource = "GitLab API"
 // GitLab counts no distinct cloners, so UniqueClones stays nil. Below
 // the Reporter role the endpoint answers 403 (404 for an unreadable
 // project), both ClassSkip.
-func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, error) {
+func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, int, error) {
 	const endpoint = "GET /projects/:id/statistics"
 	var raw glProjectStatistics
 	if err := c.http.GetJSON(ctx, fmt.Sprintf("/projects/%s/statistics", projectPath(owner, repo)), &raw); err != nil {
-		return nil, fmt.Errorf("%s: %w", endpoint, err)
+		return nil, 0, fmt.Errorf("%s: %w", endpoint, err)
 	}
 	if raw.Fetches == nil {
-		return nil, fmt.Errorf("%s: answer has no fetches member", endpoint)
+		return nil, 0, fmt.Errorf("%s: answer has no fetches member", endpoint)
 	}
 	// A malformed answer must be an error, never a period of zeros: a
 	// day with a missing count is not a day of 0 fetches, and 30 stored
 	// zeros would overwrite counts already collected.
 	if raw.Fetches.Days == nil {
-		return nil, fmt.Errorf("%s: fetches has no days array", endpoint)
+		return nil, 0, fmt.Errorf("%s: fetches has no days array", endpoint)
 	}
 
 	now := time.Now
@@ -1592,10 +1592,10 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 	for _, listed := range *raw.Fetches.Days {
 		day, err := time.Parse(time.DateOnly, listed.Date)
 		if err != nil {
-			return nil, fmt.Errorf("%s: unreadable date %q: %w", endpoint, listed.Date, err)
+			return nil, 0, fmt.Errorf("%s: unreadable date %q: %w", endpoint, listed.Date, err)
 		}
 		if listed.Count == nil {
-			return nil, fmt.Errorf("%s: day %s has no count", endpoint, listed.Date)
+			return nil, 0, fmt.Errorf("%s: day %s has no count", endpoint, listed.Date)
 		}
 		// A day listed twice would be a GitLab bug; the last listing
 		// wins. A day outside the period (a clock edge between GitLab
@@ -1612,7 +1612,7 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 			Origin:      model.DataOrigin{DataSource: cloneStatsSource},
 		}
 	}
-	return clones, nil
+	return clones, 0, nil
 }
 
 // FetchTraffic returns (nil, nil) without a request: GitLab has no API

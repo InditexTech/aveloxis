@@ -1818,7 +1818,7 @@ type trafficStager interface {
 // window. A forge with only daily clones (GitLab) returns no further
 // read, so the step stages its clone rows and no traffic row.
 func (sc *StagedCollector) collectTraffic(ctx context.Context, sw trafficStager, owner, repo string, now time.Time, result *CollectResult) {
-	clones, cloneErr := sc.client.FetchCloneStats(ctx, owner, repo)
+	clones, cloneUniques, cloneErr := sc.client.FetchCloneStats(ctx, owner, repo)
 	if cloneErr != nil {
 		if isOptionalEndpointSkip(cloneErr) {
 			sc.logger.Info("skipping traffic endpoints",
@@ -1852,6 +1852,11 @@ func (sc *StagedCollector) collectTraffic(ctx context.Context, sw trafficStager,
 	if traffic == nil {
 		return
 	}
+	// The clones window's uniques come from the same read as the daily
+	// clones that date it, not from FetchTraffic's later per=week read:
+	// a UTC midnight between the two requests would otherwise store a
+	// window whose dates and uniques describe different 14 days.
+	traffic.CloneUniques = cloneUniques
 	y, m, d := now.UTC().Date()
 	traffic.SnapshotDate = time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 	traffic.Windows, traffic.Weeks = deriveTrafficRows(traffic, clones)

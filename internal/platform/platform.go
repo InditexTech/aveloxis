@@ -95,16 +95,22 @@ type RepoCollector interface {
 	FetchRepoInfo(ctx context.Context, owner, repo string) (*model.RepoInfo, error)
 
 	// FetchCloneStats returns the daily clone counts (may require
-	// elevated perms). GitHub returns its 14 daily buckets with unique
-	// cloners; GitLab returns the 30 UTC days ending today from its
-	// statistics endpoint, absent days as 0 and UniqueClones nil.
-	FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, error)
+	// elevated perms) and the distinct cloners of the window those
+	// days cover. GitHub returns its 14 daily buckets, and the
+	// top-level uniques of that same read — the value the clones
+	// window stores, so its dates and its uniques always describe one
+	// period; a forge that counts no distinct cloners returns 0.
+	// GitLab returns the 30 UTC days ending today from its statistics
+	// endpoint, absent days as 0 and UniqueClones nil, and 0 uniques.
+	FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, int, error)
 
 	// FetchTraffic returns the rest of the repository's traffic in one
 	// call: the daily views, the 14-day uniques and weekly buckets of
 	// views and clones, and the top paths and referrers (the daily
 	// clones stay with FetchCloneStats). SnapshotDate, Windows and Weeks
-	// are left for the collector. On GitHub it reads five /traffic
+	// are left for the collector; CloneUniques is left unset — the
+	// clones window's uniques come from FetchCloneStats, the read whose
+	// buckets date it. On GitHub it reads five /traffic
 	// endpoints with the access FetchCloneStats needs; the first failure
 	// aborts with an error naming the endpoint, so a 403 still classifies
 	// as ClassSkip. GitLab returns (nil, nil) without a request: it has no

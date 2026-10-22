@@ -83,7 +83,7 @@ func TestLiveGitLabProjectStatisticsContract(t *testing.T) {
 		t.Errorf("%s statistics: %s", full, p)
 	}
 
-	rows, err := client.FetchCloneStats(ctx, owner, repo)
+	rows, _, err := client.FetchCloneStats(ctx, owner, repo)
 	if err != nil {
 		t.Fatalf("FetchCloneStats on %s: %v", full, err)
 	}

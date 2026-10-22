@@ -1335,11 +1335,11 @@ func statusStr(archived, disabled bool) string {
 	return "Active"
 }
 
-func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, error) {
+func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, int, error) {
 	path := fmt.Sprintf("/repos/%s/%s/traffic/clones", owner, repo)
 	var raw ghCloneTraffic
 	if err := c.http.GetJSON(ctx, path, &raw); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	clones := make([]model.RepoClone, len(raw.Clones))
@@ -1350,7 +1350,10 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 			UniqueClones: &c.Uniques,
 		}
 	}
-	return clones, nil
+	// The top-level uniques of this same read: the clones window's
+	// distinct cloners. Reading it here, beside the buckets that date
+	// that window, keeps its dates and its uniques on one period.
+	return clones, raw.Uniques, nil
 }
 
 // FetchTraffic makes the five traffic reads other than the daily clones
@@ -1388,7 +1391,6 @@ func (c *Client) FetchTraffic(ctx context.Context, owner, repo string) (*model.R
 	t := &model.RepoTraffic{
 		Views:        make([]model.RepoView, len(viewsDay.Views)),
 		ViewUniques:  viewsDay.Uniques,
-		CloneUniques: clonesWeek.Uniques,
 		WeeklyViews:  trafficWeeks(model.TrafficKindViews, viewsWeek.Views),
 		WeeklyClones: trafficWeeks(model.TrafficKindClones, clonesWeek.Clones),
 		Paths:        make([]model.RepoTrafficPath, len(paths)),

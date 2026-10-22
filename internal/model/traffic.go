@@ -36,8 +36,11 @@ type RepoTraffic struct {
 	// window, the top-level uniques of the daily views response. It is
 	// not the sum of the daily uniques.
 	ViewUniques int
-	// CloneUniques is the number of distinct cloners over the 14-day
-	// window, the top-level uniques of the weekly clones response.
+	// CloneUniques is the number of distinct cloners over the same
+	// 14-day window as the daily clones FetchCloneStats returns, whose
+	// dates the collector uses for the clones window. FetchTraffic
+	// leaves it unset: its clones read (per=week) is a later request,
+	// and a window's dates and uniques must describe one period.
 	CloneUniques int
 
 	// WeeklyViews and WeeklyClones hold every weekly bucket GitHub
