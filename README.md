@@ -61,7 +61,7 @@ aveloxis install-tools
 > export PATH="$PATH:$(go env GOPATH)/bin"
 > ```
 
-**Option 2: Build locally** (binary stays in the repo directory):
+**Option 2: Build locally** (binary stays in the repository directory):
 ```bash
 git clone https://github.com/aveloxis/aveloxis.git
 cd aveloxis
