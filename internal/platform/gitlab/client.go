@@ -1562,7 +1562,9 @@ const cloneStatsSource = "GitLab API"
 // GitLab lists only days that had a fetch, so an omitted day is stored
 // as 0. The counts are HTTP clones and pulls together (never SSH) and
 // GitLab counts no distinct cloners, so UniqueClones stays nil. Below
-// the Reporter role the endpoint answers 403 (404 for an unreadable
+// the Reporter role (GitLab's permissions table, docs.gitlab.com/user/
+// permissions, lists "View project traffic statistics" from Reporter
+// up) the endpoint answers 403 (404 for an unreadable
 // project), both ClassSkip.
 func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, int, error) {
 	const endpoint = "GET /projects/:id/statistics"
