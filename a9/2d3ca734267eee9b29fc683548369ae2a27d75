@@ -1,0 +1,33 @@
+internal/collector/staged.go
+  s_bda55fad26d2a3::t_f1eaec1133e871 1336-1360
+internal/db/page_cache_writers_test.go
+  s_bda55fad26d2a3::t_3e0be79bdede6a 75
+internal/db/postgres.go
+  s_bda55fad26d2a3::t_401439c7b12ca9 2575-2612
+internal/db/traffic_integration_test.go
+  s_bda55fad26d2a3::t_0587adc5eeba74 492-660
+internal/db/traffic_store.go
+  s_bda55fad26d2a3::t_22d52beb53d37f 47-53,69-70,75,80-81,86,101-102,104,109-110,112
+internal/model/traffic.go
+  s_bda55fad26d2a3::t_b6d5ca0383c695 27-31
+internal/platform/github/client.go
+  s_bda55fad26d2a3::t_17b28859ff2e5d 1338-1341,1355,1399,1410
+internal/platform/github/traffic_test.go
+  s_bda55fad26d2a3::t_48e5f3c66b7196 458-495
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a92d3ca734267eee9b29fc683548369ae2a27d75",
+  "prompts": {},
+  "sessions": {
+    "s_bda55fad26d2a3": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_bda55fad26d2a3",
+        "model": "unknown"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}

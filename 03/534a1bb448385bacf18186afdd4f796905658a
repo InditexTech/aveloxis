@@ -1,0 +1,23 @@
+docs/guide/collection-pipeline.md
+  s_e485becfbead4e::t_1c869f25587622 50
+docs/schema.md
+  s_e485becfbead4e::t_9e3be1e71931c2 982
+internal/platform/gitlab/client.go
+  s_e485becfbead4e::t_29b3fc1b83d6b3 1565-1567
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "03534a1bb448385bacf18186afdd4f796905658a",
+  "prompts": {},
+  "sessions": {
+    "s_e485becfbead4e": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_e485becfbead4e",
+        "model": "unknown"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}

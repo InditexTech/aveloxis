@@ -1,0 +1,35 @@
+internal/collector/staged.go
+  s_ffe124bbf2bf88::t_633dd0f5272a1d 1821,1855-1859
+internal/collector/staged_traffic_collect_test.go
+  s_ffe124bbf2bf88::t_a505956a1fa8d2 56,61,63,590-622
+internal/model/traffic.go
+  s_ffe124bbf2bf88::t_136952010cf6c8 39-43
+internal/platform/github/client.go
+  s_ffe124bbf2bf88::t_37a5be5886816e 1338,1342,1353-1356
+internal/platform/github/traffic_test.go
+  s_ffe124bbf2bf88::t_cc15e75edf0730 186-188,192-193,261,395,434-457
+internal/platform/gitlab/client.go
+  s_ffe124bbf2bf88::t_90fee6d5144da6 1567,1571,1574,1580,1595,1598,1615
+internal/platform/gitlab/clone_stats_test.go
+  s_ffe124bbf2bf88::t_826b3798270cba 128,146,159,176,198,223,251,281,305
+internal/platform/gitlab/project_statistics_live_test.go
+  s_ffe124bbf2bf88::t_174f561f2ef97f 86
+internal/platform/platform.go
+  s_ffe124bbf2bf88::t_f820d4c48b0edf 98-105,111-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b12bf6b9fdc7d976c38471343ef2a101c16b653",
+  "prompts": {},
+  "sessions": {
+    "s_ffe124bbf2bf88": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "s_ffe124bbf2bf88",
+        "model": "unknown"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
