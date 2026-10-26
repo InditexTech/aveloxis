@@ -23,11 +23,19 @@ import (
 )
 
 // trafficLiveDefaultRepo is the repository TestLiveGitHubTrafficContract
-// reads unless AVELOXIS_TEST_TRAFFIC_REPO names another. GitHub serves
+// reads unless trafficRepoEnv names another. GitHub serves
 // traffic only to a token with push access to the repository, and
 // Aveloxis' own repository is the one its maintainers can give the
 // canary token that access on.
 const trafficLiveDefaultRepo = "aveloxis/aveloxis"
+
+// trafficRepoEnv names the repository the canary reads instead of
+// trafficLiveDefaultRepo, owner/repo. The scheduled job must pass it
+// through: a repository variable is not an environment variable, so a
+// token with access only to the configured repository would otherwise
+// still target aveloxis/aveloxis and skip on 403 rather than check the
+// contract.
+const trafficRepoEnv = "AVELOXIS_TEST_TRAFFIC_REPO"
 
 // trafficLiveReads are the traffic answers the canary checks, by their
 // endpoint below /repos/{owner}/{repo}/traffic/: the five reads of
@@ -48,8 +56,8 @@ var trafficLiveReads = []string{
 //
 // Gated on AVELOXIS_TEST_NETWORK=1 and AVELOXIS_TEST_GITHUB_TOKEN. A token
 // without push access to the repository gets 403, and the test then skips
-// saying so. Set AVELOXIS_TEST_TRAFFIC_REPO=owner/repo to read another
-// repository than aveloxis/aveloxis.
+// saying so. Set trafficRepoEnv=owner/repo to read another repository
+// than aveloxis/aveloxis.
 func TestLiveGitHubTrafficContract(t *testing.T) {
 	if os.Getenv("AVELOXIS_TEST_NETWORK") != "1" {
 		t.Skip("network canary: set AVELOXIS_TEST_NETWORK=1 to run")
@@ -58,13 +66,13 @@ func TestLiveGitHubTrafficContract(t *testing.T) {
 	if tok == "" {
 		t.Skip("set AVELOXIS_TEST_GITHUB_TOKEN to run the live traffic canary")
 	}
-	full := os.Getenv("AVELOXIS_TEST_TRAFFIC_REPO")
+	full := os.Getenv(trafficRepoEnv)
 	if full == "" {
 		full = trafficLiveDefaultRepo
 	}
 	owner, repo, ok := strings.Cut(full, "/")
 	if !ok || owner == "" || repo == "" || strings.Contains(repo, "/") {
-		t.Fatalf("AVELOXIS_TEST_TRAFFIC_REPO is %q, want owner/repo", full)
+		t.Fatalf("%s is %q, want owner/repo", trafficRepoEnv, full)
 	}
 
 	lg := slog.Default()
@@ -429,9 +437,10 @@ func TestTrafficContractCheckNamesTheFieldThatChanged(t *testing.T) {
 // TestTrafficCanaryIsScheduled: an unscheduled canary provides no
 // protection (network-canary.yml). The weekly canary job must run the
 // traffic canary in a step that sets AVELOXIS_TEST_NETWORK=1 and passes
-// AVELOXIS_TEST_GITHUB_TOKEN, with no if or continue-on-error that could
-// switch it off. The test name comes from the function, so a rename
-// breaks this build instead of leaving "-run <old name>" running no test.
+// AVELOXIS_TEST_GITHUB_TOKEN and AVELOXIS_TEST_TRAFFIC_REPO, with no if
+// or continue-on-error that could switch it off. The test name comes from
+// the function, so a rename breaks this build instead of leaving
+// "-run <old name>" running no test.
 func TestTrafficCanaryIsScheduled(t *testing.T) {
 	var wf struct {
 		Jobs map[string]struct {
@@ -467,6 +476,13 @@ func TestTrafficCanaryIsScheduled(t *testing.T) {
 			found++
 			if st.Env["AVELOXIS_TEST_NETWORK"] != "1" || st.Env["AVELOXIS_TEST_GITHUB_TOKEN"] == "" {
 				t.Errorf("the step running %q must set AVELOXIS_TEST_NETWORK=1 and AVELOXIS_TEST_GITHUB_TOKEN (env %v)", want, st.Env)
+			}
+			// A repository variable is not exported to the step's
+			// environment: without this, a token with access only to
+			// the configured repository targets aveloxis/aveloxis and
+			// skips on 403 rather than checking the contract.
+			if st.Env[trafficRepoEnv] == "" {
+				t.Errorf("the step running %q must pass %s through from the repository variables (env %v)", want, trafficRepoEnv, st.Env)
 			}
 			if st.If != nil || st.ContinueOnError != nil {
 				t.Errorf("the step running %q must have no if or continue-on-error", want)

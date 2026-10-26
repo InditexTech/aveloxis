@@ -36,6 +36,12 @@ jobs:
           # secret: it is a name). Without it the statistics canary
           # skips, visibly.
           AVELOXIS_TEST_GITLAB_STATS_PROJECT: ${{ vars.AVELOXIS_TEST_GITLAB_STATS_PROJECT }}
+          # v0.29.118: owner/repo the GitHub token can read the traffic
+          # of, when that is not aveloxis/aveloxis (a repository
+          # variable). A repository variable is not an environment
+          # variable: without this the canary targets aveloxis/aveloxis
+          # and skips on 403 instead of checking the contract.
+          AVELOXIS_TEST_TRAFFIC_REPO: ${{ vars.AVELOXIS_TEST_TRAFFIC_REPO }}
         run: |
           go test ./internal/platform/depsdev/ -run TestLiveDepsDevReverseLookupForSeaborn -count=1 -v
           go test ./internal/platform/github/ -run TestSearchCommitByAuthorEmailLive -count=1 -v
