@@ -55,6 +55,11 @@ func statsBody(t *testing.T, days ...statsDay) string {
 type statsServer struct {
 	status int
 	body   string
+	// date is the response's Date header, the server's own clock (the
+	// window GitLab serves is computed on it, not on this host's).
+	date string
+	// omitDate drops the Date header, as a proxy that strips it would.
+	omitDate bool
 
 	mu       sync.Mutex
 	requests []string
@@ -65,6 +70,12 @@ func (s *statsServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.requests = append(s.requests, r.Method+" "+r.URL.EscapedPath())
 	s.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
+	switch {
+	case s.omitDate:
+		w.Header()["Date"] = nil
+	case s.date != "":
+		w.Header().Set("Date", s.date)
+	}
 	w.WriteHeader(s.status)
 	_, _ = w.Write([]byte(s.body))
 }
@@ -80,6 +91,12 @@ func (s *statsServer) seen() []string {
 func statsClient(t *testing.T, now time.Time, status int, body string) (*Client, *statsServer) {
 	t.Helper()
 	srv := &statsServer{status: status, body: body}
+	if !now.IsZero() {
+		// The server answers on the clock the caller injected, so the
+		// window it serves and the window this host would compute agree
+		// unless a test says otherwise.
+		srv.date = now.UTC().Format(http.TimeFormat)
+	}
 	client := testClient(t, srv)
 	client.now = func() time.Time { return now }
 	return client, srv
@@ -312,5 +329,55 @@ func TestFetchCloneStatsDefaultClockIsTheUTCDay(t *testing.T) {
 	}
 	if last := got[len(got)-1].Timestamp; !last.Equal(before) && !last.Equal(after) {
 		t.Errorf("last row %v, want the UTC day of the call (%v)", last, before)
+	}
+}
+
+// The window GitLab serves is computed on GitLab's clock, and the
+// response says which day that is in its Date header. Zero-filling from
+// this host's date instead erases a saved count whenever GitLab has
+// crossed midnight and this host has not: GitLab has then expired the
+// oldest day this loop still includes and emits nothing for it, so the
+// loop writes a 0 over a count no later read can recover.
+func TestFetchCloneStatsWindowFollowsTheServerDate(t *testing.T) {
+	// The host reads 2026-11-30 23:58 UTC; GitLab answered two minutes
+	// later, on 12-01, so its 30 days are 11-02..12-01 and 11-01 is no
+	// longer listed. The host's own window (11-01..11-30) would write a
+	// 0 over 11-01.
+	hostNow := time.Date(2026, 11, 30, 23, 58, 0, 0, time.UTC)
+	body := statsBody(t, statsDay{"2026-12-01", 5}, statsDay{"2026-11-02", 8})
+	client, srv := statsClient(t, hostNow, http.StatusOK, body)
+	srv.date = "Tue, 01 Dec 2026 00:00:00 GMT"
+
+	got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
+	if err != nil {
+		t.Fatalf("FetchCloneStats: %v", err)
+	}
+	wantPeriod(t, got, utc(2026, 11, 2), utc(2026, 12, 1), map[time.Time]int{
+		utc(2026, 11, 2): 8,
+		utc(2026, 12, 1): 5,
+	})
+}
+
+// A Date header that is absent or unreadable cannot move the window: the
+// host's own UTC day is the fallback, as before.
+func TestFetchCloneStatsWithoutAServerDateUsesTheHostDay(t *testing.T) {
+	for name, date := range map[string]string{"absent": "", "unreadable": "not-a-date"} {
+		t.Run(name, func(t *testing.T) {
+			body := statsBody(t, statsDay{"2026-11-30", 7})
+			client, srv := statsClient(t, time.Date(2026, 11, 30, 8, 0, 0, 0, time.UTC), http.StatusOK, body)
+			if date == "" {
+				srv.omitDate = true
+			} else {
+				srv.date = date
+			}
+
+			got, _, err := client.FetchCloneStats(context.Background(), "group", "project")
+			if err != nil {
+				t.Fatalf("FetchCloneStats: %v", err)
+			}
+			wantPeriod(t, got, utc(2026, 11, 1), utc(2026, 11, 30), map[time.Time]int{
+				utc(2026, 11, 30): 7,
+			})
+		})
 	}
 }

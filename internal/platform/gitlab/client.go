@@ -5,11 +5,13 @@ package gitlab
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"iter"
 	"log/slog"
 	"math"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -37,8 +39,9 @@ type Client struct {
 	// userRefCache: username → glUserRefCacheEntry (v0.27.122) — see
 	// lookupGLUserRef. Zero value is ready to use.
 	userRefCache sync.Map
-	// now reads the clock for the collection day of FetchCloneStats; nil
-	// means time.Now. Tests set it to pin the day.
+	// now reads the clock for the collection day of FetchCloneStats
+	// when the response carries no readable Date header; nil means
+	// time.Now. Tests set it to pin the day.
 	now func() time.Time
 }
 
@@ -1569,7 +1572,16 @@ const cloneStatsSource = "GitLab API"
 func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]model.RepoClone, int, error) {
 	const endpoint = "GET /projects/:id/statistics"
 	var raw glProjectStatistics
-	if err := c.http.GetJSON(ctx, fmt.Sprintf("/projects/%s/statistics", projectPath(owner, repo)), &raw); err != nil {
+	// Read through Get, not GetJSON, for the response's Date header:
+	// the window below is the one GitLab computed, and only GitLab's
+	// own clock states it. WithoutETag keeps a repeat read a full
+	// answer rather than a 304 with no header to read.
+	resp, err := c.http.Get(platform.WithoutETag(ctx), fmt.Sprintf("/projects/%s/statistics", projectPath(owner, repo)))
+	if err != nil {
+		return nil, 0, fmt.Errorf("%s: %w", endpoint, err)
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, 0, fmt.Errorf("%s: %w", endpoint, err)
 	}
 	if raw.Fetches == nil {
@@ -1582,12 +1594,7 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 		return nil, 0, fmt.Errorf("%s: fetches has no days array", endpoint)
 	}
 
-	now := time.Now
-	if c.now != nil {
-		now = c.now
-	}
-	y, m, d := now().UTC().Date()
-	today := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	today := cloneStatsToday(resp, c.now)
 	oldest := today.AddDate(0, 0, 1-cloneStatsDays)
 
 	counts := make(map[string]int, len(*raw.Fetches.Days))
@@ -1615,6 +1622,32 @@ func (c *Client) FetchCloneStats(ctx context.Context, owner, repo string) ([]mod
 		}
 	}
 	return clones, 0, nil
+}
+
+// cloneStatsToday is the UTC day the statistics window ends on: the
+// response's Date header, or the host clock when the header is absent or
+// unreadable (a proxy that strips it, a clock that cannot be parsed).
+//
+// The endpoint's 30 days are computed on GitLab's clock, and the header
+// is the only statement of it in the answer. Zero-filling from this
+// host's day instead erases a stored count whenever the two disagree:
+// GitLab has crossed midnight and expired its oldest day, so it lists
+// nothing for the day this host still includes, and the 0 written over
+// it is one no later read can recover (the daily row is keyed by day and
+// the latest read wins). The header cannot be stale here: the read is
+// ETag-free, so every answer carries one.
+func cloneStatsToday(resp *http.Response, now func() time.Time) time.Time {
+	if d := resp.Header.Get("Date"); d != "" {
+		if t, err := http.ParseTime(d); err == nil {
+			y, m, day := t.UTC().Date()
+			return time.Date(y, m, day, 0, 0, 0, 0, time.UTC)
+		}
+	}
+	if now == nil {
+		now = time.Now
+	}
+	y, m, day := now().UTC().Date()
+	return time.Date(y, m, day, 0, 0, 0, 0, time.UTC)
 }
 
 // FetchTraffic returns (nil, nil) without a request: GitLab has no API
