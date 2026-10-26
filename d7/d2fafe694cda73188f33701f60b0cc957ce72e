@@ -1,0 +1,32 @@
+docs/guide/ci-cd.md
+  s_2c5359edb91a04::t_71fef146887b9f 265
+.github/workflows/network-canary.yml
+  s_2c5359edb91a04::t_9210f69ea94d06 39-44
+internal/platform/github/traffic_live_test.go
+  s_ddef20db97f060::t_54ddcfae1ce922 26,32-39,59-60,69,75,440-443,480-485
+  s_ddef20db97f060::t_15ab268b2f5c14 486
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "d7d2fafe694cda73188f33701f60b0cc957ce72e",
+  "prompts": {},
+  "sessions": {
+    "s_2c5359edb91a04": {
+      "agent_id": {
+        "tool": "github-copilot-cli",
+        "id": "f90d5b74-15c1-4fef-98e8-22952dfc9457",
+        "model": "unknown"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    },
+    "s_ddef20db97f060": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06e71998-2969-46f7-a40f-02af6b2a3293",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "Ivan Alvarez Sabin <ivanasabi@ext.inditex.com>"
+    }
+  }
+}
